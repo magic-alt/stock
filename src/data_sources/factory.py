@@ -32,8 +32,12 @@ class DataSourceFactory:
             from .sina_source import SinaDataSource
             return SinaDataSource()
         elif source_type.lower() == 'tushare':
-            # 预留tushare接口
-            raise NotImplementedError("Tushare数据源暂未实现")
+            # 延迟导入，避免依赖不存在导致导入失败
+            from .tushare_source import TuShareDataSource
+            return TuShareDataSource()
+        elif source_type.lower() == 'yfinance':
+            from .yfinance_source import YFinanceDataSource
+            return YFinanceDataSource()
         elif source_type.lower() == 'eastmoney':
             # 预留东方财富接口
             raise NotImplementedError("东方财富数据源暂未实现")

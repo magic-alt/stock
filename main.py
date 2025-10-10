@@ -221,25 +221,22 @@ def main_backtest_backtrader():
     if not stock_code:
         return
     
-    # 选择策略
-    print("\n选择回测策略:")
-    print("1. 双均线交叉 (SMA Cross)")
-    print("2. RSI超买超卖")
-    print("3. MACD信号")
-    
-    strategy_choice = input("请选择策略 (1-3): ").strip()
-    
-    strategy_map = {
-        '1': ('sma_cross', {'fast_period': 5, 'slow_period': 20}),
-        '2': ('rsi', {'period': 14, 'oversold': 30, 'overbought': 70}),
-        '3': ('macd', {'fast': 12, 'slow': 26, 'signal': 9})
-    }
-    
-    if strategy_choice not in strategy_map:
+    # 选择策略（与 registry 对齐，方便未来扩展）
+    from src.strategies.registry import list_strategies
+    all_strats = list_strategies()
+    keys = list(all_strats.keys())
+
+    print("\n选择回测策略（来自注册表）:")
+    for i, k in enumerate(keys, 1):
+        print(f"{i:2d}. {k:18s} - {all_strats[k]}")
+    try:
+        idx = int(input(f"请选择策略 (1-{len(keys)}): ").strip())
+        if not 1 <= idx <= len(keys):
+            raise ValueError()
+        strategy_key = keys[idx - 1]
+    except Exception:
         print("无效策略")
         return
-    
-    strategy_name, strategy_params = strategy_map[strategy_choice]
     
     # 选择回测周期
     start_date, end_date = select_backtest_period()
@@ -259,26 +256,34 @@ def main_backtest_backtrader():
     print(f"获取到 {len(df)} 条数据")
     
     # 运行Backtrader回测
-    print(f"\n使用 {strategy_name} 策略进行回测...")
-    
-    results = run_backtrader_backtest(
+    print(f"\n使用策略 {strategy_key} 进行回测（Backtrader）...")
+
+    # Backtrader 适配器现在基于“外置策略→Signal”，只需传 registry 键
+    sizer_cfg = BACKTEST_CONFIG.get('sizer', {}) or {}
+    result_tuple = run_backtrader_backtest(
         df=df,
-        strategy_name=strategy_name,
+        strategy_key=strategy_key,
         initial_capital=BACKTEST_CONFIG['initial_capital'],
-        **strategy_params
+        commission=BACKTEST_CONFIG.get('commission', 0.0001),
+        stamp_duty=BACKTEST_CONFIG.get('stamp_duty', 0.0),
+        min_cash_per_trade=float(sizer_cfg.get('min_cash', 20000.0)),
+        max_cash_per_trade=float(sizer_cfg.get('max_cash', 50000.0))
     )
-    
+
+    # run_backtrader_backtest 现在返回 (results, adapter)
+    results = None
+    adapter = None
+    if isinstance(result_tuple, tuple) and len(result_tuple) == 2:
+        results, adapter = result_tuple
+    else:
+        results = result_tuple
+
     if results:
         print("\n✅ 回测完成！")
         
         # 询问是否绘图
         show_plot = input("\n是否显示图表? (y/n, 默认y): ").strip().lower() != 'n'
-        if show_plot:
-            adapter = BacktraderAdapter()
-            adapter.setup(BACKTEST_CONFIG['initial_capital'])
-            adapter.add_data(df)
-            adapter.add_strategy(strategy_name, **strategy_params)
-            adapter.run()
+        if show_plot and adapter is not None:
             adapter.plot()
     
     input("\n按回车键继续...")
@@ -402,6 +407,7 @@ def run_monitor_cli(plan: Optional[str], no_indicators: bool, refresh_override: 
         watchlist = DEFAULT_WATCHLIST
 
     refresh = refresh_override if refresh_override is not None else REFRESH_INTERVAL
+    # DATA_SOURCE 可被 CLI 覆盖由外部注入（通过全局 DATA_SOURCE 或者传参）
     monitor = StockMonitor(watchlist=watchlist, indices=indices_list, refresh_interval=refresh, data_source=DATA_SOURCE)
     monitor.run(show_indicators=(not no_indicators))
 
@@ -453,25 +459,27 @@ def run_backtest_cli(engine: str, strategy_key: str, code: str, period: str,
         results = engine_runner.run(df, strategy)
         display_backtest_results(code, code, strategy.name, results)
     elif engine in ['bt', 'backtrader']:
-        # Backtrader 引擎：将注册表键名映射到已有适配器参数
-        # 简化映射（只覆盖示例三类）
-        map_bt = {
-            'ma_cross': ('sma_cross', {'fast_period': 5, 'slow_period': 20}),
-            'rsi': ('rsi', {'period': 14, 'oversold': 30, 'overbought': 70}),
-            'macd': ('macd', {'fast': 12, 'slow': 26, 'signal': 9}),
-        }
-        if strategy_key not in map_bt:
-            raise SystemExit("backtrader 引擎目前仅支持 ma_cross/rsi/macd 示例映射")
-        strategy_name, strategy_params = map_bt[strategy_key]
-
-        results = run_backtrader_backtest(
+        # Backtrader 引擎：直接使用外置策略键
+        sizer_cfg = BACKTEST_CONFIG.get('sizer', {}) or {}
+        result_tuple = run_backtrader_backtest(
             df=df,
-            strategy_name=strategy_name,
+            strategy_key=strategy_key,
             initial_capital=BACKTEST_CONFIG['initial_capital'],
-            **strategy_params
+            commission=BACKTEST_CONFIG.get('commission', 0.0001),
+            stamp_duty=BACKTEST_CONFIG.get('stamp_duty', 0.0),
+            min_cash_per_trade=float(sizer_cfg.get('min_cash', 20000.0)),
+            max_cash_per_trade=float(sizer_cfg.get('max_cash', 50000.0))
         )
+        results = None
+        adapter = None
+        if isinstance(result_tuple, tuple) and len(result_tuple) == 2:
+            results, adapter = result_tuple
+        else:
+            results = result_tuple
+
         if results:
-            print("\n✅ 回测完成！")
+            print("\n✅ 回测完成！（Backtrader+外置策略）")
+            # 若CLI需要显示图表，可在此处调用 adapter.plot()（CLI一般不弹窗）
     else:
         raise SystemExit("未知回测引擎，请使用 simple 或 bt")
 
@@ -486,6 +494,7 @@ def build_arg_parser():
     p.add_argument('--plan', type=str, help='预设方案键，如 ai_chip/gold/ev/blue_chip/tech')
     p.add_argument('--no-indicators', action='store_true', help='监控时不显示技术指标')
     p.add_argument('--refresh', type=int, help='刷新间隔（秒）')
+    p.add_argument('--data-source', type=str, default=None, help='数据源 (akshare|sina|tushare|yfinance|auto)')
 
     # 回测参数
     p.add_argument('--engine', type=str, default='simple', help='simple 或 bt')
@@ -504,11 +513,22 @@ def main():
 
     # 非交互 CLI
     if args.monitor:
+        # 若用户指定 data_source，则覆盖全局 DATA_SOURCE
+        if args.data_source:
+            ds_arg = args.data_source
+        else:
+            ds_arg = DATA_SOURCE
+        # 将 data source 通过环境或全局传递给监控入口
+        # run_monitor_cli 将使用 DataSourceFactory.create 内部的逻辑
+        # 暂时直接设置全局 DATA_SOURCE
+        globals()['DATA_SOURCE'] = ds_arg
         run_monitor_cli(plan=args.plan, no_indicators=args.no_indicators, refresh_override=args.refresh)
         return
     if args.backtest:
         if not (args.strategy and args.code and args.period):
             parser.error("回测模式需要 --strategy --code --period 参数")
+        if args.data_source:
+            globals()['DATA_SOURCE'] = args.data_source
         run_backtest_cli(engine=args.engine, strategy_key=args.strategy, code=args.code,
                          period=args.period, start_date=args.start, end_date=args.end)
         return

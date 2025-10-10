@@ -1,61 +1,67 @@
-2025-10-10 11:51:16,335 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 11:52:21,420 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 12:27:38,981 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 12:52:43,902 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 12:54:34,749 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:17:04,000 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:17:32,661 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:18:33,389 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:34:42,217 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:34:44,637 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:34:52,980 - src.data_sources.akshare_source - WARNING - 第3次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:34:52,980 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:34:53,138 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:34:55,406 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:35:03,671 - src.data_sources.akshare_source - WARNING - 第3次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:35:03,830 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:35:06,296 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:35:50,023 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:35:52,428 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:36:00,872 - src.data_sources.akshare_source - WARNING - 第3次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:36:00,873 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:36:01,438 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:36:03,850 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:37:01,046 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:37:03,415 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:37:12,079 - src.data_sources.akshare_source - WARNING - 第3次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:37:12,080 - src.data_sources.akshare_source - WARNING - 刷新缓存失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))，保留旧缓存
-2025-10-10 13:37:12,256 - src.data_sources.akshare_source - WARNING - 第1次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:37:14,545 - src.data_sources.akshare_source - WARNING - 第2次尝试失败: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
-2025-10-10 13:39:11,871 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,871 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,872 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,872 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,873 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,873 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,873 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,873 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:39:11,874 - src.data_sources.sina_source - WARNING - 新浪数据源不支持历史数据获取
-2025-10-10 13:47:45,884 - urllib3.connectionpool - WARNING - Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))': /api/qt/clist/get?pn=1&pz=1&po=1&np=1
-2025-10-10 13:47:47,988 - urllib3.connectionpool - WARNING - Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))': /api/qt/clist/get?pn=1&pz=1&po=1&np=1
-2025-10-10 13:47:52,103 - urllib3.connectionpool - WARNING - Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'ProtocolError('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))': /api/qt/clist/get?pn=1&pz=1&po=1&np=1
-2025-10-10 13:47:52,212 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
-2025-10-10 13:47:52,906 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:52,948 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:52,991 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:53,032 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:53,077 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:53,119 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:53,160 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:53,201 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 13:47:53,243 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:58,614 - src.data_sources.factory - WARNING - ⚠ AKShare初始化失败: 'AKShareDataSource' object has no attribute '_quick_test_connection'
-2025-10-10 14:09:59,296 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,347 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,389 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,431 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,472 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,515 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,561 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,603 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
-2025-10-10 14:09:59,645 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:48,196 - src.data_sources.factory - WARNING - ⚠ AKShare初始化失败: 'AKShareDataSource' object has no attribute '_quick_test_connection'
+2025-10-10 15:16:48,863 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:48,901 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:48,937 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:48,975 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:49,012 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:49,049 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:49,086 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:49,122 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:49,159 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:16:49,195 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,674 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,718 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,762 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,804 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,845 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,886 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,928 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:50,970 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:51,010 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:17:51,053 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,541 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,584 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,626 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,668 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,711 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,753 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,794 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,835 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,876 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:18:52,918 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,359 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,401 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,443 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,486 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,529 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,571 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,613 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,655 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,695 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:19:54,738 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,142 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,181 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,222 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,263 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,303 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,344 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,385 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,428 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,471 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 15:20:56,511 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:02:25,534 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:02:25,535 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:06:20,207 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:06:20,208 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:10:06,003 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:10:06,004 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:14:38,918 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:14:38,919 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:24:03,898 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:24:03,898 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:27:25,633 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:27:25,634 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:39:09,528 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:39:09,529 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-10 16:41:02,715 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-10 16:41:02,716 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取

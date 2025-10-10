@@ -15,6 +15,11 @@ from src.strategies.macd_strategies import (
 from src.strategies.rsi_strategies import RSIStrategy, RSIMaFilterStrategy
 from src.strategies.donchian_strategy import DonchianBreakoutStrategy
 from src.strategies.ml_strategies import MLWalkForwardStrategy
+from src.strategies.futures_strategies import FuturesMACrossStrategy, FuturesGridStrategy, FuturesMarketMakingStrategy, TurtleFuturesStrategy
+from src.strategies.arbitrage_strategies import CrossCommodityArbStrategy, CalendarSpreadArbStrategy, AlphaHedgeStrategy
+from src.strategies.auction_strategies import AuctionOpenSelectionStrategy
+from src.strategies.multifactor_strategies import MultiFactorSelectionStrategy, IndexEnhancementStrategy, IndustryRotationOverlay
+from src.strategies.intraday_strategies import IntradayReversionStrategy
 
 # 策略注册表：{key: (class, default_params, description)}
 _REGISTRY: Dict[str, Tuple[Callable[..., Any], Dict[str, Any], str]] = {
@@ -30,6 +35,26 @@ _REGISTRY: Dict[str, Tuple[Callable[..., Any], Dict[str, Any], str]] = {
     "rsi_ma": (RSIMaFilterStrategy, {"period": 14, "oversold": 30, "ma": 200}, "RSI超跌+MA趋势过滤"),
     "donchian_atr": (DonchianBreakoutStrategy, {"n": 20, "exit_n": 10, "confirm": 2, "atr_stop": 2.0}, "Donchian+ATR止损"),
     "ml_walk": (MLWalkForwardStrategy, {"label_horizon": 1, "min_train": 200, "prob_threshold": 0.55, "model": "auto"}, "机器学习走步预测"),
+
+    # —— 新增：期货 ——
+    "fut_ma_cross": (FuturesMACrossStrategy, {"short_window": 9, "long_window": 34}, "双均线策略(期货)"),
+    "fut_grid": (FuturesGridStrategy, {"grid_pct": 0.004, "layers": 6, "max_pos": 3}, "网格交易(期货)"),
+    "fut_maker": (FuturesMarketMakingStrategy, {"band_pct": 0.003, "inventory_limit": 2}, "做市商交易(期货)"),
+    "turtle": (TurtleFuturesStrategy, {"entry_n": 20, "exit_n": 10, "atr_mult": 2.0}, "海龟交易法(期货)"),
+
+    # —— 新增：套利/对冲 ——
+    "alpha_hedge": (AlphaHedgeStrategy, {"beta_window": 60, "hedge_col": "对冲收盘"}, "alpha对冲(股票+期货)"),
+    "x_commodity_arb": (CrossCommodityArbStrategy, {"hedge_col": "对冲收盘", "z_window": 60, "z_entry": 1.5, "z_exit": 0.5}, "跨品种套利(期货)"),
+    "calendar_spread": (CalendarSpreadArbStrategy, {"near_col": "近月收盘", "far_col": "远月收盘", "z_window": 60, "z_entry": 1.5, "z_exit": 0.5}, "跨期套利(期货)"),
+
+    # —— 新增：选股/增强/轮动 ——
+    "auction_open": (AuctionOpenSelectionStrategy, {"gap_min": 2.0, "vol_ratio_min": 1.5}, "集合竞价选股(股票)"),
+    "multifactor": (MultiFactorSelectionStrategy, {"use_factors": None, "buy_thresh": 0.0}, "多因子选股(股票)"),
+    "index_enhance": (IndexEnhancementStrategy, {"index_col": "指数收盘", "ma": 100}, "指数增强(股票)"),
+    "rotation": (IndustryRotationOverlay, {"industry_col": "行业指数收盘", "lookback": 20}, "行业轮动(股票)"),
+
+    # —— 新增：日内 ——
+    "intraday_revert": (IntradayReversionStrategy, {"k": 0.8, "daily_reset": True}, "日内回转交易(股票)"),
 }
 
 def list_strategies() -> Dict[str, str]:

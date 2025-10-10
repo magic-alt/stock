@@ -5,6 +5,9 @@
 # ==================== 股票分组配置 ====================
 
 # AI相关股票
+import os
+
+
 AI_STOCKS = {
     '300750': '宁德时代',
     '002475': '立讯精密',
@@ -56,6 +59,7 @@ DATA_CENTER_STOCKS = {
     '300674': '宇信科技',
     '603019': '中科曙光',
     '002439': '启明星辰',
+    '300442': '润泽科技',
 }
 
 # 通信/5G相关
@@ -102,6 +106,8 @@ DEFAULT_WATCHLIST = {
     # 黄金
     '600547': '山东黄金',
     '601899': '紫金矿业',
+    # 数据中心 / 自选新增
+    '300442': '润泽科技',
     
     # 优质股
     '600519': '贵州茅台',
@@ -193,10 +199,17 @@ KDJ_CONFIG = {
 # 默认回测参数
 BACKTEST_CONFIG = {
     'initial_capital': 100000,      # 初始资金
-    'commission': 0.0003,           # 手续费率 (万三)
-    'stamp_duty': 0.001,            # 印花税 (千一，仅卖出)
+    # 统一佣金率（万分之一）
+    'commission': 0.0001,
+    # 印花税：此处为简化，若需仅卖出收印花税可扩展 CommissionInfo
+    'stamp_duty': 0.0005,          # 印花税率
     'slippage': 0.0001,            # 滑点
     'min_commission': 5,            # 最低手续费
+    # Backtrader 下单手数策略：按金额买入
+    'sizer': {
+        'min_cash': 20000.0,
+        'max_cash': 50000.0,
+    }
 }
 
 # 回测周期
@@ -251,7 +264,9 @@ RISK_CONFIG = {
 
 # ==================== 数据源配置 ====================
 
-DATA_SOURCE = 'auto'  # 数据源：auto(智能选择), sina(应急), akshare
+# 数据源：akshare|sina|tushare|yfinance|auto
+# 默认使用 yfinance，更稳定；如需自动切换可设为 'auto'
+DATA_SOURCE = os.environ.get('DATA_SOURCE', 'akshare')
 
 # API配置（如需要）
 API_CONFIG = {

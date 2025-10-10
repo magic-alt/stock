@@ -1,6 +1,12 @@
 """
-AKShare数据源实现（多接口自动切换版本）
-支持东方财富、新浪财经等多个数据源自动切换
+AKShare数据源实现（多接口自动切换 + 稳定性增强）
+优先使用 AKShare 官方接口；当 AKShare 不可用时，回退到备用源。
+
+主要改动点：
+1) 新增 _quick_test_connection() 以配合工厂健康检查；
+2) stock_zh_index_spot_em 显式传入 symbol 并拼接多个板块，符合官方签名；
+3) 东财接口加入退避重试 & 轻量校验，降低被风控的失败率；
+4) 历史接口字段与索引标准化，统一成交额为“元”。
 """
 
 import akshare as ak
@@ -69,6 +75,35 @@ class AKShareDataSource(DataSource):
         self._source_status = {}  # 各数据源状态记录
         self._setup_session()
         self._init_source_status()
+        # 兼容工厂初始化健康检查（见 monitor.log）
+        # 若工厂调用 _quick_test_connection，不再报属性缺失
+        try:
+            _ = self._quick_test_connection()
+        except Exception:
+            # 不抛出，避免初始化失败；实际切换时会再次健康检查
+            pass
+
+    # -------- 新增：工厂健康检查所需的快速连通性测试 --------
+    def _quick_test_connection(self) -> bool:
+        """
+        轻量自检：
+        - 索引：取“沪深重要指数”一组；
+        - 个股：尝试拉取 A 股快照；
+        仅检查是否有非空数据，避免重负载。
+        """
+        try:
+            idx = ak.stock_zh_index_spot_em(symbol="沪深重要指数")
+            if idx is None or idx.empty:
+                return False
+        except Exception:
+            return False
+        try:
+            spot = ak.stock_zh_a_spot_em()
+            if spot is None or spot.empty:
+                return False
+        except Exception:
+            return False
+        return True
     
     def _init_source_status(self):
         """初始化数据源状态"""
@@ -210,21 +245,54 @@ class AKShareDataSource(DataSource):
         return DataSourceType.EASTMONEY
     
     def _fetch_stock_data_eastmoney(self) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
-        """从东方财富获取数据"""
-        try:
-            # 串行获取数据，避免并发请求
-            logger.debug("正在从东方财富获取股票实时数据...")
-            stock_df = ak.stock_zh_a_spot_em()
-            
-            time.sleep(0.2)  # 短暂停顿避免请求过快
-            
-            logger.debug("正在从东方财富获取指数实时数据...")
-            index_df = ak.stock_zh_index_spot_em()
-            
-            return stock_df, index_df
-        except Exception as e:
-            logger.warning(f"东方财富数据获取失败: {e}")
-            raise e
+        """从东方财富获取数据（带退避重试 & 显式参数）"""
+        # 指数接口需要显式 symbol；官方文档提供多个板块，合并以覆盖常见指数
+        # 参考：AKShare 文档 - stock_zh_index_spot_em（symbol 取值）
+        # https://akshare.akfamily.xyz/data/index/index.html
+        index_symbol_groups = [
+            "沪深重要指数", "上证系列指数", "深证系列指数", "中证系列指数"
+        ]
+
+        last_err = None
+        for attempt in range(3):
+            try:
+                # --- A股个股快照 ---
+                logger.debug("正在从东方财富获取股票实时数据...")
+                stock_df = ak.stock_zh_a_spot_em()
+                if stock_df is None or stock_df.empty or len(stock_df) < 100:
+                    raise ValueError("东财个股快照为空或数量异常")
+
+                # --- 指数快照（按组拼接） ---
+                logger.debug("正在从东方财富获取指数实时数据(多组)...")
+                idx_list = []
+                for sym in index_symbol_groups:
+                    try:
+                        # 控制请求速率，避免触发风控（参考社区 issue）
+                        time.sleep(0.2)
+                        _df = ak.stock_zh_index_spot_em(symbol=sym)
+                        if _df is not None and not _df.empty:
+                            idx_list.append(_df)
+                    except Exception as ie:
+                        logger.debug(f"指数分组 {sym} 获取失败: {ie}")
+                        continue
+                index_df = pd.concat(idx_list, ignore_index=True) if idx_list else pd.DataFrame()
+                if index_df.empty or len(index_df) < 5:
+                    raise ValueError("东财指数快照为空或数量异常")
+
+                # 通过基本质量校验返回
+                return stock_df, index_df
+
+            except Exception as e:
+                last_err = e
+                # 退避重试（指数接口近期有验证码风控，放缓节奏）
+                backoff = 1.0 + attempt * 1.0 + random.uniform(0.0, 0.5)
+                logger.warning(f"东方财富数据获取失败，第{attempt+1}次重试将在 {backoff:.1f}s 后进行：{e}")
+                time.sleep(backoff)
+                continue
+
+        # 最终失败
+        logger.warning(f"东方财富数据获取最终失败：{last_err}")
+        raise last_err
     
     def _fetch_stock_data_sina(self) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
         """从新浪财经获取数据（增强重试机制）"""
@@ -776,19 +844,51 @@ class AKShareDataSource(DataSource):
     
     def get_stock_history(self, stock_code: str, start_date: str, 
                          end_date: str, adjust: str = 'qfq') -> pd.DataFrame:
-        """获取股票历史数据"""
-        try:
-            df = ak.stock_zh_a_hist(
-                symbol=stock_code,
-                period="daily",
-                start_date=start_date,
-                end_date=end_date,
-                adjust=adjust
-            )
-            return df
-        except Exception as e:
-            print(f"获取股票 {stock_code} 历史数据失败: {e}")
-            return pd.DataFrame()
+        """
+        获取股票历史数据（标准化列 & 指数化单位）
+        参考官方示例：ak.stock_zh_a_hist(symbol="000001", period="daily", start_date="YYYYMMDD", end_date="YYYYMMDD", adjust="qfq")
+        文档：tutorial & data/stock/stock.html
+        """
+        # 调整合法性
+        adjust = adjust if adjust in ('', 'qfq', 'hfq') else 'qfq'
+
+        last_err = None
+        for attempt in range(3):
+            try:
+                # 放缓请求，避免风控
+                if attempt > 0:
+                    time.sleep(0.5 + random.uniform(0.0, 0.5))
+                df = ak.stock_zh_a_hist(
+                    symbol=stock_code,
+                    period="daily",
+                    start_date=start_date,
+                    end_date=end_date,
+                    adjust=adjust
+                )
+                if df is None or df.empty:
+                    raise ValueError("历史数据为空")
+
+                # 标准化：日期索引、列名、单位
+                if '日期' in df.columns:
+                    df['日期'] = pd.to_datetime(df['日期'])
+                    df = df.sort_values('日期').reset_index(drop=True)
+                    df.set_index('日期', inplace=False)
+                # 统一成交额为“元”（东财日线返回单位通常为“元”本身，此处兜底处理）
+                if '成交额' in df.columns:
+                    df['成交额'] = pd.to_numeric(df['成交额'], errors='coerce').fillna(0.0)
+
+                # 保留常用字段
+                keep_cols = ['日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额']
+                df = df[[c for c in keep_cols if c in df.columns]].copy()
+                return df
+
+            except Exception as e:
+                last_err = e
+                logger.debug(f"获取历史数据失败，第{attempt+1}次尝试：{e}")
+                continue
+
+        print(f"获取股票 {stock_code} 历史数据失败: {last_err}")
+        return pd.DataFrame()
     
     def get_stock_info(self, stock_code: str) -> Optional[Dict]:
         """获取股票基本信息"""
