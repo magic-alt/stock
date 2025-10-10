@@ -7,11 +7,37 @@
 
 ## 启动命令
 
-### 标准启动
+### 标准启动（交互模式）
 ```powershell
 conda activate base
 cd D:\Project\data
 python main.py
+```
+
+### CLI非交互启动
+
+**实时监控**
+```powershell
+# 默认方案监控
+python main.py --monitor
+
+# 指定方案 + 刷新间隔
+python main.py --monitor --plan ai_chip --refresh 15
+
+# 不显示技术指标
+python main.py --monitor --plan gold --no-indicators
+```
+
+**策略回测**
+```powershell
+# 简单回测：MACD策略 + 90天数据
+python main.py --backtest --engine simple --strategy macd --code 600519.SH --period mid
+
+# 自定义时间区间
+python main.py --backtest --engine simple --strategy rsi --code 600036.SH --period custom --start 20240101 --end 20241001
+
+# Backtrader引擎
+python main.py --backtest --engine bt --strategy ma_cross --code 600519.SH --period short
 ```
 
 ### 清理缓存启动（推荐）
@@ -46,12 +72,27 @@ python start_monitor.py
 ## 回测引擎
 
 ### 简单回测引擎（快速）
-- 双均线交叉
-- 三均线策略
-- RSI超买超卖
-- MACD信号/零轴
+**基础策略键名**：
+- `ma_cross` - 双均线交叉
+- `triple_ma` - 三均线策略  
+- `rsi` - RSI超买超卖
+- `rsi_divergence` - RSI背离
+- `macd` - MACD信号
+- `macd_zero` - MACD零轴
+
+**增强策略键名** (V2.3新增)：
+- `ema_cross` - EMA指数交叉(12/26)
+- `kama_cross` - KAMA自适应均线交叉
+- `macd_hist` - MACD柱状图动量策略
+- `rsi_ma` - RSI+MA过滤策略
+- `donchian_atr` - Donchian通道+ATR止损
+- `ml_walk` - 机器学习走步策略
 
 ### Backtrader引擎（专业）
+**支持的策略映射**：
+- `ma_cross` → SMA交叉策略
+- `rsi` → RSI策略
+- `macd` → MACD策略
 - 完整回测框架
 - 可视化图表
 - 专业指标

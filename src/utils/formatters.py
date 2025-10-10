@@ -4,6 +4,7 @@
 """
 
 from typing import Union, Optional
+import math
 
 
 def format_amount(amount_yuan: Optional[float], precision: int = 2) -> str:
@@ -35,6 +36,8 @@ def format_amount(amount_yuan: Optional[float], precision: int = 2) -> str:
         return "0.00万"
     try:
         amt = float(amount_yuan)
+        if math.isnan(amt) or math.isinf(amt):
+            return "0.00万"
         if amt >= 1e8:  # >= 1亿元
             return f"{amt / 1e8:.{precision}f}亿"
         else:           # < 1亿元
@@ -63,10 +66,16 @@ def format_percent(value: float, precision: int = 2, show_sign: bool = True) -> 
         >>> format_percent(0.0, show_sign=False)
         '0.00%'
     """
+    try:
+        v = float(value)
+        if math.isnan(v) or math.isinf(v):
+            v = 0.0
+    except Exception:
+        v = 0.0
     if show_sign:
-        return f"{value:+.{precision}f}%"
+        return f"{v:+.{precision}f}%"
     else:
-        return f"{value:.{precision}f}%"
+        return f"{v:.{precision}f}%"
 
 
 def format_change(value: float, precision: int = 2) -> str:
@@ -88,12 +97,18 @@ def format_change(value: float, precision: int = 2) -> str:
         >>> format_change(0)
         '0.00% -'
     """
-    if value > 0:
-        return f"+{value:.{precision}f}% ↑"
-    elif value < 0:
-        return f"{value:.{precision}f}% ↓"
+    try:
+        v = float(value)
+        if math.isnan(v) or math.isinf(v):
+            v = 0.0
+    except Exception:
+        v = 0.0
+    if v > 0:
+        return f"+{v:.{precision}f}% ↑"
+    elif v < 0:
+        return f"{v:.{precision}f}% ↓"
     else:
-        return f"{value:.{precision}f}% -"
+        return f"{v:.{precision}f}% -"
 
 
 def format_price(price: float, precision: int = 2) -> str:

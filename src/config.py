@@ -251,7 +251,7 @@ RISK_CONFIG = {
 
 # ==================== 数据源配置 ====================
 
-DATA_SOURCE = 'akshare'  # 数据源：akshare, tushare, eastmoney
+DATA_SOURCE = 'auto'  # 数据源：auto(智能选择), sina(应急), akshare
 
 # API配置（如需要）
 API_CONFIG = {

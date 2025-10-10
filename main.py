@@ -6,6 +6,8 @@ A股实时监控系统 V2.0 - 模块化版本
 import sys
 import os
 import logging
+import argparse
+from typing import Optional
 
 # 配置日志：只在控制台显示ERROR级别，WARNING级别写入文件
 logging.basicConfig(
@@ -27,7 +29,8 @@ from src.config import *
 from src.monitors import StockMonitor
 from src.backtest import SimpleBacktestEngine
 from src.backtest.backtrader_adapter import BacktraderAdapter, run_backtrader_backtest
-from src.strategies import *
+from src.strategies import *  # 兼容现有导出
+from src.strategies.registry import list_strategies, create_strategy
 from src.data_sources import DataSourceFactory
 from datetime import datetime, timedelta
 
@@ -98,7 +101,8 @@ def main_monitor():
     monitor = StockMonitor(
         watchlist=watchlist,
         indices=indices_list,
-        refresh_interval=REFRESH_INTERVAL
+        refresh_interval=REFRESH_INTERVAL,
+        data_source=DATA_SOURCE
     )
     
     # 启动监控
@@ -171,7 +175,7 @@ def main_backtest_simple():
     # 获取数据
     print(f"\n正在获取 {stock_name}({stock_code}) 的历史数据...")
     
-    data_source = DataSourceFactory.create('akshare')
+    data_source = DataSourceFactory.create(DATA_SOURCE)
     df = data_source.get_stock_history(stock_code, start_date, end_date)
     
     if df.empty:
@@ -245,7 +249,7 @@ def main_backtest_backtrader():
     # 获取数据
     print(f"\n正在获取 {stock_name}({stock_code}) 的历史数据...")
     
-    data_source = DataSourceFactory.create('akshare')
+    data_source = DataSourceFactory.create(DATA_SOURCE)
     df = data_source.get_stock_history(stock_code, start_date, end_date)
     
     if df.empty:
@@ -383,8 +387,133 @@ def display_backtest_results(stock_name: str, stock_code: str,
     print("=" * 90)
 
 
+def run_monitor_cli(plan: Optional[str], no_indicators: bool, refresh_override: Optional[int]):
+    """基于命令行参数的监控入口（非交互）。"""
+    indices_list = INDICES
+    if plan:
+        plan_cfg = PRESET_PLANS.get(plan)
+        if plan_cfg:
+            watchlist = plan_cfg['stocks']
+            indices_list = {k: INDICES[k] for k in plan_cfg['indices'] if k in INDICES}
+        else:
+            # 兜底使用默认
+            watchlist = DEFAULT_WATCHLIST
+    else:
+        watchlist = DEFAULT_WATCHLIST
+
+    refresh = refresh_override if refresh_override is not None else REFRESH_INTERVAL
+    monitor = StockMonitor(watchlist=watchlist, indices=indices_list, refresh_interval=refresh, data_source=DATA_SOURCE)
+    monitor.run(show_indicators=(not no_indicators))
+
+
+def run_backtest_cli(engine: str, strategy_key: str, code: str, period: str,
+                     start_date: Optional[str], end_date: Optional[str], **kwargs):
+    """基于命令行参数的回测入口（非交互）。
+
+    Args:
+        engine: 'simple' 或 'bt'（backtrader）
+        strategy_key: 来自 registry 的键名（如 'rsi', 'macd', 'ma_cross'）
+        code: 股票代码
+        period: 'short'|'mid'|'long'|'custom'
+        start_date/end_date: 自定义区间时必填（YYYYMMDD）
+    """
+    # 解析周期
+    if period in ['short', 'mid', 'long']:
+        days_map = {'short': 30, 'mid': 90, 'long': 365}
+        days = days_map[period]
+        from datetime import datetime, timedelta
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=days + 60)).strftime('%Y%m%d')
+    elif period == 'custom':
+        if not (start_date and end_date):
+            raise SystemExit("自定义周期需提供 --start 与 --end (YYYYMMDD)")
+    else:
+        raise SystemExit("未知周期，请使用 short/mid/long/custom")
+
+    from src.data_sources import DataSourceFactory
+    data_source = DataSourceFactory.create(DATA_SOURCE)
+    df = data_source.get_stock_history(code, start_date, end_date)
+    if df.empty:
+        raise SystemExit("获取历史数据失败或为空")
+
+    if engine == 'simple':
+        # 通过注册表创建策略
+        try:
+            strategy = create_strategy(strategy_key)
+        except KeyError as e:
+            available = ', '.join(list_strategies().keys())
+            raise SystemExit(f"{e}\n可用策略: {available}")
+
+        engine_runner = SimpleBacktestEngine(
+            initial_capital=BACKTEST_CONFIG['initial_capital'],
+            commission=BACKTEST_CONFIG['commission'],
+            stamp_duty=BACKTEST_CONFIG['stamp_duty'],
+            slippage=BACKTEST_CONFIG['slippage']
+        )
+        results = engine_runner.run(df, strategy)
+        display_backtest_results(code, code, strategy.name, results)
+    elif engine in ['bt', 'backtrader']:
+        # Backtrader 引擎：将注册表键名映射到已有适配器参数
+        # 简化映射（只覆盖示例三类）
+        map_bt = {
+            'ma_cross': ('sma_cross', {'fast_period': 5, 'slow_period': 20}),
+            'rsi': ('rsi', {'period': 14, 'oversold': 30, 'overbought': 70}),
+            'macd': ('macd', {'fast': 12, 'slow': 26, 'signal': 9}),
+        }
+        if strategy_key not in map_bt:
+            raise SystemExit("backtrader 引擎目前仅支持 ma_cross/rsi/macd 示例映射")
+        strategy_name, strategy_params = map_bt[strategy_key]
+
+        results = run_backtrader_backtest(
+            df=df,
+            strategy_name=strategy_name,
+            initial_capital=BACKTEST_CONFIG['initial_capital'],
+            **strategy_params
+        )
+        if results:
+            print("\n✅ 回测完成！")
+    else:
+        raise SystemExit("未知回测引擎，请使用 simple 或 bt")
+
+
+def build_arg_parser():
+    p = argparse.ArgumentParser(description="A股监控与回测系统 V2.0 (CLI 扩展)")
+    g = p.add_mutually_exclusive_group(required=False)
+    g.add_argument('--monitor', action='store_true', help='启动实时监控（非交互）')
+    g.add_argument('--backtest', action='store_true', help='启动回测（非交互）')
+
+    # 监控参数
+    p.add_argument('--plan', type=str, help='预设方案键，如 ai_chip/gold/ev/blue_chip/tech')
+    p.add_argument('--no-indicators', action='store_true', help='监控时不显示技术指标')
+    p.add_argument('--refresh', type=int, help='刷新间隔（秒）')
+
+    # 回测参数
+    p.add_argument('--engine', type=str, default='simple', help='simple 或 bt')
+    p.add_argument('--strategy', type=str, help='策略键（来自 registry）')
+    p.add_argument('--code', type=str, help='股票代码')
+    p.add_argument('--period', type=str, choices=['short', 'mid', 'long', 'custom'], help='回测周期')
+    p.add_argument('--start', type=str, help='自定义开始日期 YYYYMMDD')
+    p.add_argument('--end', type=str, help='自定义结束日期 YYYYMMDD')
+    return p
+
+
 def main():
     """主函数"""
+    parser = build_arg_parser()
+    args, unknown = parser.parse_known_args()
+
+    # 非交互 CLI
+    if args.monitor:
+        run_monitor_cli(plan=args.plan, no_indicators=args.no_indicators, refresh_override=args.refresh)
+        return
+    if args.backtest:
+        if not (args.strategy and args.code and args.period):
+            parser.error("回测模式需要 --strategy --code --period 参数")
+        run_backtest_cli(engine=args.engine, strategy_key=args.strategy, code=args.code,
+                         period=args.period, start_date=args.start, end_date=args.end)
+        return
+
+    # 交互菜单（原逻辑保留）
     while True:
         print("\n" + "=" * 80)
         print("A股监控与回测系统 V2.0")

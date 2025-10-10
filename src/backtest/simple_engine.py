@@ -31,7 +31,7 @@ class SimpleBacktestEngine:
         
         self.capital = initial_capital
         self.position = 0
-        self.trades = []
+        self.trades = []  # [{'date', 'type','price','shares','cost','capital','value',...}]
         self.daily_value = []
         
     def reset(self):
@@ -186,46 +186,70 @@ class SimpleBacktestEngine:
         return self.calculate_metrics(df)
     
     def calculate_metrics(self, df: pd.DataFrame) -> Dict:
-        """计算回测指标"""
-        # 总收益
+        """计算回测指标（增强版）"""
+        # 总收益/买入持有
         total_return = (self.capital - self.initial_capital) / self.initial_capital * 100
-        
-        # 买入持有收益
         buy_hold_return = (df.iloc[-1]['收盘'] - df.iloc[0]['收盘']) / df.iloc[0]['收盘'] * 100
-        
-        # 最大回撤
-        values = [d['value'] for d in self.daily_value]
-        cummax = pd.Series(values).cummax()
-        drawdown = (pd.Series(values) - cummax) / cummax * 100
-        max_drawdown = drawdown.min()
-        
+
+        # 资产曲线
+        values = pd.Series([d['value'] for d in self.daily_value])
+        values.index = pd.to_datetime([d['date'] for d in self.daily_value])
+        cummax = values.cummax()
+        drawdown = (values - cummax) / cummax * 100
+        max_drawdown = float(drawdown.min()) if len(drawdown) else 0.0
+
+        # 年化收益/波动/CAGR
+        if len(values) >= 2:
+            rets = values.pct_change().dropna()
+            ann_vol = float(rets.std() * np.sqrt(252)) if rets.std() > 0 else 0.0
+            sharpe_ratio = float((rets.mean() / rets.std()) * np.sqrt(252)) if rets.std() > 0 else 0.0
+            days = (values.index[-1] - values.index[0]).days or 1
+            cagr = float((values.iloc[-1] / values.iloc[0]) ** (365.0 / days) - 1)
+            downside = rets[rets < 0]
+            sortino = float((rets.mean() / (downside.std() if downside.std() and not np.isnan(downside.std()) else np.nan)) * np.sqrt(252))
+            if np.isnan(sortino):
+                sortino = 0.0
+        else:
+            ann_vol = 0.0
+            sharpe_ratio = 0.0
+            cagr = 0.0
+            sortino = 0.0
+
+        # 回撤恢复时间（以天计）
+        rec_days = 0
+        if len(values):
+            peak_dates = cummax[cummax.diff() > 0].index.tolist()
+            last_peak = peak_dates[-1] if peak_dates else values.index[0]
+            if values.iloc[-1] == cummax.iloc[-1]:
+                # 已恢复
+                rec_days = 0
+            else:
+                rec_days = (values.index[-1] - last_peak).days
+
         # 交易统计
         sell_trades = [t for t in self.trades if t['type'] == 'SELL']
         winning_trades = [t for t in sell_trades if t.get('profit', 0) > 0]
-        
-        win_rate = len(winning_trades) / len(sell_trades) * 100 if sell_trades else 0
-        
-        avg_profit = np.mean([t['profit'] for t in sell_trades]) if sell_trades else 0
-        avg_profit_pct = np.mean([t['profit_pct'] for t in sell_trades]) if sell_trades else 0
-        
-        # 夏普比率（简化版）
-        if len(values) > 1:
-            returns = pd.Series(values).pct_change().dropna()
-            sharpe_ratio = returns.mean() / returns.std() * np.sqrt(252) if returns.std() > 0 else 0
-        else:
-            sharpe_ratio = 0
-        
+        win_rate = float(len(winning_trades) / len(sell_trades) * 100) if sell_trades else 0.0
+        avg_profit = float(np.mean([t['profit'] for t in sell_trades])) if sell_trades else 0.0
+        avg_profit_pct = float(np.mean([t['profit_pct'] for t in sell_trades])) if sell_trades else 0.0
+        day_win_rate = float((pd.Series([d['price'] for d in self.daily_value]).pct_change() > 0).mean() * 100) if len(self.daily_value) > 2 else 0.0
+
         return {
-            'initial_capital': self.initial_capital,
-            'final_capital': self.capital,
-            'total_return': total_return,
-            'buy_hold_return': buy_hold_return,
-            'max_drawdown': max_drawdown,
-            'sharpe_ratio': sharpe_ratio,
-            'total_trades': len(self.trades),
-            'win_rate': win_rate,
-            'avg_profit': avg_profit,
-            'avg_profit_pct': avg_profit_pct,
+            'initial_capital': float(self.initial_capital),
+            'final_capital': float(self.capital),
+            'total_return': float(total_return),
+            'buy_hold_return': float(buy_hold_return),
+            'max_drawdown': float(max_drawdown),
+            'sharpe_ratio': float(sharpe_ratio),
+            'sortino_ratio': float(sortino),
+            'annual_volatility': float(ann_vol),
+            'cagr': float(cagr),
+            'recovery_days': int(rec_days),
+            'total_trades': int(len(self.trades)),
+            'win_rate': float(win_rate),
+            'day_win_rate': float(day_win_rate),
+            'avg_profit': float(avg_profit),
+            'avg_profit_pct': float(avg_profit_pct),
             'trades': self.trades,
             'daily_value': self.daily_value
         }

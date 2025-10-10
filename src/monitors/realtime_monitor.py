@@ -5,7 +5,7 @@
 import os
 import time
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import sys
 import logging
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -37,6 +37,8 @@ class StockMonitor:
         self.indices = indices
         self.refresh_interval = refresh_interval
         self.data_source = DataSourceFactory.create(data_source)
+        self._indicator_cache: Dict[str, Tuple[dict, float]] = {}  # code -> (indicators, ts)
+        self._indicator_ttl_sec = 60  # 同一轮刷新内不重复计算
         
     def clear_screen(self):
         """清屏"""
@@ -73,12 +75,13 @@ class StockMonitor:
             else:
                 print(f"\n  {get_trading_hint()}")
     
-    def display_stocks(self, show_indicators: bool = True):
+    def display_stocks(self, show_indicators: bool = True, topn: int = 12):
         """
         显示股票信息
         
         Args:
             show_indicators: 是否显示技术指标
+            topn: 优先显示的股票数量（按成交额排序）
         """
         print("\n【自选股票】")
         print("-" * 100)
@@ -86,6 +89,7 @@ class StockMonitor:
         has_data = False
         error_count = 0
         
+        rows = []
         for code, name in self.watchlist.items():
             stock_data = self.data_source.get_stock_realtime(code)
             
@@ -98,31 +102,40 @@ class StockMonitor:
                 continue
             
             has_data = True
-            change_str = format_change(stock_data['涨跌幅'])
-            
-            print(f"\n{stock_data['名称']}({stock_data['代码']})")
-            print(f"  价格: {stock_data['最新价']:7.2f}  {change_str:15s}  "
-                  f"今开: {stock_data['今开']:7.2f}  最高: {stock_data['最高']:7.2f}  "
-                  f"最低: {stock_data['最低']:7.2f}")
-            
-            # 成交额单位处理：使用统一格式化函数
-            volume_str = format_amount(stock_data['成交额'])
-            
+            rows.append(stock_data)
+
+        # 先按成交额降序，聚焦主线
+        rows.sort(key=lambda x: x.get('成交额', 0) or 0, reverse=True)
+
+        for stock_data in rows[:max(1, topn)]:
+            change_str = format_change(stock_data.get('涨跌幅', 0.0))
+            print(f"\n{stock_data.get('名称', stock_data['代码'])}({stock_data['代码']})")
+            print(f"  价格: {stock_data.get('最新价', 0):7.2f}  {change_str:15s}  "
+                  f"今开: {stock_data.get('今开', 0):7.2f}  最高: {stock_data.get('最高', 0):7.2f}  "
+                  f"最低: {stock_data.get('最低', 0):7.2f}")
+
+            volume_str = format_amount(stock_data.get('成交额', 0))
             print(f"  成交额: {volume_str}  "
-                  f"换手率: {stock_data['换手率']:.2f}%  "
-                  f"振幅: {stock_data['振幅']:.2f}%")
-            
-            # 显示技术指标
+                  f"换手率: {stock_data.get('换手率', 0):.2f}%  "
+                  f"振幅: {stock_data.get('振幅', 0):.2f}%")
+
             if show_indicators:
-                indicators = self.get_indicators(code)
+                indicators = self.get_indicators(stock_data['代码'])
                 if indicators:
                     print(f"  技术指标:")
-                    print(f"    MA5: {indicators.get('MA5', 'N/A'):7.2f}  "
-                          f"MA10: {indicators.get('MA10', 'N/A'):7.2f}  "
-                          f"MA20: {indicators.get('MA20', 'N/A'):7.2f}")
-                    print(f"    RSI14: {indicators.get('RSI14', 'N/A'):5.2f}  "
-                          f"MACD: {indicators.get('MACD', 'N/A'):7.4f}  "
-                          f"Signal: {indicators.get('MACD_Signal', 'N/A'):7.4f}")
+                    ma5 = indicators.get('MA5', float('nan'))
+                    ma10 = indicators.get('MA10', float('nan'))
+                    ma20 = indicators.get('MA20', float('nan'))
+                    rsi14 = indicators.get('RSI14', float('nan'))
+                    macd = indicators.get('MACD', float('nan'))
+                    macd_signal = indicators.get('MACD_Signal', float('nan'))
+                    
+                    print(f"    MA5: {ma5:7.2f}  "
+                          f"MA10: {ma10:7.2f}  "
+                          f"MA20: {ma20:7.2f}")
+                    print(f"    RSI14: {rsi14:5.2f}  "
+                          f"MACD: {macd:7.4f}  "
+                          f"Signal: {macd_signal:7.4f}")
         
         if not has_data:
             if error_count > 0:
@@ -138,7 +151,13 @@ class StockMonitor:
             from datetime import timedelta
             end_date = datetime.now().strftime('%Y%m%d')
             start_date = (datetime.now() - timedelta(days=days*2)).strftime('%Y%m%d')
-            
+
+            # 简易指标缓存（TTL 60s）
+            now_ts = time.time()
+            cached = self._indicator_cache.get(stock_code)
+            if cached and (now_ts - cached[1] < self._indicator_ttl_sec):
+                return cached[0]
+
             df = self.data_source.get_stock_history(stock_code, start_date, end_date)
             
             if df.empty or len(df) < 20:
@@ -148,7 +167,9 @@ class StockMonitor:
             df = TechnicalIndicators.calculate_all_indicators(df)
             
             # 返回最新指标
-            return TechnicalIndicators.get_latest_indicators(df)
+            latest = TechnicalIndicators.get_latest_indicators(df)
+            self._indicator_cache[stock_code] = (latest, now_ts)
+            return latest
             
         except Exception as e:
             # print(f"计算指标失败: {e}")

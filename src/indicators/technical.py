@@ -9,6 +9,14 @@ from typing import Dict, Optional
 
 class TechnicalIndicators:
     """技术指标计算器"""
+
+    @staticmethod
+    def _ensure_numeric(df: pd.DataFrame, cols: list) -> pd.DataFrame:
+        """确保指定列为数值类型"""
+        for c in cols:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors='coerce')
+        return df
     
     @staticmethod
     def calculate_ma(df: pd.DataFrame, periods: list = [5, 10, 20, 60]) -> pd.DataFrame:
@@ -22,8 +30,9 @@ class TechnicalIndicators:
         Returns:
             添加了MA列的DataFrame
         """
+        df = TechnicalIndicators._ensure_numeric(df, ['收盘'])
         for period in periods:
-            df[f'MA{period}'] = df['收盘'].rolling(window=period).mean()
+            df[f'MA{period}'] = df['收盘'].rolling(window=period, min_periods=max(1, period//2)).mean()
         return df
     
     @staticmethod
@@ -38,8 +47,9 @@ class TechnicalIndicators:
         Returns:
             添加了EMA列的DataFrame
         """
+        df = TechnicalIndicators._ensure_numeric(df, ['收盘'])
         for period in periods:
-            df[f'EMA{period}'] = df['收盘'].ewm(span=period, adjust=False).mean()
+            df[f'EMA{period}'] = df['收盘'].ewm(span=period, adjust=False, min_periods=max(1, period//2)).mean()
         return df
     
     @staticmethod
@@ -54,12 +64,15 @@ class TechnicalIndicators:
         Returns:
             添加了RSI列的DataFrame
         """
+        df = TechnicalIndicators._ensure_numeric(df, ['收盘'])
         delta = df['收盘'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        
-        rs = gain / loss
-        df[f'RSI{period}'] = 100 - (100 / (1 + rs))
+        gain = (delta.where(delta > 0, 0)).rolling(window=period, min_periods=max(1, period//2)).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=max(1, period//2)).mean()
+
+        # 防除零
+        rs = np.where(loss == 0, np.nan, gain / loss)
+        rsi = 100 - (100 / (1 + rs))
+        df[f'RSI{period}'] = pd.Series(rsi, index=df.index).bfill().fillna(50.0)
         
         return df
     
@@ -78,11 +91,12 @@ class TechnicalIndicators:
         Returns:
             添加了MACD相关列的DataFrame
         """
-        exp1 = df['收盘'].ewm(span=fast, adjust=False).mean()
-        exp2 = df['收盘'].ewm(span=slow, adjust=False).mean()
+        df = TechnicalIndicators._ensure_numeric(df, ['收盘'])
+        exp1 = df['收盘'].ewm(span=fast, adjust=False, min_periods=max(1, fast//2)).mean()
+        exp2 = df['收盘'].ewm(span=slow, adjust=False, min_periods=max(1, slow//2)).mean()
         
         df['MACD'] = exp1 - exp2
-        df['MACD_Signal'] = df['MACD'].ewm(span=signal, adjust=False).mean()
+        df['MACD_Signal'] = df['MACD'].ewm(span=signal, adjust=False, min_periods=max(1, signal//2)).mean()
         df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
         
         return df
@@ -101,8 +115,9 @@ class TechnicalIndicators:
         Returns:
             添加了布林带列的DataFrame
         """
-        df['BB_Middle'] = df['收盘'].rolling(window=period).mean()
-        std = df['收盘'].rolling(window=period).std()
+        df = TechnicalIndicators._ensure_numeric(df, ['收盘'])
+        df['BB_Middle'] = df['收盘'].rolling(window=period, min_periods=max(1, period//2)).mean()
+        std = df['收盘'].rolling(window=period, min_periods=max(1, period//2)).std()
         df['BB_Upper'] = df['BB_Middle'] + (std * std_dev)
         df['BB_Lower'] = df['BB_Middle'] - (std * std_dev)
         
@@ -123,13 +138,16 @@ class TechnicalIndicators:
         Returns:
             添加了KDJ列的DataFrame
         """
-        low_list = df['最低'].rolling(window=n).min()
-        high_list = df['最高'].rolling(window=n).max()
+        df = TechnicalIndicators._ensure_numeric(df, ['最高', '最低', '收盘'])
+        low_list = df['最低'].rolling(window=n, min_periods=max(1, n//2)).min()
+        high_list = df['最高'].rolling(window=n, min_periods=max(1, n//2)).max()
         
-        rsv = (df['收盘'] - low_list) / (high_list - low_list) * 100
+        den = (high_list - low_list)
+        den = den.replace(0, np.nan)
+        rsv = (df['收盘'] - low_list) / den * 100
         
-        df['K'] = rsv.ewm(com=m1 - 1, adjust=False).mean()
-        df['D'] = df['K'].ewm(com=m2 - 1, adjust=False).mean()
+        df['K'] = rsv.ewm(com=m1 - 1, adjust=False, min_periods=1).mean()
+        df['D'] = df['K'].ewm(com=m2 - 1, adjust=False, min_periods=1).mean()
         df['J'] = 3 * df['K'] - 2 * df['D']
         
         return df
@@ -146,6 +164,7 @@ class TechnicalIndicators:
         Returns:
             添加了ATR列的DataFrame
         """
+        df = TechnicalIndicators._ensure_numeric(df, ['最高', '最低', '收盘'])
         high_low = df['最高'] - df['最低']
         high_close = np.abs(df['最高'] - df['收盘'].shift())
         low_close = np.abs(df['最低'] - df['收盘'].shift())
@@ -153,7 +172,7 @@ class TechnicalIndicators:
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         true_range = np.max(ranges, axis=1)
         
-        df[f'ATR{period}'] = true_range.rolling(window=period).mean()
+        df[f'ATR{period}'] = true_range.rolling(window=period, min_periods=max(1, period//2)).mean()
         
         return df
     
@@ -169,8 +188,9 @@ class TechnicalIndicators:
         Returns:
             添加了成交量MA列的DataFrame
         """
+        df = TechnicalIndicators._ensure_numeric(df, ['成交量'])
         for period in periods:
-            df[f'VOL_MA{period}'] = df['成交量'].rolling(window=period).mean()
+            df[f'VOL_MA{period}'] = df['成交量'].rolling(window=period, min_periods=max(1, period//2)).mean()
         return df
     
     @staticmethod

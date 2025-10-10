@@ -6,10 +6,15 @@
 from typing import Dict, Tuple, Any, Callable
 
 # 引入现有策略类
-from src.strategies.ma_strategies import MACrossStrategy, TripleMACrossStrategy
-from src.strategies.macd_strategies import MACDStrategy, MACDZeroCrossStrategy
-from src.strategies.rsi_strategies import RSIStrategy
+from src.strategies.ma_strategies import (
+    MACrossStrategy, TripleMACrossStrategy, EMACrossStrategy, KAMACrossStrategy
+)
+from src.strategies.macd_strategies import (
+    MACDStrategy, MACDZeroCrossStrategy, MACDHistogramMomentum
+)
+from src.strategies.rsi_strategies import RSIStrategy, RSIMaFilterStrategy
 from src.strategies.donchian_strategy import DonchianBreakoutStrategy
+from src.strategies.ml_strategies import MLWalkForwardStrategy
 
 # 策略注册表：{key: (class, default_params, description)}
 _REGISTRY: Dict[str, Tuple[Callable[..., Any], Dict[str, Any], str]] = {
@@ -19,6 +24,12 @@ _REGISTRY: Dict[str, Tuple[Callable[..., Any], Dict[str, Any], str]] = {
     "macd": (MACDStrategy, {"fast": 12, "slow": 26, "signal": 9}, "MACD信号"),
     "macd_zero": (MACDZeroCrossStrategy, {"fast": 12, "slow": 26, "signal": 9}, "MACD零轴"),
     "donchian": (DonchianBreakoutStrategy, {"n": 20, "exit_n": 10}, "唐奇安通道突破"),
+    "ema_cross": (EMACrossStrategy, {"fast": 12, "slow": 26, "vol_filter": 0.0}, "EMA交叉+波动过滤"),
+    "kama_cross": (KAMACrossStrategy, {"fast_ema": 2, "slow_ema": 30, "er_window": 10}, "KAMA自适应交叉"),
+    "macd_hist": (MACDHistogramMomentum, {"fast": 12, "slow": 26, "signal": 9, "thresh": 0.0}, "MACD直方图动量"),
+    "rsi_ma": (RSIMaFilterStrategy, {"period": 14, "oversold": 30, "ma": 200}, "RSI超跌+MA趋势过滤"),
+    "donchian_atr": (DonchianBreakoutStrategy, {"n": 20, "exit_n": 10, "confirm": 2, "atr_stop": 2.0}, "Donchian+ATR止损"),
+    "ml_walk": (MLWalkForwardStrategy, {"label_horizon": 1, "min_train": 200, "prob_threshold": 0.55, "model": "auto"}, "机器学习走步预测"),
 }
 
 def list_strategies() -> Dict[str, str]:
@@ -29,6 +40,10 @@ def list_strategies() -> Dict[str, str]:
         {key: description} 字典
     """
     return {k: v[2] for k, v in _REGISTRY.items()}
+
+def strategy_keys() -> list:
+    """返回可用策略键名列表，用于 CLI 帮助。"""
+    return list(_REGISTRY.keys())
 
 def create_strategy(key: str, **overrides):
     """

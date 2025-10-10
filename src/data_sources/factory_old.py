@@ -49,13 +49,17 @@ class DataSourceFactory:
         try:
             source = AKShareDataSource()
             # 快速测试连接
-            logger.info("📡 测试AKShare连接...")
-            test_result = source._quick_test_connection()
-            if test_result:
-                logger.info("✅ AKShare数据源可用")
-                return source
+            if hasattr(source, '_quick_test_connection'):
+                test_result = source._quick_test_connection()
+                if test_result:
+                    logger.info("✅ AKShare数据源可用")
+                    return source
+                else:
+                    logger.warning("⚠ AKShare连接测试失败，尝试备用数据源...")
             else:
-                logger.warning("⚠ AKShare连接测试失败，尝试备用数据源...")
+                # 如果没有快速测试方法，直接返回
+                logger.info("✅ 使用AKShare数据源（未测试连接）")
+                return source
         except Exception as e:
             logger.warning(f"⚠ AKShare初始化失败: {e}")
         
@@ -63,8 +67,7 @@ class DataSourceFactory:
         try:
             from .sina_source import SinaDataSource
             source = SinaDataSource()
-            logger.info("✅ 已自动降级到新浪财经数据源")
-            print("📢 已自动切换到新浪财经数据源（AKShare连接异常）")
+            logger.info("✅ 已降级到新浪财经数据源")
             return source
         except Exception as e:
             logger.error(f"❌ 新浪数据源也失败: {e}")
@@ -72,3 +75,5 @@ class DataSourceFactory:
         # 3. 最后返回AKShare（即使有问题也要有个实例）
         logger.warning("⚠ 所有数据源测试失败，返回默认AKShare实例")
         return AKShareDataSource()
+        else:
+            raise ValueError(f"不支持的数据源类型: {source_type}")
