@@ -264,9 +264,11 @@ RISK_CONFIG = {
 
 # ==================== 数据源配置 ====================
 
-# 数据源：akshare|sina|tushare|yfinance|auto
-# 默认使用 yfinance，更稳定；如需自动切换可设为 'auto'
-DATA_SOURCE = os.environ.get('DATA_SOURCE', 'akshare')
+# 数据源：akshare|sina|tushare|yfinance|cached|auto
+# cached: 优先从本地缓存读取，缺失数据从网络获取
+# auto: 自动选择可用数据源
+# 默认使用 cached 以提高性能和减少网络请求
+DATA_SOURCE = os.environ.get('DATA_SOURCE', 'cached')
 
 # API配置（如需要）
 API_CONFIG = {
@@ -336,6 +338,9 @@ def get_stock_groups():
         'AI算力': AI_COMPUTING_STOCKS,
         '数据中心': DATA_CENTER_STOCKS,
     }
+
+# 股票分组常量，便于其他模块使用
+STOCK_GROUPS = get_stock_groups()
 
 def get_preset_plan(plan_name):
     """获取预设方案"""

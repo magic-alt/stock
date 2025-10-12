@@ -200,3 +200,208 @@ class YFinanceDataSource(DataSource):
             return self.get_stock_realtime(stock_code)
         except Exception:
             return None
+    
+    # ============= 批量下载和CSV缓存功能 =============
+    
+    def load_stock_daily_batch(
+        self,
+        symbols: list[str],
+        start: str,
+        end: str,
+        adjust: str = 'qfq',
+        cache_dir: str = './cache',
+        force_refresh: bool = False
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        批量下载股票日线数据并缓存到CSV
+        
+        参数:
+            symbols: 股票代码列表（如 ['AAPL', 'MSFT', '600519.SH']）
+            start: 开始日期 YYYY-MM-DD
+            end: 结束日期 YYYY-MM-DD
+            adjust: 复权方式（'qfq', 'hfq', ''）
+            cache_dir: CSV缓存目录
+            force_refresh: 是否强制刷新（忽略缓存）
+        
+        返回:
+            {股票代码: DataFrame} 字典
+        """
+        import os
+        import random
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        os.makedirs(cache_dir, exist_ok=True)
+        result = {}
+        
+        logger.info(f"开始批量下载 {len(symbols)} 只股票的历史数据（YFinance）")
+        
+        for i, symbol in enumerate(symbols, 1):
+            try:
+                # 构建缓存文件路径
+                safe_symbol = symbol.replace('/', '_').replace('^', '_').replace('.', '_')
+                cache_file = os.path.join(
+                    cache_dir,
+                    f"yf_{safe_symbol}_{start}_{end}_{adjust}.csv"
+                )
+                
+                # 检查缓存
+                if not force_refresh and os.path.exists(cache_file):
+                    logger.debug(f"[{i}/{len(symbols)}] {symbol} 从缓存加载")
+                    df = pd.read_csv(cache_file, parse_dates=['日期'])
+                    result[symbol] = df
+                    continue
+                
+                # 下载数据
+                logger.info(f"[{i}/{len(symbols)}] 下载 {symbol}")
+                df = self.get_stock_history(symbol, start, end, adjust)
+                
+                if df is not None and not df.empty:
+                    # 保存到CSV
+                    df.to_csv(cache_file, index=False, encoding='utf-8-sig')
+                    logger.debug(f"  已保存到 {cache_file}")
+                    
+                    result[symbol] = df
+                else:
+                    logger.warning(f"  {symbol} 数据为空")
+                
+                # 限速：yfinance 相对宽松
+                if i < len(symbols):
+                    time.sleep(0.2 + random.uniform(0, 0.1))
+                    
+            except Exception as e:
+                logger.error(f"[{i}/{len(symbols)}] {symbol} 下载失败: {e}")
+                continue
+        
+        logger.info(f"批量下载完成：成功 {len(result)}/{len(symbols)}")
+        return result
+    
+    def load_index_daily(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+        cache_dir: str = './cache',
+        force_refresh: bool = False
+    ) -> pd.DataFrame:
+        """
+        下载指数日线数据并缓存到CSV
+        
+        参数:
+            index_code: 指数代码（如 '^GSPC', '^DJI', '000300.SS'）
+            start: 开始日期 YYYY-MM-DD
+            end: 结束日期 YYYY-MM-DD
+            cache_dir: CSV缓存目录
+            force_refresh: 是否强制刷新
+        
+        返回:
+            DataFrame 包含日期、开盘、收盘等字段
+        """
+        import os
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # 构建缓存文件路径
+        safe_code = index_code.replace('^', '_').replace('.', '_')
+        cache_file = os.path.join(cache_dir, f"yf_INDEX_{safe_code}_{start}_{end}.csv")
+        
+        # 检查缓存
+        if not force_refresh and os.path.exists(cache_file):
+            logger.debug(f"指数 {index_code} 从缓存加载")
+            return pd.read_csv(cache_file, parse_dates=['日期'])
+        
+        # 下载数据
+        logger.info(f"下载指数 {index_code} 历史数据")
+        df = self.get_stock_history(index_code, start, end)
+        
+        if df is not None and not df.empty:
+            # 保存到CSV
+            df.to_csv(cache_file, index=False, encoding='utf-8-sig')
+            logger.debug(f"指数数据已保存到 {cache_file}")
+        
+        return df
+    
+    def download_batch_with_retry(
+        self,
+        symbols: list[str],
+        start: str,
+        end: str,
+        cache_dir: str = './cache',
+        max_retries: int = 3
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        带重试机制的批量下载
+        
+        参数:
+            symbols: 股票代码列表
+            start: 开始日期
+            end: 结束日期
+            cache_dir: 缓存目录
+            max_retries: 最大重试次数
+        
+        返回:
+            {股票代码: DataFrame} 字典
+        """
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        result = {}
+        failed_symbols = symbols.copy()
+        
+        for retry in range(max_retries):
+            if not failed_symbols:
+                break
+            
+            if retry > 0:
+                logger.info(f"第 {retry + 1} 次重试，剩余 {len(failed_symbols)} 个")
+                time.sleep(2)  # 重试前等待
+            
+            batch_result = self.load_stock_daily_batch(
+                failed_symbols,
+                start,
+                end,
+                cache_dir=cache_dir,
+                force_refresh=(retry > 0)
+            )
+            
+            result.update(batch_result)
+            
+            # 更新失败列表
+            failed_symbols = [s for s in failed_symbols if s not in batch_result]
+        
+        if failed_symbols:
+            logger.warning(f"以下股票最终下载失败: {failed_symbols}")
+        
+        return result
+    
+    def get_all_stocks_realtime(self) -> pd.DataFrame:
+        """YFinance 不支持一次性获取所有股票"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning("YFinance 不支持获取所有股票，请指定具体股票代码")
+        return pd.DataFrame()
+    
+    def get_all_indices_realtime(self) -> pd.DataFrame:
+        """获取常见指数实时数据"""
+        common_indices = {
+            '^GSPC': 'S&P 500',
+            '^DJI': 'Dow Jones',
+            '^IXIC': 'NASDAQ',
+            '^FTSE': 'FTSE 100',
+            '^HSI': 'Hang Seng',
+            '^N225': 'Nikkei 225',
+            '000001.SS': '上证指数',
+            '399001.SZ': '深证成指',
+            '000300.SS': '沪深300',
+        }
+        
+        data = []
+        for code, name in common_indices.items():
+            info = self.get_index_realtime(code)
+            if info:
+                info['名称'] = name
+                data.append(info)
+        
+        return pd.DataFrame(data) if data else pd.DataFrame()

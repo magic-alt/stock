@@ -38,6 +38,10 @@ class DataSourceFactory:
         elif source_type.lower() == 'yfinance':
             from .yfinance_source import YFinanceDataSource
             return YFinanceDataSource()
+        elif source_type.lower() == 'cached':
+            # 缓存数据源
+            from .cached_source import CachedDataSource
+            return CachedDataSource()
         elif source_type.lower() == 'eastmoney':
             # 预留东方财富接口
             raise NotImplementedError("东方财富数据源暂未实现")

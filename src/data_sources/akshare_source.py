@@ -9,6 +9,7 @@ AKShare数据源实现（多接口自动切换 + 稳定性增强）
 4) 历史接口字段与索引标准化，统一成交额为“元”。
 """
 
+import os
 import akshare as ak
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
@@ -858,11 +859,15 @@ class AKShareDataSource(DataSource):
                 # 放缓请求，避免风控
                 if attempt > 0:
                     time.sleep(0.5 + random.uniform(0.0, 0.5))
+                # 转换日期格式为 YYYYMMDD（AKShare 要求的格式）
+                start_date_formatted = start_date.replace('-', '')
+                end_date_formatted = end_date.replace('-', '')
+                
                 df = ak.stock_zh_a_hist(
                     symbol=stock_code,
                     period="daily",
-                    start_date=start_date,
-                    end_date=end_date,
+                    start_date=start_date_formatted,
+                    end_date=end_date_formatted,
                     adjust=adjust
                 )
                 if df is None or df.empty:
@@ -872,13 +877,13 @@ class AKShareDataSource(DataSource):
                 if '日期' in df.columns:
                     df['日期'] = pd.to_datetime(df['日期'])
                     df = df.sort_values('日期').reset_index(drop=True)
-                    df.set_index('日期', inplace=False)
+                    df.set_index('日期', inplace=True)  # 修复：应该是 inplace=True
                 # 统一成交额为“元”（东财日线返回单位通常为“元”本身，此处兜底处理）
                 if '成交额' in df.columns:
                     df['成交额'] = pd.to_numeric(df['成交额'], errors='coerce').fillna(0.0)
 
-                # 保留常用字段
-                keep_cols = ['日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额']
+                # 保留常用字段（注意：设置索引后不再包含'日期'列）
+                keep_cols = ['开盘', '收盘', '最高', '最低', '成交量', '成交额']
                 df = df[[c for c in keep_cols if c in df.columns]].copy()
                 return df
 
@@ -968,3 +973,251 @@ class AKShareDataSource(DataSource):
             'source_status': self._source_status,
             'available_sources': [s for s, status in self._source_status.items() if status.get('available', True)],
         }
+    
+    # ============= 批量下载和CSV缓存功能 =============
+    
+    def load_stock_daily_batch(
+        self,
+        symbols: List[str],
+        start: str,
+        end: str,
+        adjust: str = 'qfq',
+        cache_dir: str = './cache',
+        force_refresh: bool = False
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        批量下载股票日线数据并缓存到CSV
+        
+        参数:
+            symbols: 股票代码列表（如 ['000001', '600519']）
+            start: 开始日期 YYYY-MM-DD
+            end: 结束日期 YYYY-MM-DD
+            adjust: 复权方式 ('', 'qfq', 'hfq')
+            cache_dir: CSV缓存目录
+            force_refresh: 是否强制刷新（忽略缓存）
+        
+        返回:
+            {股票代码: DataFrame} 字典
+        """
+        os.makedirs(cache_dir, exist_ok=True)
+        result = {}
+        
+        logger.info(f"开始批量下载 {len(symbols)} 只股票的历史数据")
+        
+        for i, symbol in enumerate(symbols, 1):
+            try:
+                # 构建缓存文件路径
+                cache_file = os.path.join(
+                    cache_dir,
+                    f"{symbol}_{start}_{end}_{adjust}.csv"
+                )
+                
+                # 检查缓存
+                if not force_refresh and os.path.exists(cache_file):
+                    logger.debug(f"[{i}/{len(symbols)}] {symbol} 从缓存加载")
+                    df = pd.read_csv(cache_file, parse_dates=['日期'])
+                    result[symbol] = df
+                    continue
+                
+                # 下载数据
+                logger.info(f"[{i}/{len(symbols)}] 下载 {symbol}")
+                df = self.get_stock_history(symbol, start, end, adjust)
+                
+                if df is not None and not df.empty:
+                    # 标准化列名
+                    df = self._standardize_stock_dataframe(df)
+                    
+                    # 保存到CSV
+                    df.to_csv(cache_file, index=False, encoding='utf-8-sig')
+                    logger.debug(f"  已保存到 {cache_file}")
+                    
+                    result[symbol] = df
+                else:
+                    logger.warning(f"  {symbol} 数据为空")
+                
+                # 限速：避免被封禁
+                if i < len(symbols):
+                    time.sleep(0.3 + random.uniform(0, 0.2))
+                    
+            except Exception as e:
+                logger.error(f"[{i}/{len(symbols)}] {symbol} 下载失败: {e}")
+                continue
+        
+        logger.info(f"批量下载完成：成功 {len(result)}/{len(symbols)}")
+        return result
+    
+    def load_index_daily(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+        cache_dir: str = './cache',
+        force_refresh: bool = False
+    ) -> pd.DataFrame:
+        """
+        下载指数日线数据并缓存到CSV
+        
+        参数:
+            index_code: 指数代码（如 '000001', '399001'）
+            start: 开始日期 YYYY-MM-DD
+            end: 结束日期 YYYY-MM-DD
+            cache_dir: CSV缓存目录
+            force_refresh: 是否强制刷新
+        
+        返回:
+            DataFrame 包含日期、开盘、收盘等字段
+        """
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # 构建缓存文件路径
+        cache_file = os.path.join(cache_dir, f"INDEX_{index_code}_{start}_{end}.csv")
+        
+        # 检查缓存
+        if not force_refresh and os.path.exists(cache_file):
+            logger.debug(f"指数 {index_code} 从缓存加载")
+            return pd.read_csv(cache_file, parse_dates=['日期'])
+        
+        # 下载数据
+        logger.info(f"下载指数 {index_code} 历史数据")
+        
+        last_err = None
+        for attempt in range(3):
+            try:
+                if attempt > 0:
+                    time.sleep(0.5 + random.uniform(0, 0.5))
+                
+                df = ak.stock_zh_index_daily(symbol=f"sh{index_code}")
+                
+                if df is None or df.empty:
+                    raise ValueError("指数数据为空")
+                
+                # 标准化
+                if 'date' in df.columns:
+                    df['日期'] = pd.to_datetime(df['date'])
+                elif '日期' in df.columns:
+                    df['日期'] = pd.to_datetime(df['日期'])
+                
+                # 过滤日期范围
+                df = df[
+                    (df['日期'] >= start) &
+                    (df['日期'] <= end)
+                ].sort_values('日期').reset_index(drop=True)
+                
+                # 标准化列名
+                column_map = {
+                    'open': '开盘', 'close': '收盘', 'high': '最高', 'low': '最低',
+                    'volume': '成交量', 'amount': '成交额'
+                }
+                df = df.rename(columns=column_map)
+                
+                # 保留需要的列
+                keep_cols = ['日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额']
+                df = df[[c for c in keep_cols if c in df.columns]].copy()
+                
+                # 保存到CSV
+                df.to_csv(cache_file, index=False, encoding='utf-8-sig')
+                logger.debug(f"指数数据已保存到 {cache_file}")
+                
+                return df
+                
+            except Exception as e:
+                last_err = e
+                logger.debug(f"下载指数失败，第{attempt+1}次尝试：{e}")
+                continue
+        
+        logger.error(f"指数 {index_code} 下载失败: {last_err}")
+        return pd.DataFrame()
+    
+    def _standardize_stock_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        标准化股票数据框格式，输出统一的列名和类型
+        
+        输出列: 日期, 开盘, 收盘, 最高, 最低, 成交量, 成交额
+        """
+        if df is None or df.empty:
+            return df
+        
+        # 标准化日期
+        if '日期' in df.columns:
+            df['日期'] = pd.to_datetime(df['日期'])
+        elif 'date' in df.columns:
+            df['日期'] = pd.to_datetime(df['date'])
+        
+        # 标准化列名映射
+        column_map = {
+            'open': '开盘', '开盘': '开盘',
+            'close': '收盘', '收盘': '收盘',
+            'high': '最高', '最高': '最高',
+            'low': '最低', '最低': '最低',
+            'volume': '成交量', '成交量': '成交量',
+            'amount': '成交额', '成交额': '成交额',
+        }
+        
+        df = df.rename(columns=column_map)
+        
+        # 数值类型转换
+        for col in ['开盘', '收盘', '最高', '最低', '成交量', '成交额']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # 填充缺失值
+        df = df.fillna(0)
+        
+        return df
+    
+    def get_stock_history_simple(self, stock_code: str, start_date: str, end_date: str, adjust: str = 'qfq') -> pd.DataFrame:
+        """
+        简化的股票历史数据获取方法，直接使用 AKShare
+        绕过复杂的多数据源切换逻辑，确保数据获取的稳定性
+        """
+        try:
+            # 转换日期格式为 YYYYMMDD
+            start_date_formatted = start_date.replace('-', '')
+            end_date_formatted = end_date.replace('-', '')
+            
+            print(f"正在获取股票 {stock_code} 的历史数据...")
+            print(f"日期范围: {start_date} 到 {end_date}")
+            
+            # 调用 AKShare API
+            df = ak.stock_zh_a_hist(
+                symbol=stock_code,
+                period="daily",
+                start_date=start_date_formatted,
+                end_date=end_date_formatted,
+                adjust=adjust if adjust in ('', 'qfq', 'hfq') else 'qfq'
+            )
+            
+            if df is None or df.empty:
+                print("❌ AKShare 返回空数据")
+                return pd.DataFrame()
+            
+            print(f"✅ 成功获取 {len(df)} 条数据")
+            
+            # 标准化数据格式
+            if '日期' in df.columns:
+                df['日期'] = pd.to_datetime(df['日期'])
+                df.set_index('日期', inplace=True)
+            
+            # 保留必要的列（使用中文列名）
+            required_columns = ['开盘', '最高', '最低', '收盘', '成交量']
+            available_columns = [col for col in required_columns if col in df.columns]
+            df = df[available_columns].copy()
+            
+            # 确保数据类型正确
+            for col in available_columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # 填充缺失值
+            df = df.ffill().fillna(0)
+            
+            # 为了兼容简单回测引擎，重新添加 '日期' 列
+            df = df.reset_index()
+            df['date'] = df['日期']  # 同时添加英文日期列以兼容不同组件
+            
+            print(f"数据预览:\n{df.head()}")
+            return df
+            
+        except Exception as e:
+            print(f"❌ 获取数据失败: {e}")
+            logger.error(f"获取股票 {stock_code} 历史数据失败: {e}")
+            return pd.DataFrame()

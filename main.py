@@ -31,7 +31,8 @@ from src.backtest import SimpleBacktestEngine
 from src.backtest.backtrader_adapter import BacktraderAdapter, run_backtrader_backtest
 from src.strategies import *  # 兼容现有导出
 from src.strategies.registry import list_strategies, create_strategy
-from src.data_sources import DataSourceFactory
+from src.data_sources import DataSourceFactory, CachedDataSource
+from src.utils.data_downloader import DataDownloader
 from datetime import datetime, timedelta
 
 
@@ -175,8 +176,15 @@ def main_backtest_simple():
     # 获取数据
     print(f"\n正在获取 {stock_name}({stock_code}) 的历史数据...")
     
-    data_source = DataSourceFactory.create(DATA_SOURCE)
-    df = data_source.get_stock_history(stock_code, start_date, end_date)
+    # 使用简单的 AKShare 数据获取方法，绕过复杂的缓存系统
+    try:
+        data_source = DataSourceFactory.create(DATA_SOURCE)
+        df = data_source.get_stock_history_simple(stock_code, start_date, end_date)
+    except Exception as e:
+        print(f"❌ 数据获取失败: {e}")
+        # 回退到原来的方法
+        data_source = DataSourceFactory.create(DATA_SOURCE)
+        df = data_source.get_stock_history(stock_code, start_date, end_date)
     
     if df.empty:
         print("获取数据失败")
@@ -246,8 +254,15 @@ def main_backtest_backtrader():
     # 获取数据
     print(f"\n正在获取 {stock_name}({stock_code}) 的历史数据...")
     
-    data_source = DataSourceFactory.create(DATA_SOURCE)
-    df = data_source.get_stock_history(stock_code, start_date, end_date)
+    # 使用简单的 AKShare 数据获取方法，绕过复杂的缓存系统
+    try:
+        data_source = DataSourceFactory.create(DATA_SOURCE)
+        df = data_source.get_stock_history_simple(stock_code, start_date, end_date)
+    except Exception as e:
+        print(f"❌ 数据获取失败: {e}")
+        # 回退到原来的方法
+        data_source = DataSourceFactory.create(DATA_SOURCE)
+        df = data_source.get_stock_history(stock_code, start_date, end_date)
     
     if df.empty:
         print("获取数据失败")
@@ -392,6 +407,583 @@ def display_backtest_results(stock_name: str, stock_code: str,
     print("=" * 90)
 
 
+def main_data_management():
+    """数据管理主菜单"""
+    while True:
+        print("\n" + "=" * 80)
+        print("数据管理中心")
+        print("=" * 80)
+        print("\n选择操作:")
+        print("1. 缓存信息统计")
+        print("2. 数据库预览")
+        print("3. 下载最近数据")
+        print("4. 下载指定股票")
+        print("5. 下载指数数据") 
+        print("6. 更新缓存数据")
+        print("7. 测试数据源")
+        print("8. 清空缓存")
+        print("0. 返回主菜单")
+        
+        choice = input("\n请选择 (0-8): ").strip()
+        
+        if choice == '0':
+            break
+        elif choice == '1':
+            show_cache_info()
+        elif choice == '2':
+            preview_database()
+        elif choice == '3':
+            download_recent_data()
+        elif choice == '4':
+            download_custom_stocks()
+        elif choice == '5':
+            download_indices_data()
+        elif choice == '6':
+            update_cache_data()
+        elif choice == '7':
+            test_data_source()
+        elif choice == '8':
+            clear_cache_data()
+        else:
+            print("\n无效选择，请重试")
+
+
+def show_cache_info():
+    """显示缓存信息"""
+    try:
+        cached_source = CachedDataSource()
+        stats = cached_source.get_cache_stats()
+        downloader = DataDownloader()
+        suggestions = downloader.get_download_suggestions()
+        
+        print(f"\n{'='*50}")
+        print("📦 缓存信息统计")
+        print(f"{'='*50}")
+        print(f"📁 数据库路径: {stats.get('db_path', 'N/A')}")
+        print(f"💾 数据库大小: {stats.get('db_size_mb', 0):.2f} MB")
+        print(f"📈 股票数量: {stats.get('stock_symbols', 0)}")
+        print(f"📊 股票记录数: {stats.get('stock_records', 0):,}")
+        print(f"📉 指数数量: {stats.get('index_symbols', 0)}")
+        print(f"📋 指数记录数: {stats.get('index_records', 0):,}")
+        
+        if suggestions.get('recommendations'):
+            print(f"\n💡 建议:")
+            for rec in suggestions['recommendations']:
+                print(f"   • {rec['message']}")
+                
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 获取缓存信息失败: {e}")
+        input("\n按回车键继续...")
+
+
+def preview_database():
+    """预览数据库内容"""
+    try:
+        import sqlite3
+        from pathlib import Path
+        
+        print(f"\n{'='*80}")
+        print("📊 数据库预览")
+        print(f"{'='*80}")
+        
+        db_path = Path("datacache") / "stock_data.db"
+        
+        if not db_path.exists():
+            print("❌ 数据库文件不存在")
+            input("\n按回车键继续...")
+            return
+        
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            
+            # 菜单选项
+            print("\n选择预览内容:")
+            print("1. 股票数据概览")
+            print("2. 指数数据概览")
+            print("3. 最近更新记录")
+            print("4. 查看指定股票数据")
+            print("5. 查看指定指数数据")
+            print("0. 返回")
+            
+            choice = input("\n请选择 (0-5): ").strip()
+            
+            if choice == '0':
+                return
+            elif choice == '1':
+                preview_stock_summary(conn)
+            elif choice == '2':
+                preview_index_summary(conn)
+            elif choice == '3':
+                preview_recent_updates(conn)
+            elif choice == '4':
+                preview_specific_stock(conn)
+            elif choice == '5':
+                preview_specific_index(conn)
+            else:
+                print("❌ 无效选择")
+        
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 预览数据库失败: {e}")
+        import traceback
+        traceback.print_exc()
+        input("\n按回车键继续...")
+
+
+def preview_stock_summary(conn):
+    """预览股票数据概览"""
+    cursor = conn.cursor()
+    
+    print(f"\n{'='*80}")
+    print("📈 股票数据概览")
+    print(f"{'='*80}")
+    
+    # 获取所有股票及其数据量
+    cursor.execute('''
+        SELECT stock_code, adjust_type, COUNT(*) as count, 
+               MIN(date) as start_date, MAX(date) as end_date
+        FROM stock_history
+        GROUP BY stock_code, adjust_type
+        ORDER BY stock_code
+    ''')
+    
+    results = cursor.fetchall()
+    
+    if not results:
+        print("❌ 暂无股票数据")
+        return
+    
+    print(f"\n共 {len(results)} 只股票(不同复权类型)")
+    print(f"\n{'股票代码':<12} {'复权类型':<10} {'记录数':<10} {'开始日期':<15} {'结束日期':<15}")
+    print("-" * 80)
+    
+    for row in results:
+        stock_code, adjust_type, count, start_date, end_date = row
+        print(f"{stock_code:<12} {adjust_type:<10} {count:<10} {start_date:<15} {end_date:<15}")
+    
+    # 显示最近的数据样例
+    print(f"\n{'='*80}")
+    print("📋 最近10条股票数据样例")
+    print(f"{'='*80}")
+    
+    cursor.execute('''
+        SELECT stock_code, date, open, high, low, close, volume
+        FROM stock_history
+        ORDER BY date DESC, stock_code
+        LIMIT 10
+    ''')
+    
+    samples = cursor.fetchall()
+    
+    if samples:
+        print(f"\n{'股票':<10} {'日期':<12} {'开盘':<10} {'最高':<10} {'最低':<10} {'收盘':<10} {'成交量':<15}")
+        print("-" * 80)
+        for row in samples:
+            stock_code, date, open_p, high, low, close, volume = row
+            volume_str = f"{int(volume):,}" if volume else "N/A"
+            print(f"{stock_code:<10} {date:<12} {open_p:<10.2f} {high:<10.2f} {low:<10.2f} {close:<10.2f} {volume_str:<15}")
+
+
+def preview_index_summary(conn):
+    """预览指数数据概览"""
+    cursor = conn.cursor()
+    
+    print(f"\n{'='*80}")
+    print("📉 指数数据概览")
+    print(f"{'='*80}")
+    
+    # 获取所有指数及其数据量
+    cursor.execute('''
+        SELECT index_code, COUNT(*) as count, 
+               MIN(date) as start_date, MAX(date) as end_date
+        FROM index_history
+        GROUP BY index_code
+        ORDER BY index_code
+    ''')
+    
+    results = cursor.fetchall()
+    
+    if not results:
+        print("❌ 暂无指数数据")
+        return
+    
+    print(f"\n共 {len(results)} 个指数")
+    print(f"\n{'指数代码':<12} {'记录数':<10} {'开始日期':<15} {'结束日期':<15}")
+    print("-" * 80)
+    
+    for row in results:
+        index_code, count, start_date, end_date = row
+        print(f"{index_code:<12} {count:<10} {start_date:<15} {end_date:<15}")
+    
+    # 显示最近的数据样例
+    print(f"\n{'='*80}")
+    print("📋 最近10条指数数据样例")
+    print(f"{'='*80}")
+    
+    cursor.execute('''
+        SELECT index_code, date, open, high, low, close, volume
+        FROM index_history
+        ORDER BY date DESC, index_code
+        LIMIT 10
+    ''')
+    
+    samples = cursor.fetchall()
+    
+    if samples:
+        print(f"\n{'指数':<10} {'日期':<12} {'开盘':<10} {'最高':<10} {'最低':<10} {'收盘':<10} {'成交量':<15}")
+        print("-" * 80)
+        for row in samples:
+            index_code, date, open_p, high, low, close, volume = row
+            volume_str = f"{int(volume):,}" if volume else "N/A"
+            print(f"{index_code:<10} {date:<12} {open_p:<10.2f} {high:<10.2f} {low:<10.2f} {close:<10.2f} {volume_str:<15}")
+
+
+def preview_recent_updates(conn):
+    """预览最近更新记录"""
+    cursor = conn.cursor()
+    
+    print(f"\n{'='*80}")
+    print("🔄 最近更新记录")
+    print(f"{'='*80}")
+    
+    cursor.execute('''
+        SELECT symbol, symbol_type, last_update_date, last_update_time, data_count
+        FROM data_updates
+        ORDER BY last_update_time DESC
+        LIMIT 20
+    ''')
+    
+    results = cursor.fetchall()
+    
+    if not results:
+        print("❌ 暂无更新记录")
+        return
+    
+    print(f"\n{'代码':<12} {'类型':<10} {'最后日期':<15} {'更新时间':<20} {'记录数':<10}")
+    print("-" * 80)
+    
+    for row in results:
+        symbol, symbol_type, last_date, last_time, count = row
+        # 格式化时间
+        if last_time and len(last_time) > 19:
+            last_time = last_time[:19]
+        print(f"{symbol:<12} {symbol_type:<10} {last_date:<15} {last_time:<20} {count:<10}")
+
+
+def preview_specific_stock(conn):
+    """查看指定股票的详细数据"""
+    stock_code = input("\n请输入股票代码: ").strip()
+    
+    if not stock_code:
+        print("❌ 股票代码不能为空")
+        return
+    
+    cursor = conn.cursor()
+    
+    print(f"\n{'='*80}")
+    print(f"📊 股票 {stock_code} 的历史数据")
+    print(f"{'='*80}")
+    
+    cursor.execute('''
+        SELECT date, open, high, low, close, volume, amount, pct_change
+        FROM stock_history
+        WHERE stock_code = ?
+        ORDER BY date DESC
+        LIMIT 30
+    ''', (stock_code,))
+    
+    results = cursor.fetchall()
+    
+    if not results:
+        print(f"❌ 未找到股票 {stock_code} 的数据")
+        return
+    
+    print(f"\n找到 {len(results)} 条记录（显示最近30条）")
+    print(f"\n{'日期':<12} {'开盘':<10} {'最高':<10} {'最低':<10} {'收盘':<10} {'成交量':<15} {'成交额':<15} {'涨跌幅%':<10}")
+    print("-" * 120)
+    
+    for row in results:
+        date, open_p, high, low, close, volume, amount, pct_change = row
+        volume_str = f"{int(volume):,}" if volume else "N/A"
+        amount_str = f"{amount/100000000:.2f}亿" if amount and amount > 0 else "N/A"
+        pct_str = f"{pct_change:+.2f}" if pct_change else "N/A"
+        
+        print(f"{date:<12} {open_p:<10.2f} {high:<10.2f} {low:<10.2f} {close:<10.2f} {volume_str:<15} {amount_str:<15} {pct_str:<10}")
+
+
+def preview_specific_index(conn):
+    """查看指定指数的详细数据"""
+    index_code = input("\n请输入指数代码: ").strip()
+    
+    if not index_code:
+        print("❌ 指数代码不能为空")
+        return
+    
+    cursor = conn.cursor()
+    
+    print(f"\n{'='*80}")
+    print(f"📉 指数 {index_code} 的历史数据")
+    print(f"{'='*80}")
+    
+    cursor.execute('''
+        SELECT date, open, high, low, close, volume, amount, pct_change
+        FROM index_history
+        WHERE index_code = ?
+        ORDER BY date DESC
+        LIMIT 30
+    ''', (index_code,))
+    
+    results = cursor.fetchall()
+    
+    if not results:
+        print(f"❌ 未找到指数 {index_code} 的数据")
+        return
+    
+    print(f"\n找到 {len(results)} 条记录（显示最近30条）")
+    print(f"\n{'日期':<12} {'开盘':<10} {'最高':<10} {'最低':<10} {'收盘':<10} {'成交量':<15} {'成交额':<15} {'涨跌幅%':<10}")
+    print("-" * 120)
+    
+    for row in results:
+        date, open_p, high, low, close, volume, amount, pct_change = row
+        volume_str = f"{int(volume):,}" if volume else "N/A"
+        amount_str = f"{amount/100000000:.2f}亿" if amount and amount > 0 else "N/A"
+        pct_str = f"{pct_change:+.2f}" if pct_change else "N/A"
+        
+        print(f"{date:<12} {open_p:<10.2f} {high:<10.2f} {low:<10.2f} {close:<10.2f} {volume_str:<15} {amount_str:<15} {pct_str:<10}")
+
+
+def download_recent_data():
+    """下载最近数据"""
+    try:
+        print("\n📥 下载最近数据")
+        print("-" * 30)
+        
+        days = input("请输入天数 (默认365天): ").strip()
+        if not days:
+            days = 365
+        else:
+            days = int(days)
+        
+        print("\n可选股票组:")
+        groups = list(STOCK_GROUPS.keys())
+        for i, group in enumerate(groups, 1):
+            print(f"{i}. {group}")
+        print(f"{len(groups)+1}. 全部股票组")
+        
+        group_choice = input(f"\n选择股票组 (1-{len(groups)+1}): ").strip()
+        
+        selected_groups = None
+        if group_choice and group_choice.isdigit():
+            choice_idx = int(group_choice) - 1
+            if 0 <= choice_idx < len(groups):
+                selected_groups = [groups[choice_idx]]
+        
+        print(f"\n🚀 开始下载最近 {days} 天的数据...")
+        
+        downloader = DataDownloader()
+        results = downloader.download_recent_data(days, selected_groups)
+        
+        # 显示结果
+        print(f"\n{'='*50}")
+        print("📊 下载结果")
+        print(f"{'='*50}")
+        
+        for category, result_dict in results.items():
+            if isinstance(result_dict, dict):
+                success_count = sum(1 for v in result_dict.values() if v)
+                total_count = len(result_dict)
+                print(f"📂 {category}: {success_count}/{total_count} 成功")
+        
+        print("\n✅ 下载完成")
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 下载失败: {e}")
+        input("\n按回车键继续...")
+
+
+def download_custom_stocks():
+    """下载指定股票"""
+    try:
+        print("\n📥 下载指定股票")
+        print("-" * 30)
+        
+        codes_input = input("请输入股票代码 (多个用逗号分隔): ").strip()
+        if not codes_input:
+            print("❌ 股票代码不能为空")
+            input("\n按回车键继续...")
+            return
+        
+        stock_codes = [code.strip() for code in codes_input.split(',')]
+        
+        start_date = input("开始日期 (YYYY-MM-DD, 默认30天前): ").strip()
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        end_date = input("结束日期 (YYYY-MM-DD, 默认今天): ").strip()
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        print(f"\n🚀 开始下载 {len(stock_codes)} 只股票的数据...")
+        print(f"📅 日期范围: {start_date} ~ {end_date}")
+        
+        downloader = DataDownloader()
+        results = downloader.download_custom_stocks(stock_codes, start_date, end_date)
+        
+        # 显示结果
+        print(f"\n{'='*50}")
+        print("📊 下载结果")
+        print(f"{'='*50}")
+        
+        for stock_code, success in results.items():
+            status = "✅" if success else "❌"
+            print(f"{status} {stock_code}")
+        
+        success_count = sum(results.values())
+        print(f"\n📈 总计: {success_count}/{len(results)} 成功")
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 下载失败: {e}")
+        input("\n按回车键继续...")
+
+
+def download_indices_data():
+    """下载指数数据"""
+    try:
+        print("\n📥 下载指数数据")
+        print("-" * 30)
+        
+        start_date = input("开始日期 (YYYY-MM-DD, 默认30天前): ").strip()
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        
+        end_date = input("结束日期 (YYYY-MM-DD, 默认今天): ").strip()
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        print(f"\n🚀 开始下载主要指数数据...")
+        print(f"📅 日期范围: {start_date} ~ {end_date}")
+        
+        downloader = DataDownloader()
+        results = downloader.download_major_indices(start_date, end_date)
+        
+        # 显示结果
+        print(f"\n{'='*50}")
+        print("📊 下载结果")
+        print(f"{'='*50}")
+        
+        for index_code, success in results.items():
+            status = "✅" if success else "❌"
+            print(f"{status} {index_code}")
+        
+        success_count = sum(results.values())
+        print(f"\n📈 总计: {success_count}/{len(results)} 成功")
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 下载失败: {e}")
+        input("\n按回车键继续...")
+
+
+def update_cache_data():
+    """更新缓存数据"""
+    try:
+        print("\n🔄 更新缓存数据")
+        print("-" * 30)
+        
+        days_back = input("往前多少天开始更新 (默认7天): ").strip()
+        if not days_back:
+            days_back = 7
+        else:
+            days_back = int(days_back)
+        
+        print(f"\n🔄 开始增量更新最近 {days_back} 天的数据...")
+        
+        downloader = DataDownloader()
+        results = downloader.update_data(days_back)
+        
+        # 显示结果
+        print(f"\n{'='*50}")
+        print("📊 更新结果")
+        print(f"{'='*50}")
+        
+        for category, result_dict in results.items():
+            if isinstance(result_dict, dict):
+                success_count = sum(1 for v in result_dict.values() if v)
+                total_count = len(result_dict)
+                print(f"📂 {category}: {success_count}/{total_count} 成功")
+        
+        print(f"\n✅ 更新完成")
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 更新失败: {e}")
+        input("\n按回车键继续...")
+
+
+def test_data_source():
+    """测试数据源"""
+    try:
+        print("\n🧪 测试数据源连接")
+        print("-" * 30)
+        
+        print("📡 正在初始化缓存数据源...")
+        cached_source = CachedDataSource()
+        
+        print("📊 测试实时数据接口...")
+        realtime_data = cached_source.get_stock_realtime('000001')
+        if realtime_data:
+            print(f"✅ 实时数据接口正常: {realtime_data.get('name', 'N/A')}")
+        else:
+            print("⚠️ 实时数据接口异常")
+        
+        print("📈 测试历史数据接口...")
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        history_data = cached_source.get_stock_history('000001', start_date, end_date)
+        if not history_data.empty:
+            print(f"✅ 历史数据接口正常，获取到 {len(history_data)} 条记录")
+        else:
+            print("⚠️ 历史数据接口异常或无数据")
+        
+        print("\n✅ 数据源测试完成")
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 数据源测试失败: {e}")
+        input("\n按回车键继续...")
+
+
+def clear_cache_data():
+    """清空缓存数据"""
+    try:
+        print("\n🗑️ 清空缓存数据")
+        print("-" * 30)
+        print("⚠️ 警告：此操作将删除所有本地缓存数据！")
+        
+        confirm = input("\n确定要清空所有缓存吗？(输入 'yes' 确认): ").strip()
+        if confirm.lower() != 'yes':
+            print("❌ 操作已取消")
+            input("\n按回车键继续...")
+            return
+        
+        print("\n🗑️ 正在清空缓存...")
+        cached_source = CachedDataSource()
+        cached_source.clear_cache()
+        
+        print("✅ 缓存清空完成")
+        input("\n按回车键继续...")
+        
+    except Exception as e:
+        print(f"❌ 清空缓存失败: {e}")
+        input("\n按回车键继续...")
+
+
 def run_monitor_cli(plan: Optional[str], no_indicators: bool, refresh_override: Optional[int]):
     """基于命令行参数的监控入口（非交互）。"""
     indices_list = INDICES
@@ -437,8 +1029,17 @@ def run_backtest_cli(engine: str, strategy_key: str, code: str, period: str,
         raise SystemExit("未知周期，请使用 short/mid/long/custom")
 
     from src.data_sources import DataSourceFactory
-    data_source = DataSourceFactory.create(DATA_SOURCE)
-    df = data_source.get_stock_history(code, start_date, end_date)
+    
+    # 使用简单的 AKShare 数据获取方法，绕过复杂的缓存系统
+    try:
+        data_source = DataSourceFactory.create(DATA_SOURCE)
+        df = data_source.get_stock_history_simple(code, start_date, end_date)
+    except Exception as e:
+        print(f"❌ 数据获取失败: {e}")
+        # 回退到原来的方法
+        data_source = DataSourceFactory.create(DATA_SOURCE)
+        df = data_source.get_stock_history(code, start_date, end_date)
+        
     if df.empty:
         raise SystemExit("获取历史数据失败或为空")
 
@@ -541,19 +1142,22 @@ def main():
         print("\n功能菜单:")
         print("1. 实时监控")
         print("2. 策略回测")
-        print("3. 查看股票分组")
-        print("4. 系统说明")
+        print("3. 数据管理")
+        print("4. 查看股票分组")
+        print("5. 系统说明")
         print("0. 退出")
         
-        choice = input("\n请选择 (0-4): ").strip()
+        choice = input("\n请选择 (0-5): ").strip()
         
         if choice == '1':
             main_monitor()
         elif choice == '2':
             main_backtest()
         elif choice == '3':
-            show_stock_groups()
+            main_data_management()
         elif choice == '4':
+            show_stock_groups()
+        elif choice == '5':
             show_help()
         elif choice == '0':
             print("\n感谢使用，再见！")

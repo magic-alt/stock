@@ -65,3 +65,60 @@
 2025-10-10 16:39:09,529 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
 2025-10-10 16:41:02,715 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
 2025-10-10 16:41:02,716 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:15:31,567 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 00:15:33,474 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 00:16:05,824 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 00:16:05,827 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:06,352 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:06,448 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:06,543 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:06,644 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:06,735 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,053 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,152 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,250 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,360 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,455 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,543 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,626 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,708 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,802 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,887 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:07,969 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,076 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,176 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,291 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,376 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,458 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,547 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:08,928 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,012 - src.data_sources.cached_source - ERROR - ❌ 获取股票历史数据失败: '<' not supported between instances of 'int' and 'Timestamp'
+2025-10-12 00:16:09,012 - src.data_sources.cached_source - WARNING - ⚠️ 000001 下载失败或无数据
+2025-10-12 00:16:09,017 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,107 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,204 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,287 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,368 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,439 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,521 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,625 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,714 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,799 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:09,905 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:10,009 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:10,093 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:10,153 - src.data_sources.cached_source - WARNING - ⚠️ 无法获取指数数据: 000300
+2025-10-12 00:16:10,154 - src.data_sources.cached_source - WARNING - ⚠️ 000300 下载失败或无数据
+2025-10-12 00:16:10,156 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:10,234 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:10,329 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:16:10,421 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 00:18:42,230 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 00:18:45,332 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 00:19:05,497 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 23:03:34,041 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 23:03:34,051 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 23:03:34,487 - src.data_sources.cached_source - ERROR - ❌ 获取股票历史数据失败: '<' not supported between instances of 'int' and 'Timestamp'
+2025-10-12 23:04:01,302 - src.data_sources.factory - WARNING - ⚠ AKShare连接测试失败，尝试备用数据源...
+2025-10-12 23:04:01,310 - src.data_sources.sina_source - WARNING - 新浪数据源不支持完整历史数据获取
+2025-10-12 23:04:01,415 - src.data_sources.cached_source - ERROR - ❌ 获取股票历史数据失败: '<' not supported between instances of 'int' and 'Timestamp'
