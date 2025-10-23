@@ -7,14 +7,31 @@ import backtrader as bt
 
 # 导入所有策略模块
 from .ema_backtrader_strategy import EMAStrategy, _coerce_ema
-from .macd_backtrader_strategy import MACDStrategy, _coerce_macd
+from .macd_backtrader_strategy import (
+    MACDStrategy, MACDZeroCrossStrategy, MACDHistogramStrategy, _coerce_macd
+)
 from .bollinger_backtrader_strategy import BollingerStrategy, _coerce_bb
-from .rsi_backtrader_strategy import RSIStrategy, _coerce_rsi
+from .rsi_backtrader_strategy import (
+    RSIStrategy, RSIMaFilterStrategy, RSIDivergenceStrategy, _coerce_rsi
+)
 from .keltner_backtrader_strategy import KeltnerStrategy, _coerce_keltner
 from .zscore_backtrader_strategy import ZScoreStrategy, _coerce_zscore
 from .donchian_backtrader_strategy import DonchianStrategy, _coerce_donchian
 from .triple_ma_backtrader_strategy import TripleMAStrategy, _coerce_tma
 from .adx_backtrader_strategy import ADXTrendStrategy, _coerce_adx
+from .sma_backtrader_strategy import SMACrossStrategy, _coerce_sma_cross
+from .kama_backtrader_strategy import KAMAStrategy, _coerce_kama
+from .futures_backtrader_strategy import (
+    FuturesMACrossStrategy, FuturesGridStrategy, 
+    FuturesMarketMakingStrategy, TurtleFuturesStrategy,
+    _coerce_futures_ma, _coerce_futures_grid, _coerce_futures_mm, _coerce_turtle
+)
+from .auction_backtrader_strategy import AuctionOpenSelectionStrategy, _coerce_auction
+from .intraday_backtrader_strategy import IntradayReversionStrategy, _coerce_intraday
+from .multifactor_backtrader_strategy import (
+    MultiFactorSelectionStrategy, IndexEnhancementStrategy, IndustryRotationStrategy,
+    _coerce_multifactor, _coerce_index_enhancement, _coerce_industry_rotation
+)
 
 
 class StrategyModule:
@@ -196,6 +213,232 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
+# SMA Cross strategy
+register_strategy(StrategyModule(
+    name='sma_cross',
+    description='Simple moving average crossover with ATR sizing',
+    strategy_cls=SMACrossStrategy,
+    param_names=['fast_period', 'slow_period'],
+    defaults={'fast_period': 10, 'slow_period': 30},
+    grid_defaults={
+        'fast_period': [5, 10, 15, 20],
+        'slow_period': [20, 30, 40, 50, 60]
+    },
+    coercer=_coerce_sma_cross,
+    multi_symbol=False,
+))
+
+# KAMA strategy
+register_strategy(StrategyModule(
+    name='kama',
+    description='Kaufman Adaptive Moving Average crossover',
+    strategy_cls=KAMAStrategy,
+    param_names=['period', 'fast_ema', 'slow_ema'],
+    defaults={'period': 10, 'fast_ema': 2, 'slow_ema': 30},
+    grid_defaults={
+        'period': [8, 10, 12, 14],
+        'fast_ema': [2],
+        'slow_ema': [25, 30, 35]
+    },
+    coercer=_coerce_kama,
+    multi_symbol=False,
+))
+
+# MACD Zero Cross strategy
+register_strategy(StrategyModule(
+    name='macd_zero',
+    description='MACD zero line crossover',
+    strategy_cls=MACDZeroCrossStrategy,
+    param_names=['fast', 'slow', 'signal'],
+    defaults={'fast': 12, 'slow': 26, 'signal': 9},
+    grid_defaults={
+        'fast': [10, 12, 14],
+        'slow': [24, 26, 28],
+        'signal': [9]
+    },
+    coercer=_coerce_macd,
+    multi_symbol=False,
+))
+
+# MACD Histogram strategy
+register_strategy(StrategyModule(
+    name='macd_hist',
+    description='MACD histogram momentum strategy',
+    strategy_cls=MACDHistogramStrategy,
+    param_names=['fast', 'slow', 'signal', 'threshold'],
+    defaults={'fast': 12, 'slow': 26, 'signal': 9, 'threshold': 0.0},
+    grid_defaults={
+        'fast': [10, 12, 14],
+        'slow': [24, 26, 28],
+        'signal': [9],
+        'threshold': [0.0, 0.1, 0.2]
+    },
+    coercer=_coerce_macd,
+    multi_symbol=False,
+))
+
+# RSI + MA Filter strategy
+register_strategy(StrategyModule(
+    name='rsi_ma_filter',
+    description='RSI oversold + MA trend filter',
+    strategy_cls=RSIMaFilterStrategy,
+    param_names=['rsi_period', 'oversold', 'ma_period'],
+    defaults={'rsi_period': 14, 'oversold': 30.0, 'ma_period': 200},
+    grid_defaults={
+        'rsi_period': [12, 14, 16],
+        'oversold': [25, 30, 35],
+        'ma_period': [100, 150, 200]
+    },
+    coercer=_coerce_rsi,
+    multi_symbol=False,
+))
+
+# RSI Divergence strategy
+register_strategy(StrategyModule(
+    name='rsi_divergence',
+    description='RSI divergence detection strategy',
+    strategy_cls=RSIDivergenceStrategy,
+    param_names=['period', 'lookback'],
+    defaults={'period': 14, 'lookback': 5},
+    grid_defaults={
+        'period': [12, 14, 16],
+        'lookback': [4, 5, 6, 7]
+    },
+    coercer=_coerce_rsi,
+    multi_symbol=False,
+))
+
+# 期货策略
+register_strategy(StrategyModule(
+    name='futures_ma_cross',
+    description='Futures EMA crossover strategy',
+    strategy_cls=FuturesMACrossStrategy,
+    param_names=['short_period', 'long_period'],
+    defaults={'short_period': 9, 'long_period': 34},
+    grid_defaults={
+        'short_period': [5, 9, 13],
+        'long_period': [21, 34, 55]
+    },
+    coercer=_coerce_futures_ma,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='futures_grid',
+    description='Futures grid trading strategy',
+    strategy_cls=FuturesGridStrategy,
+    param_names=['grid_pct', 'layers', 'max_pos'],
+    defaults={'grid_pct': 0.004, 'layers': 6, 'max_pos': 3},
+    grid_defaults={
+        'grid_pct': [0.003, 0.004, 0.005],
+        'layers': [4, 6, 8],
+        'max_pos': [2, 3, 4]
+    },
+    coercer=_coerce_futures_grid,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='futures_market_making',
+    description='Futures market making strategy',
+    strategy_cls=FuturesMarketMakingStrategy,
+    param_names=['band_pct', 'inventory_limit', 'ma_period'],
+    defaults={'band_pct': 0.003, 'inventory_limit': 2, 'ma_period': 50},
+    grid_defaults={
+        'band_pct': [0.002, 0.003, 0.004],
+        'inventory_limit': [1, 2, 3],
+        'ma_period': [40, 50, 60]
+    },
+    coercer=_coerce_futures_mm,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='turtle_futures',
+    description='Turtle trading system for futures',
+    strategy_cls=TurtleFuturesStrategy,
+    param_names=['entry_period', 'exit_period'],
+    defaults={'entry_period': 20, 'exit_period': 10},
+    grid_defaults={
+        'entry_period': [15, 20, 25],
+        'exit_period': [8, 10, 12]
+    },
+    coercer=_coerce_turtle,
+    multi_symbol=False,
+))
+
+# 特殊策略
+register_strategy(StrategyModule(
+    name='auction_open',
+    description='Auction open selection with gap and volume filter',
+    strategy_cls=AuctionOpenSelectionStrategy,
+    param_names=['gap_min', 'vol_ratio_min'],
+    defaults={'gap_min': 2.0, 'vol_ratio_min': 1.5},
+    grid_defaults={
+        'gap_min': [1.5, 2.0, 2.5, 3.0],
+        'vol_ratio_min': [1.2, 1.5, 2.0]
+    },
+    coercer=_coerce_auction,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='intraday_reversion',
+    description='Intraday mean reversion from open price',
+    strategy_cls=IntradayReversionStrategy,
+    param_names=['threshold_pct', 'allow_short'],
+    defaults={'threshold_pct': 0.8, 'allow_short': False},
+    grid_defaults={
+        'threshold_pct': [0.5, 0.8, 1.0, 1.5],
+        'allow_short': [False]
+    },
+    coercer=_coerce_intraday,
+    multi_symbol=False,
+))
+
+# 多因子策略
+register_strategy(StrategyModule(
+    name='multifactor_selection',
+    description='Multi-factor selection with momentum, volatility, and volume',
+    strategy_cls=MultiFactorSelectionStrategy,
+    param_names=['buy_threshold', 'score_window'],
+    defaults={'buy_threshold': 0.0, 'score_window': 60},
+    grid_defaults={
+        'buy_threshold': [-0.5, 0.0, 0.5],
+        'score_window': [40, 60, 80]
+    },
+    coercer=_coerce_multifactor,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='index_enhancement',
+    description='Index enhancement with trend and momentum filter',
+    strategy_cls=IndexEnhancementStrategy,
+    param_names=['ma_period', 'mom_period'],
+    defaults={'ma_period': 100, 'mom_period': 20},
+    grid_defaults={
+        'ma_period': [60, 100, 150, 200],
+        'mom_period': [10, 20, 30]
+    },
+    coercer=_coerce_index_enhancement,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='industry_rotation',
+    description='Industry rotation based on relative strength',
+    strategy_cls=IndustryRotationStrategy,
+    param_names=['ma_period', 'momentum_period'],
+    defaults={'ma_period': 60, 'momentum_period': 20},
+    grid_defaults={
+        'ma_period': [40, 60, 80],
+        'momentum_period': [10, 20, 30]
+    },
+    coercer=_coerce_industry_rotation,
+    multi_symbol=False,
+))
+
 
 def list_backtrader_strategies() -> Dict[str, str]:
     """列出所有可用的Backtrader策略"""
@@ -235,14 +478,32 @@ __all__ = [
     'list_backtrader_strategies',
     'get_backtrader_strategy',
     'create_backtrader_strategy',
-    # 策略类
+    # 基础策略类
     'EMAStrategy',
     'MACDStrategy',
+    'MACDZeroCrossStrategy',
+    'MACDHistogramStrategy',
     'BollingerStrategy',
     'RSIStrategy',
+    'RSIMaFilterStrategy',
+    'RSIDivergenceStrategy',
     'KeltnerStrategy',
     'ZScoreStrategy',
     'DonchianStrategy',
     'TripleMAStrategy',
     'ADXTrendStrategy',
+    'SMACrossStrategy',
+    'KAMAStrategy',
+    # 期货策略类
+    'FuturesMACrossStrategy',
+    'FuturesGridStrategy',
+    'FuturesMarketMakingStrategy',
+    'TurtleFuturesStrategy',
+    # 特殊策略类
+    'AuctionOpenSelectionStrategy',
+    'IntradayReversionStrategy',
+    # 多因子策略类
+    'MultiFactorSelectionStrategy',
+    'IndexEnhancementStrategy',
+    'IndustryRotationStrategy',
 ]
