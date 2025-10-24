@@ -62,16 +62,18 @@ class DonchianStrategy(bt.Strategy):
             return
 
         close = self.data.close[0]
-        high_val = self.highest[0]
-        low_val = self.lowest[0]
+        # 使用前一天的通道值来判断今天的突破
+        # 这是正确的Donchian逻辑：今天收盘价突破昨天的N日高点
+        high_val = self.highest[-1] if len(self) > 1 else self.highest[0]
+        low_val = self.lowest[-1] if len(self) > 1 else self.lowest[0]
 
         if not self.position:
-            # Buy on breakout above upper channel
+            # Buy on breakout above upper channel (close > yesterday's N-period high)
             if close > high_val:
                 self.log(f"BUY CREATE (Donchian breakout), {close:.2f} > {high_val:.2f}")
                 self.order = self.buy()
         else:
-            # Sell on breakdown below lower channel
+            # Sell on breakdown below lower channel (close < yesterday's M-period low)
             if close < low_val:
                 self.log(f"SELL CREATE (Donchian breakdown), {close:.2f} < {low_val:.2f}")
                 self.order = self.sell()
