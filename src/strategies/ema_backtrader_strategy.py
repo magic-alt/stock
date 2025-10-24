@@ -16,6 +16,15 @@ class EMAStrategy(bt.Strategy):
     )
 
     def __init__(self):
+        # Check if we have enough data for the indicator
+        data_len = len(self.data)
+        if data_len < self.params.period:
+            raise ValueError(
+                f"EMA period ({self.params.period}) requires at least {self.params.period} "
+                f"bars of data, but only {data_len} bars available. "
+                f"Please use a shorter period or longer date range."
+            )
+        
         self.ema = bt.indicators.ExponentialMovingAverage(
             self.data.close, period=self.params.period
         )

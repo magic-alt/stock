@@ -124,17 +124,52 @@ def _standardize_stock_frame(df: pd.DataFrame) -> pd.DataFrame:
 def _standardize_index_frame(df: pd.DataFrame) -> pd.DataFrame:
     """Standardize index data (similar to stock but may have different column names)."""
     df = df.copy()
-    col_map = {"日期": "date", "收盘": "close", "Close": "close"}
+    
+    # Map common column names to standard format
+    col_map = {
+        "日期": "date", 
+        "收盘": "close", 
+        "Close": "close",
+        "close": "close",
+        "Date": "date",
+        "date": "date"
+    }
+    
     df.rename(columns=col_map, inplace=True)
+    
+    # Handle date column/index
     if "date" in df.columns:
         df["date"] = pd.to_datetime(df["date"])
         df.set_index("date", inplace=True)
+    elif df.index.name is None or df.index.name == "":
+        # Try to convert index to datetime if it's not named
+        try:
+            df.index = pd.to_datetime(df.index)
+            df.index.name = "date"
+        except:
+            # If first column looks like date, use it
+            if len(df.columns) > 0:
+                first_col = df.columns[0]
+                try:
+                    df[first_col] = pd.to_datetime(df[first_col])
+                    df.set_index(first_col, inplace=True)
+                    df.index.name = "date"
+                except:
+                    pass
+    
     df.index.name = "date"
+    
     # Ensure timezone-naive index
     if hasattr(df.index, 'tz') and df.index.tz is not None:
         df.index = df.index.tz_localize(None)
+    
+    # Standardize close column
     if "close" in df.columns:
         df["close"] = pd.to_numeric(df["close"], errors="coerce")
+    elif "收盘" in df.columns:
+        df["close"] = pd.to_numeric(df["收盘"], errors="coerce")
+        df.drop(columns=["收盘"], inplace=True)
+    
     return df.sort_index()
 
 
@@ -247,23 +282,45 @@ class AkshareProvider(DataProvider):
         self._ensure_cache(cache_dir)
         start_clean, end_clean = self._validate_dates(start, end)
 
+        # Convert index code to akshare format
+        # e.g., 000300.SH -> sh000300, 399001.SZ -> sz399001
+        ak_index_code = index_code
+        if '.' in index_code:
+            symbol, exchange = index_code.split('.')
+            if exchange.upper() in ['SH', 'SS']:
+                ak_index_code = f'sh{symbol}'
+            elif exchange.upper() == 'SZ':
+                ak_index_code = f'sz{symbol}'
+
         cache_file = os.path.join(
             cache_dir, f"ak_index_{index_code}_{start_clean}_{end_clean}.csv"
         )
 
         if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file, parse_dates=["date"], index_col="date")
+            try:
+                # Try reading with index_col=0 (standardized format)
+                df = pd.read_csv(cache_file, index_col=0, parse_dates=[0])
+                # Ensure index name is 'date'
+                if df.index.name != 'date':
+                    df.index.name = 'date'
+            except Exception:
+                # Fallback: re-standardize from raw data
+                df = pd.read_csv(cache_file)
+                df = _standardize_index_frame(df)
         else:
             try:
-                df = ak.stock_zh_index_daily(symbol=index_code)
+                df = ak.stock_zh_index_daily(symbol=ak_index_code)
+                if df.empty:
+                    raise DataProviderError(f"AKShare returned empty data for {index_code}")
                 df = _standardize_index_frame(df)
                 # Filter date range
-                df = df.loc[start_clean:end_clean]
+                if not df.empty:
+                    df = df.loc[start_clean:end_clean]
                 df.to_csv(cache_file)
             except Exception as e:
                 raise DataProviderError(f"Failed to load index {index_code}: {e}")
 
-        if "close" not in df.columns or df.empty:
+        if df.empty or "close" not in df.columns:
             raise DataProviderError(f"No close price data for index {index_code}")
 
         return _nav_from_close(df["close"])

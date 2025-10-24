@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     run_p.add_argument("--params", default=None, help="JSON string of strategy params")
     run_p.add_argument("--cash", type=float, default=200000)
     run_p.add_argument("--commission", type=float, default=0.0001)
-    run_p.add_argument("--slippage", type=float, default=0.001)
+    run_p.add_argument("--slippage", type=float, default=0.0005)
     run_p.add_argument("--adj", default=None)
     run_p.add_argument("--out_dir", default=None)
     run_p.add_argument("--cache_dir", default=CACHE_DEFAULT)

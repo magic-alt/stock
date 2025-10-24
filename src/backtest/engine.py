@@ -19,6 +19,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 import pandas as pd
 
+# V2.7.0: Import plugin system for fee/sizer configuration
+from src.bt_plugins.base import load_fee, load_sizer
+
 try:
     import backtrader as bt
 except ImportError as exc:
@@ -162,149 +165,102 @@ class BacktestEngine:
         Returns:
             (nav, metrics, cerebro) if return_cerebro=True, else (nav, metrics, None)
         """
-        cerebro = bt.Cerebro(stdstats=False)
-        cerebro.broker.setcash(cash)
-        
-        # 设置中国A股交易成本：佣金 + 印花税
-        # 佣金：万分之一，买卖双向收取
-        # 免五：按实际佣金率收取，无最低限制（默认启用）
-        # 不免五：佣金不足5元时按5元收取
-        # 印花税：万分之五，仅卖出时收取
-        # 最小交易单位：1手 = 100股
-        class CNStockCommission(bt.CommInfoBase):
-            """中国A股佣金和印花税计算"""
-            params = (
-                ('commission', 0.0001),      # 佣金率：万分之一
-                ('stocklike', True),         # 股票模式
-                ('commtype', bt.CommInfoBase.COMM_PERC),  # 百分比佣金
-                ('percabs', False),          # 相对百分比
-                ('stamp_duty', 0.0005),      # 印花税：万分之五（仅卖出）
-                ('min_commission', 0.0),     # 最低佣金：0元（免五）
-                ('mult', 1.0),               # 乘数
-                ('margin', None),            # 保证金
-            )
+        try:
+            cerebro = bt.Cerebro(stdstats=False)
+            cerebro.broker.setcash(cash)
             
-            def getsize(self, price, cash):
-                """计算可购买的股票数量（必须是100的整数倍）"""
-                # 预估总成本（包括佣金和可能的印花税）
-                # 保守估计：假设佣金 + 印花税 = 0.0006 (万分之6)
-                effective_price = price * (1 + 0.0006)
+            # V2.7.0: Load fee and sizer plugins (default: CN A-share rules)
+            # Extract plugin configuration from params (prefixed with _)
+            fee_plugin_name = params.get("_fee_plugin", "cn_stock")
+            fee_params = {
+                "commission_rate": params.get("_commission", commission),
+                "stamp_tax_rate": params.get("_stamp_tax", 0.0005),
+                "min_commission": params.get("_min_commission", 0.0),
+            }
+            fee = load_fee(fee_plugin_name, **fee_params)
+            if fee:
+                fee.register(cerebro.broker)
+            
+            sizer_plugin_name = params.get("_sizer_plugin", "cn_lot100")
+            sizer_params = {
+                "lot_size": params.get("_lot_size", 100),
+            }
+            sizer_plugin = load_sizer(sizer_plugin_name, **sizer_params)
+            if sizer_plugin:
+                # Get the sizer class and instantiate it for cerebro
+                sizer_cls = sizer_plugin.get()
+                cerebro.addsizer(sizer_cls)
+            
+            if slippage:
+                cerebro.broker.set_slippage_perc(slippage)
+            module.add_data(cerebro, data_map)
+            
+            # Add benchmark data if available
+            if benchmark_nav is not None and not benchmark_nav.empty:
+                bench_df = pd.DataFrame(
+                    {
+                        "open": benchmark_nav.values,
+                        "high": benchmark_nav.values,
+                        "low": benchmark_nav.values,
+                        "close": benchmark_nav.values,
+                        "volume": 0.0,
+                    },
+                    index=pd.to_datetime(benchmark_nav.index),
+                )
+                bench_df.index.name = "datetime"
+                bench_feed = GenericPandasData(dataname=bench_df)
+                cerebro.adddata(bench_feed, name="__benchmark__")
                 
-                # 计算最多能买多少股
-                max_shares = int(cash / effective_price)
+            module.add_strategy(cerebro, params)
+            cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="timeret")
+            cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe")
+            cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
+            cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
+            
+            if module is TURNING_POINT_MODULE:
+                cerebro.addanalyzer(IntentLogger, _name="intent_log")
                 
-                # 向下取整到100的倍数（1手 = 100股）
-                lots = max_shares // 100
-                return lots * 100
-            
-            def getvaluesize(self, size, price):
-                """返回持仓价值，size必须是100的倍数"""
-                # 确保size是100的倍数
-                return abs(size) * price
-            
-            def getoperationcost(self, size, price):
-                """返回开仓/平仓的总成本"""
-                return self.getcommission(size, price)
-            
-            def _getcommission(self, size, price, pseudoexec):
-                """计算佣金（买卖双向）
-                
-                免五模式：按实际佣金率收取
-                不免五模式：需将 min_commission 参数设为 5.0
-                """
-                value = abs(size) * price
-                comm = value * self.p.commission
-                
-                # 如果设置了最低佣金（不免五）
-                if self.p.min_commission > 0 and comm < self.p.min_commission:
-                    comm = self.p.min_commission
-                    
-                return comm
-            
-            def getcommission(self, size, price):
-                """获取总交易成本（佣金 + 印花税）"""
-                # 佣金（买卖都收）
-                comm = self._getcommission(size, price, False)
-                
-                # 印花税（仅卖出收取）
-                stamp = 0.0
-                if size < 0:  # 卖出时 size 为负
-                    stamp = abs(size) * price * self.p.stamp_duty
-                
-                return comm + stamp
-        
-        cerebro.broker.addcommissioninfo(CNStockCommission())
-        
-        # 添加股票整手Sizer：确保所有交易都是100股的整数倍
-        class StockLotSizer(bt.Sizer):
-            """
-            中国A股交易规则：最小1手（100股），只能是100股的整数倍
-            """
-            params = (
-                ('lot_size', 100),  # 1手 = 100股
-            )
-            
-            def _getsizing(self, comminfo, cash, data, isbuy):
-                """计算下单数量，确保是100的整数倍"""
-                position = self.broker.getposition(data)
-                
-                if isbuy:
-                    # 买入：使用可用资金计算能买多少手
-                    price = data.close[0]
-                    if price <= 0:
-                        return 0
-                    
-                    # 考虑佣金和印花税后的有效价格
-                    effective_price = price * 1.0006
-                    max_shares = int(cash / effective_price)
-                    lots = max_shares // self.p.lot_size
-                    return lots * self.p.lot_size
-                else:
-                    # 卖出：返回当前持仓数量（已经是100的倍数）
-                    # Backtrader的sell()默认会卖出全部持仓
-                    return abs(position.size)
-        
-        # 设置Sizer：强制所有交易都是100股整数倍
-        cerebro.addsizer(StockLotSizer)
-        
-        if slippage:
-            cerebro.broker.set_slippage_perc(slippage)
-        module.add_data(cerebro, data_map)
-        
-        # Add benchmark data if available
-        if benchmark_nav is not None and not benchmark_nav.empty:
-            bench_df = pd.DataFrame(
-                {
-                    "open": benchmark_nav.values,
-                    "high": benchmark_nav.values,
-                    "low": benchmark_nav.values,
-                    "close": benchmark_nav.values,
-                    "volume": 0.0,
-                },
-                index=pd.to_datetime(benchmark_nav.index),
-            )
-            bench_df.index.name = "datetime"
-            bench_feed = GenericPandasData(dataname=bench_df)
-            cerebro.adddata(bench_feed, name="__benchmark__")
-            
-        module.add_strategy(cerebro, params)
-        cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="timeret")
-        cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe")
-        cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
-        cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
-        
-        if module is TURNING_POINT_MODULE:
-            cerebro.addanalyzer(IntentLogger, _name="intent_log")
-            
-        # Run backtest
-        results = cerebro.run(runonce=True, preload=True)
-        strat = results[0]
+            # Run backtest
+            results = cerebro.run(runonce=True, preload=True)
+            strat = results[0]
+        except Exception as e:
+            # If backtest initialization or execution fails, return default metrics with error
+            warnings.warn(f"Backtest failed for params {params}: {str(e)}")
+            flat_nav = pd.Series([1.0], index=[pd.Timestamp.now()], name="strategy")
+            error_metrics = {
+                "cum_return": float("nan"),
+                "final_value": cash,
+                "sharpe": float("nan"),
+                "ann_return": float("nan"),
+                "ann_vol": float("nan"),
+                "mdd": float("nan"),
+                "trades": 0,
+                "win_rate": float("nan"),
+                "profit_factor": float("nan"),
+                "avg_hold_bars": float("nan"),
+                "avg_win": float("nan"),
+                "avg_loss": float("nan"),
+                "payoff_ratio": float("nan"),
+                "expectancy": float("nan"),
+                "exposure_ratio": float("nan"),
+                "trade_freq": float("nan"),
+                "calmar": float("nan"),
+                "bench_return": float("nan"),
+                "bench_mdd": float("nan"),
+                "excess_return": float("nan"),
+                "error": str(e),
+            }
+            return flat_nav, error_metrics, None
         
         # Calculate metrics
-        timeret = pd.Series(strat.analyzers.timeret.get_analysis())
-        nav = (1 + timeret.fillna(0)).cumprod()
-        nav.index = pd.to_datetime(nav.index)
-        nav.name = "strategy"
+        try:
+            timeret = pd.Series(strat.analyzers.timeret.get_analysis())
+            nav = (1 + timeret.fillna(0)).cumprod()
+            nav.index = pd.to_datetime(nav.index)
+            nav.name = "strategy"
+        except Exception as e:
+            warnings.warn(f"Failed to calculate NAV: {str(e)}")
+            nav = pd.Series([1.0], index=[pd.Timestamp.now()], name="strategy")
         
         metrics: Dict[str, Any] = {
             "cum_return": float(nav.iloc[-1] - 1) if len(nav) else float("nan"),
@@ -539,6 +495,14 @@ class BacktestEngine:
         rows: List[Dict[str, Any]] = []
         broker_conf = dict(cash=cash, commission=commission, slippage=slippage)
         max_workers = max(1, max_workers)
+        
+        # V2.7.0 Patch 3: Publish grid search start event
+        self.events.put(Event(EventType.PIPELINE_STAGE, {
+            "stage": "grid.start",
+            "strategy": strategy,
+            "param_count": len(combos),
+            "symbols": list(symbols),
+        }))
 
         if max_workers > 1 and len(combos) > 1:
             # Serialize large objects once and load them in worker processes
@@ -574,10 +538,17 @@ class BacktestEngine:
                     os.remove(bench_path)
             except Exception:
                 pass
-            for param_dict, metrics in zip(param_dicts, metrics_list):
+            for i, (param_dict, metrics) in enumerate(zip(param_dicts, metrics_list)):
                 rows.append({"strategy": strategy, **param_dict, **metrics})
+                # V2.7.0 Patch 3: Publish metrics calculated event
+                self.events.put(Event(EventType.METRICS_CALCULATED, {
+                    "strategy": strategy,
+                    "params": param_dict,
+                    "metrics": metrics,
+                    "i": i,
+                }))
         else:
-            for combo in combos:
+            for i, combo in enumerate(combos):
                 raw_params = dict(zip(keys, combo))
                 param_dict = module.coerce(raw_params)
                 if extra_params:
@@ -604,7 +575,23 @@ class BacktestEngine:
                         "error": str(err),
                     }
                 rows.append({"strategy": strategy, **param_dict, **metrics})
-        return pd.DataFrame(rows)
+                # V2.7.0 Patch 3: Publish metrics calculated event
+                self.events.put(Event(EventType.METRICS_CALCULATED, {
+                    "strategy": strategy,
+                    "params": param_dict,
+                    "metrics": metrics,
+                    "i": i,
+                }))
+        
+        # V2.7.0 Patch 3: Publish grid search completion event
+        result_df = pd.DataFrame(rows)
+        self.events.put(Event(EventType.PIPELINE_STAGE, {
+            "stage": "grid.done",
+            "strategy": strategy,
+            "total_runs": len(rows),
+        }))
+        
+        return result_df
 
     def auto_pipeline(
         self,

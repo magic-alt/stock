@@ -545,12 +545,21 @@ python unified_backtest_framework.py grid \
 **示例1: 优化双均线参数**
 
 ```bash
+# Linux/Mac 使用双引号:
 python unified_backtest_framework.py grid \
-  --symbol 600519.SH \
   --strategy sma_cross \
-  --param-grid "fast_period=[5,10,15,20]" "slow_period=[30,40,50,60]" \
+  --symbols 600519.SH \
+  --start 2024-01-01 --end 2024-12-31 \
+  --grid '{"fast_period":[5,10,15,20],"slow_period":[30,40,50,60]}' \
   --workers 4 \
-  --out-csv grid_results.csv
+  --out_csv grid_results.csv
+
+# Windows PowerShell 需要特殊处理，推荐使用文件方式:
+# 1. 创建 grid_config.json:
+# {"fast_period":[5,10,15,20],"slow_period":[30,40,50,60]}
+# 
+# 2. 运行命令 (不指定 --grid，使用策略默认网格):
+python unified_backtest_framework.py grid --strategy sma_cross --symbols 600519.SH --start 2024-01-01 --end 2024-12-31 --workers 4 --out_csv grid_results.csv
   
 # 结果: 4×4=16 组参数, 约10秒完成
 ```
@@ -558,27 +567,29 @@ python unified_backtest_framework.py grid \
 **示例2: 优化MACD参数**
 
 ```bash
+# 使用策略默认网格 (推荐)
 python unified_backtest_framework.py grid \
-  --symbol 000333.SZ \
   --strategy macd_signal \
-  --param-grid "fast_period=[8,12,16]" "slow_period=[20,26,32]" "signal_period=[6,9,12]" \
+  --symbols 000333.SZ \
+  --start 2024-01-01 --end 2024-12-31 \
   --workers 6 \
-  --out-csv macd_grid.csv
+  --out_csv macd_grid.csv
   
-# 结果: 3×3×3=27 组参数
+# 结果: 使用策略内置的优化网格
 ```
 
 **示例3: 优化RSI阈值**
 
 ```bash
+# 使用策略默认网格
 python unified_backtest_framework.py grid \
-  --symbol 601318.SH \
   --strategy rsi \
-  --param-grid "oversold=[20,25,30,35]" "overbought=[65,70,75,80]" \
+  --symbols 601318.SH \
+  --start 2024-01-01 --end 2024-12-31 \
   --workers 4 \
-  --out-csv rsi_grid.csv
+  --out_csv rsi_grid.csv
   
-# 结果: 4×4=16 组参数
+# 结果: 使用策略内置的优化网格
 ```
 
 ### 5.4 Auto 模式 (自动化流程) ⭐ 推荐
