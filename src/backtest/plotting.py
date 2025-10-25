@@ -185,11 +185,10 @@ def plot_backtest_with_indicators(
     show_indicators: bool = True,
     figsize: Tuple[int, int] = (16, 10),
     out_file: Optional[str] = None,
+    indicator_preset: str = "clean",   # 新增：'clean' | 'full'
 ) -> None:
     """
-    绘制 Backtrader 回测结果，并添加多个技术指标。
-    
-    参照 https://www.poloxue.com/backtrader/docs/03-quickstart/10-plotting/
+    绘制 Backtrader 回测结果，并添加技术指标。
     
     Args:
         cerebro: Backtrader Cerebro 实例（已运行回测）
@@ -197,6 +196,9 @@ def plot_backtest_with_indicators(
         show_indicators: 是否显示技术指标
         figsize: 图表大小
         out_file: 如果提供，保存图表到文件而非显示
+        indicator_preset: 指标预设模式
+            - 'clean': 仅主图(K线+布林+均线)、子图(成交量、MACD)
+            - 'full' : 全量指标(MACD/ADX/RSI/Stoch/CCI等)
     """
     # 先打印交易分析
     print_trade_analysis(cerebro)
@@ -216,66 +218,39 @@ def plot_backtest_with_indicators(
         plt.rcParams['axes.grid'] = True
         plt.rcParams['grid.alpha'] = 0.3
         
-        # 添加技术指标（参考官方文档，添加更丰富的指标）
+        # 添加技术指标
         if show_indicators and cerebro.datas:
             data = cerebro.datas[0]  # 主数据源
             
-            # === 移动平均线系列 ===
-            # 1. SMA - 简单移动平均（多周期）
-            bt.indicators.SimpleMovingAverage(data, period=5)
-            bt.indicators.SimpleMovingAverage(data, period=20)
+            # === 主图均线（强制叠加主图）===
+            bt.indicators.SimpleMovingAverage(data, period=5, plotname='SMA_5', subplot=False, plotmaster=data)
+            bt.indicators.SimpleMovingAverage(data, period=20, plotname='SMA_20', subplot=False, plotmaster=data)
+            bt.indicators.ExponentialMovingAverage(data, period=25, plotname='EMA_25', subplot=False, plotmaster=data)
+            bt.indicators.WeightedMovingAverage(data, period=25, plotname='WMA_25', subplot=False, plotmaster=data)
+            bt.indicators.BollingerBands(data, period=20, devfactor=2.0, subplot=False, plotmaster=data)
             
-            # 2. EMA - 指数移动平均
-            bt.indicators.ExponentialMovingAverage(data, period=25)
+            # === 仅计算用，不画图（避免空子图）===
+            bt.indicators.ATR(data, plot=False)
+            bt.indicators.RateOfChange(data, period=12, plot=False)
+            bt.indicators.Momentum(data, period=14, plot=False)
             
-            # 3. WMA - 加权移动平均（子图）
-            bt.indicators.WeightedMovingAverage(data, period=25, subplot=True)
+            # === 成交量均线叠加在成交量图 ===
+            if hasattr(data, 'volume'):
+                bt.indicators.SMA(data.volume, period=20, subplot=True, plotname='Volume_SMA')
             
-            # === 趋势指标 ===
-            # 4. MACD - 移动平均收敛发散
+            # === MACD（需要一个子图）===
             macd = bt.indicators.MACD(data)
             bt.indicators.MACDHisto(data)
             
-            # 5. ADX - 平均趋向指数
-            bt.indicators.AverageDirectionalMovementIndex(data, period=14)
+            if indicator_preset == "full":
+                # 更多震荡/趋势子图（可能产生额外面板）
+                rsi = bt.indicators.RSI(data, period=14)
+                bt.indicators.SmoothedMovingAverage(rsi, period=10, subplot=True)
+                bt.indicators.StochasticSlow(data)
+                bt.indicators.CommodityChannelIndex(data, period=20)
+                bt.indicators.AverageDirectionalMovementIndex(data, period=14)
             
-            # === 震荡指标 ===
-            # 6. RSI - 相对强弱指标
-            rsi = bt.indicators.RSI(data, period=14)
-            bt.indicators.SmoothedMovingAverage(rsi, period=10)  # RSI上的均线
-            
-            # 7. Stochastic - 随机指标
-            bt.indicators.StochasticSlow(data)
-            
-            # 8. CCI - 商品通道指数
-            bt.indicators.CommodityChannelIndex(data, period=20)
-            
-            # === 波动率指标 ===
-            # 9. Bollinger Bands - 布林带
-            bt.indicators.BollingerBands(data, period=20, devfactor=2.0)
-            
-            # 10. ATR - 平均真实波幅（隐藏，用于内部计算）
-            bt.indicators.ATR(data, plot=False)
-            
-            # === 成交量指标 ===
-            # 11. Volume - 成交量（如果有的话）
-            if hasattr(data, 'volume'):
-                bt.indicators.SMA(data.volume, period=20, subplot=True, plotname='Volume SMA')
-            
-            # === 动量指标 ===
-            # 12. ROC - 变动率指标
-            bt.indicators.RateOfChange(data, period=12, subplot=True)
-            
-            # 13. Momentum - 动量指标
-            bt.indicators.Momentum(data, period=14, subplot=True)
-            
-            print("✓ 已添加技术指标：")
-            print("  均线系列: SMA(5,20), EMA(25), WMA(25)")
-            print("  趋势指标: MACD, MACD_Hist, ADX")
-            print("  震荡指标: RSI+SMA(10), Stochastic, CCI")
-            print("  波动率: Bollinger Bands, ATR(hidden)")
-            print("  动量指标: ROC, Momentum")
-            print("  成交量: Volume SMA(20)")
+            print(f"[OK] 已添加技术指标（preset={indicator_preset}）")
         
         # 自定义绘图方案（红涨绿跌，A股习惯）
         class CNPlotScheme(PlotScheme):
@@ -293,23 +268,9 @@ def plot_backtest_with_indicators(
                 self.grid = True
                 self.gridstyle = '--'
                 self.gridalpha = 0.25
-                # 买卖点标记 - 使用更明显、更大的标记
-                self.trademarker = '^'           # 买入: 向上三角形
-                self.trademarkersize = 15        # 增大到15
-                self.trademarkercolor = 'red'    # 买入红色
-                self.trademarkeroutline = 'darkred'  # 深红色轮廓
-                self.trademarkeroutlinewidth = 2.0   # 更粗的轮廓
-                
-                self.sellmarker = 'v'            # 卖出: 向下三角形
-                self.sellmarkersize = 15         # 增大到15
-                self.sellmarkercolor = 'lime'    # 卖出亮绿色（更显眼）
-                self.sellmarkeroutline = 'darkgreen'  # 深绿色轮廓
-                self.sellmarkeroutlinewidth = 2.0     # 更粗的轮廓
-                
-                # 设置标记透明度
-                self.trademarkeralpha = 0.9
-                self.sellmarkeralpha = 0.9
         
+        # 配置买卖点标记（使用 Backtrader plot 自定义方式）
+        # 配置绘图参数（注意：voloverlay=True 让成交量均线叠加在成交量面板）
         plot_kwargs = dict(
             style=style,
             iplot=False,
@@ -318,14 +279,106 @@ def plot_backtest_with_indicators(
             plotdist=0.15,
             scheme=CNPlotScheme(),
             volume=True,
-            voloverlay=False,  # 成交量独立子图
+            voloverlay=True,   # 成交量均线叠加到成交量子图，避免额外子图
             tight=True,
-            # 显示买卖点 - 确保启用
-            plottrades=True,
         )
         
         print("\n正在生成图表...")
         figs = cerebro.plot(**plot_kwargs)
+        
+        # 手动添加买卖点标记（因为 Backtrader 默认标记可能不明显）
+        try:
+            if figs and len(figs) > 0:
+                fig = figs[0][0]  # 获取第一个图表
+                axes = fig.get_axes()
+                
+                # 获取策略实例以访问交易记录
+                if cerebro.runstrats and len(cerebro.runstrats) > 0:
+                    strat = cerebro.runstrats[0][0]
+                    data = cerebro.datas[0]
+                    
+                    # 构建日期到索引的映射（Backtrader 使用数值索引作为 x 轴）
+                    # 使用 Backtrader 的内部数据访问方式
+                    date_to_index = {}
+                    data_len = len(data)
+                    
+                    # 从后往前遍历，因为 Backtrader 使用负索引
+                    for i in range(data_len):
+                        try:
+                            # 使用负索引访问历史数据
+                            date_num = data.datetime[-i-1]
+                            date_obj = bt.num2date(date_num)
+                            date_key = date_obj.date()
+                            # 存储正向索引（从0开始）
+                            date_to_index[date_key] = data_len - i - 1
+                        except:
+                            continue
+                    
+                    # 收集买卖点数据
+                    buy_indices = []
+                    buy_prices = []
+                    sell_indices = []
+                    sell_prices = []
+                    
+                    # 从订单记录中提取买卖点
+                    if hasattr(strat, '_orders'):
+                        for order in strat._orders:
+                            if order.status == order.Completed:
+                                exec_date = bt.num2date(order.executed.dt).date()
+                                price = order.executed.price
+                                
+                                # 将日期转换为索引
+                                if exec_date in date_to_index:
+                                    idx = date_to_index[exec_date]
+                                    if order.isbuy():
+                                        buy_indices.append(idx)
+                                        buy_prices.append(price)
+                                    else:
+                                        sell_indices.append(idx)
+                                        sell_prices.append(price)
+                    
+                    # 在第一个子图（价格图）上绘制标记
+                    if len(axes) > 0 and (buy_indices or sell_indices):
+                        price_ax = axes[0]  # 第一个子图是价格图
+                        
+                        # 绘制买入点（红色向上三角形）
+                        if buy_indices:
+                            price_ax.scatter(
+                                buy_indices, buy_prices,
+                                marker='^',
+                                color='red',
+                                s=200,  # 大小
+                                alpha=0.9,
+                                edgecolors='darkred',
+                                linewidths=2,
+                                zorder=5,  # 确保在其他元素上方
+                                label='买入'
+                            )
+                        
+                        # 绘制卖出点（绿色向下三角形）
+                        if sell_indices:
+                            price_ax.scatter(
+                                sell_indices, sell_prices,
+                                marker='v',
+                                color='lime',
+                                s=200,  # 大小
+                                alpha=0.9,
+                                edgecolors='darkgreen',
+                                linewidths=2,
+                                zorder=5,  # 确保在其他元素上方
+                                label='卖出'
+                            )
+                        
+                        # 添加图例
+                        if buy_indices or sell_indices:
+                            price_ax.legend(loc='upper left', fontsize=9, framealpha=0.8)
+                            print(f"[OK] 已添加买卖点标记: {len(buy_indices)} 个买入, {len(sell_indices)} 个卖出")
+        
+        except Exception as e:
+            print(f"[警告] 添加买卖点标记失败: {e}")
+            import traceback
+            traceback.print_exc()
+            pass  # 标记失败也继续
         
         # 美化坐标轴 - 改进时间轴显示
         try:
@@ -387,17 +440,25 @@ def plot_backtest_with_indicators(
         
         # 保存或显示
         if out_file:
-            plt.savefig(out_file, dpi=300, bbox_inches='tight')
-            print(f"✓ 图表已保存到: {out_file}")
-            plt.close()
+            # 关闭所有空白图表，只保存第一个
+            if figs and len(figs) > 0:
+                fig_to_save = figs[0][0]
+                fig_to_save.savefig(out_file, dpi=300, bbox_inches='tight')
+                print(f"[OK] 图表已保存到: {out_file}")
+                # 关闭所有图表
+                plt.close('all')
+            else:
+                plt.savefig(out_file, dpi=300, bbox_inches='tight')
+                print(f"[OK] 图表已保存到: {out_file}")
+                plt.close('all')
         else:
-            print("✓ 图表生成完成，关闭窗口继续...")
+            print("[OK] 图表生成完成，关闭窗口继续...")
             plt.show()
             
     except ImportError as e:
-        print(f"❌ 绘图失败: 缺少依赖库 - {e}")
+        print(f"[错误] 绘图失败: 缺少依赖库 - {e}")
         print("提示: 请确保安装了 matplotlib")
     except Exception as e:
-        print(f"❌ 绘图失败: {e}")
+        print(f"[错误] 绘图失败: {e}")
         import traceback
         traceback.print_exc()

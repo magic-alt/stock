@@ -111,7 +111,234 @@ def _coerce_bb(params: Dict[str, Any]) -> Dict[str, Any]:
         out["entry_mode"] = str(out["entry_mode"])
     if "exit_mode" in out:
         out["exit_mode"] = str(out["exit_mode"])
+    # 增强版参数
+    if "atr_period" in out:
+        out["atr_period"] = int(out["atr_period"])
+    if "atr_mult_sl" in out:
+        out["atr_mult_sl"] = float(out["atr_mult_sl"])
+    if "tp1_pct" in out:
+        out["tp1_pct"] = float(out["tp1_pct"])
+    if "tp1_frac" in out:
+        out["tp1_frac"] = float(out["tp1_frac"])
+    if "tp2_pct" in out:
+        out["tp2_pct"] = float(out["tp2_pct"])
+    if "tp2_frac" in out:
+        out["tp2_frac"] = float(out["tp2_frac"])
+    if "trail_drop_pct" in out:
+        out["trail_drop_pct"] = float(out["trail_drop_pct"])
+    if "min_hold" in out:
+        out["min_hold"] = int(out["min_hold"])
+    if "cooldown" in out:
+        out["cooldown"] = int(out["cooldown"])
+    if "warmup_bars" in out:
+        val = out["warmup_bars"]
+        out["warmup_bars"] = int(val) if val is not None else None
+    if "trend_filter" in out:
+        out["trend_filter"] = bool(out["trend_filter"])
+    # V2.8.4.1 新增参数
+    if "rebound_lookback" in out:
+        out["rebound_lookback"] = int(out["rebound_lookback"])
+    if "max_hold" in out:
+        out["max_hold"] = int(out["max_hold"])
     return out
+
+
+class Bollinger_EnhancedStrategy(bt.Strategy):
+    """
+    布林增强版：
+    - 触发：跌破下轨后反弹（反穿下轨）
+    - 分批止盈：tp1_pct / tp2_pct（到价卖出 tp1_frac / tp2_frac）
+    - 回落出场：从持仓最高价回撤 trail_drop_pct 全清
+    - 动态止损：ATR * atr_mult_sl
+    - 预热期/冷却期/最小持有/趋势过滤（中轨斜率>0才做多，可关闭）
+    - V2.8.4.1: rebound_lookback, max_hold, ATR fallback, dynamic warmup
+    """
+    params = (
+        ("period", 20),
+        ("devfactor", 2.0),
+
+        ("atr_period", 14),
+        ("atr_mult_sl", 2.0),         # 动态止损系数（放宽至2.0）
+
+        ("tp1_pct", 0.03),            # +3% 触发 TP1
+        ("tp1_frac", 0.5),            # 卖出 50%
+        ("tp2_pct", 0.06),            # +6% 触发 TP2
+        ("tp2_frac", 1.0),            # 卖出剩余全部(=1.0 相当于清仓)
+
+        ("trail_drop_pct", 0.04),     # 从最高价回落 4% 清仓
+        ("min_hold", 2),              # 最少持有 bars（放宽至2）
+        ("cooldown", 3),              # 平仓后冷却 bars（放宽至3）
+        ("warmup_bars", None),        # 自动计算
+        ("rebound_lookback", 3),      # 最近N根在下轨下，当前收回到下轨上
+        ("max_hold", 60),             # 最长持有N根，超时离场
+
+        ("trend_filter", True),       # 中轨斜率>0 才允许做多
+        ("printlog", False),
+    )
+
+    def __init__(self):
+        # 布林
+        bb = bt.indicators.BollingerBands(
+            self.data.close,
+            period=self.params.period,
+            devfactor=self.params.devfactor,
+            subplot=False, plotmaster=self.data  # 叠加到主图
+        )
+        self.mid = bb.mid
+        self.top = bb.top
+        self.bot = bb.bot
+
+        # ATR 动态止损
+        self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period, plot=False)
+
+        # 中轨斜率（趋势过滤）
+        self.mid_slope = self.mid - self.mid(-1)
+
+        # 状态
+        self.order = None
+        self.entry_bar = None
+        self.entry_price = None
+        self.highest_since_entry = None
+        self.tp1_done = False
+        self.tp2_done = False
+        self.last_exit_bar = -1_000_000
+        
+        # 自动 warmup
+        self._warmup = (self.params.warmup_bars
+                        if self.params.warmup_bars is not None
+                        else max(self.params.period, self.params.atr_period, 30))
+
+    def log(self, s):
+        if self.params.printlog:
+            dt = self.datas[0].datetime.date(0).isoformat()
+            print(dt, s)
+
+    def _atr_safe(self) -> float:
+        """Safe ATR getter with fallback to 0"""
+        try:
+            import math
+            v = float(self.atr[0])
+            if not math.isfinite(v) or v <= 0:
+                return 0.0
+            return v
+        except Exception:
+            return 0.0
+
+    def next(self):
+        if self.order:
+            return
+
+        i = len(self)
+        close = float(self.data.close[0])
+
+        # 预热期：只计算不交易
+        if i < self._warmup:
+            return
+
+        # 冷却期：刚平仓不再开仓
+        if (i - self.last_exit_bar) < int(self.params.cooldown):
+            pass_cooldown = False
+        else:
+            pass_cooldown = True
+
+        # 在持仓期间处理分批/止损/回落
+        if self.position:
+            atr = self._atr_safe()
+            risk_abs = max(self.params.atr_mult_sl * atr, 0.01 * close)  # 最小1%
+            hold_bars = i - (self.entry_bar or i)
+            if hold_bars >= int(self.params.min_hold):
+                # 持仓最高价
+                self.highest_since_entry = max(self.highest_since_entry or close, close)
+
+                # 回落出场
+                if self.params.trail_drop_pct > 0 and self.highest_since_entry:
+                    drop = (self.highest_since_entry - close) / self.highest_since_entry
+                    if drop >= self.params.trail_drop_pct:
+                        self.log(f"TRAIL EXIT @ {close:.2f}")
+                        self.order = self.close()  # 清仓
+                        self._mark_exit(i)
+                        return
+
+                # 动态止损（基于 ATR）
+                if self.params.atr_mult_sl > 0 and self.entry_price is not None:
+                    stop = self.entry_price - risk_abs
+                    if close <= stop:
+                        self.log(f"ATR STOP @ {close:.2f} (stop {stop:.2f})")
+                        self.order = self.close()
+                        self._mark_exit(i)
+                        return
+
+                # 分批止盈
+                ret = (close / self.entry_price) - 1.0 if self.entry_price else 0.0
+
+                # TP1
+                if (not self.tp1_done) and ret >= self.params.tp1_pct and self.position.size > 0:
+                    sz = max(1, int(self.position.size * self.params.tp1_frac + 0.5))
+                    sz = min(sz, self.position.size)
+                    self.log(f"TP1 SELL {sz} @ {close:.2f}")
+                    self.order = self.sell(size=sz)
+                    self.tp1_done = True
+                    return
+
+                # TP2（清掉剩余）
+                if (not self.tp2_done) and ret >= self.params.tp2_pct and self.position.size > 0:
+                    self.log(f"TP2 EXIT ALL @ {close:.2f}")
+                    self.order = self.close()
+                    self.tp2_done = True
+                    self._mark_exit(i)
+                    return
+
+            # 超时离场（回到中轨附近）
+            if (i - (self.entry_bar or i)) >= int(self.params.max_hold):
+                if close >= float(self.mid[0]):
+                    self.order = self.close()
+                    self._mark_exit(i)
+                    self.log(f"TIME EXIT @ {close:.2f}")
+                    return
+
+            return
+
+        # 入场逻辑（空仓且通过冷却+趋势过滤）
+        if (not self.position) and pass_cooldown:
+            trend_ok = True
+            if self.params.trend_filter:
+                trend_ok = (float(self.mid_slope[0]) >= 0)
+
+            # 反穿下轨：最近 N 根任意一根在下轨下，且当前收盘>下轨
+            lookback = min(int(self.params.rebound_lookback), i - 1)
+            below_recent = any(float(self.data.close[-k]) < float(self.bot[-k]) for k in range(1, lookback + 1))
+            rebound_now = close > float(self.bot[0])
+
+            if trend_ok and below_recent and rebound_now:
+                self.order = self.buy()
+                self.entry_bar = i
+                self.entry_price = close
+                self.highest_since_entry = close
+                self.tp1_done = False
+                self.tp2_done = False
+                self.log(f"BUY @ {close:.2f} (trend_ok={trend_ok})")
+
+    def notify_order(self, order):
+        # 避免挂单阻塞
+        if order.status in [order.Completed, order.Canceled, order.Rejected]:
+            self.order = None
+
+    def notify_trade(self, trade):
+        if trade.isclosed:
+            self.last_exit_bar = len(self)
+            self.entry_bar = None
+            self.entry_price = None
+            self.highest_since_entry = None
+            self.tp1_done = False
+            self.tp2_done = False
+
+    def _mark_exit(self, i_bar: int):
+        self.last_exit_bar = i_bar
+        self.entry_bar = None
+        self.entry_price = None
+        self.highest_since_entry = None
+        self.tp1_done = False
+        self.tp2_done = False
 
 
 # 策略配置

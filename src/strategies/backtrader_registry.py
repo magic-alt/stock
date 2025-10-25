@@ -8,9 +8,10 @@ import backtrader as bt
 # 导入所有策略模块
 from .ema_backtrader_strategy import EMAStrategy, _coerce_ema
 from .macd_backtrader_strategy import (
-    MACDStrategy, MACDZeroCrossStrategy, MACDHistogramStrategy, _coerce_macd
+    MACDStrategy, MACDZeroCrossStrategy, MACDHistogramStrategy, 
+    MACD_EnhancedStrategy, MACD_RegimePullback, _coerce_macd
 )
-from .bollinger_backtrader_strategy import BollingerStrategy, _coerce_bb
+from .bollinger_backtrader_strategy import BollingerStrategy, Bollinger_EnhancedStrategy, _coerce_bb
 from .rsi_backtrader_strategy import (
     RSIStrategy, RSIMaFilterStrategy, RSIDivergenceStrategy, _coerce_rsi
 )
@@ -94,6 +95,31 @@ register_strategy(StrategyModule(
 ))
 
 register_strategy(StrategyModule(
+    name='macd_e',
+    description='MACD with trend filter, cooldown and SL/TP',
+    strategy_cls=MACD_EnhancedStrategy,
+    param_names=['fast', 'slow', 'signal', 'ema_trend_period', 'trend_filter', 
+                 'cooldown', 'min_hold', 'stop_loss_pct', 'take_profit_pct'],
+    defaults={
+        'fast': 12, 'slow': 26, 'signal': 9,
+        'ema_trend_period': 200, 'trend_filter': True,
+        'cooldown': 5, 'min_hold': 3,
+        'stop_loss_pct': 0.05, 'take_profit_pct': 0.10,
+    },
+    grid_defaults={
+        'fast': [8, 12], 'slow': [20, 26, 32], 'signal': [9],
+        'ema_trend_period': [100, 150, 200],
+        'trend_filter': [True],
+        'cooldown': [3, 5, 8],
+        'min_hold': [2, 3, 5],
+        'stop_loss_pct': [0.03, 0.05, 0.08],
+        'take_profit_pct': [0.07, 0.10, 0.15],
+    },
+    coercer=_coerce_macd,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
     name='bollinger',
     description='Bollinger band mean reversion with flexible entry/exit modes',
     strategy_cls=BollingerStrategy,
@@ -112,6 +138,79 @@ register_strategy(StrategyModule(
         'exit_mode': ['mid']
     },
     coercer=_coerce_bb,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='boll_e',
+    description='BollingerBands Enhanced: ATR SL + multi-TP + pullback exit + warmup/cooldown (V2.8.4.1 relaxed)',
+    strategy_cls=Bollinger_EnhancedStrategy,
+    param_names=[
+        'period', 'devfactor',
+        'atr_period', 'atr_mult_sl',
+        'tp1_pct', 'tp1_frac', 'tp2_pct', 'tp2_frac',
+        'trail_drop_pct', 'min_hold', 'cooldown', 'warmup_bars',
+        'rebound_lookback', 'max_hold',
+        'trend_filter'
+    ],
+    defaults={
+        'period': 20, 'devfactor': 2.0,
+        'atr_period': 14, 'atr_mult_sl': 2.0,  # 放宽至2.0
+        'tp1_pct': 0.03, 'tp1_frac': 0.5,
+        'tp2_pct': 0.06, 'tp2_frac': 1.0,
+        'trail_drop_pct': 0.04, 'min_hold': 2, 'cooldown': 3,  # 放宽
+        'warmup_bars': None,  # 自动计算
+        'rebound_lookback': 3,  # 最近3根
+        'max_hold': 60,  # 最长持有60根
+        'trend_filter': True,
+    },
+    grid_defaults={
+        'period': [18, 20, 22],
+        'devfactor': [1.8, 2.0, 2.2],
+        'atr_period': [14, 20],
+        'atr_mult_sl': [1.5, 2.0, 2.5],  # 放宽范围
+        'tp1_pct': [0.02, 0.03, 0.04],
+        'tp1_frac': [0.3, 0.5, 0.7],
+        'tp2_pct': [0.05, 0.06, 0.08],
+        'tp2_frac': [1.0],
+        'trail_drop_pct': [0.03, 0.04, 0.05],
+        'min_hold': [1, 2, 3],  # 放宽
+        'cooldown': [2, 3, 5],  # 放宽
+        'rebound_lookback': [2, 3, 5],
+        'max_hold': [40, 60, 80],
+        'trend_filter': [True, False],
+    },
+    coercer=_coerce_bb,
+    multi_symbol=False,
+))
+
+register_strategy(StrategyModule(
+    name='macd_r',
+    description='MACD Regime + Pullback + ATR Risk (V2.8.4.1 relaxed with trend_logic)',
+    strategy_cls=MACD_RegimePullback,
+    param_names=['fast','slow','signal','ema_trend_period','roc_period','trend_filter','trend_logic',
+                 'ema_entry_period','pullback_k','max_lag',
+                 'atr_period','atr_sl_mult','atr_trail_mult',
+                 'min_hold','cooldown','tp1_R','tp1_frac','tp2_R'],
+    defaults={
+        'fast':12, 'slow':26, 'signal':9,
+        'ema_trend_period':200, 'roc_period':100, 'trend_filter':True,
+        'trend_logic':'or',  # 更宽松：EMA OR ROC
+        'ema_entry_period':20, 'pullback_k':0.5, 'max_lag':7,  # 放宽至7
+        'atr_period':14, 'atr_sl_mult':2.0, 'atr_trail_mult':1.8,  # 放宽
+        'min_hold':2, 'cooldown':3,  # 放宽
+        'tp1_R':0.8, 'tp1_frac':0.5, 'tp2_R':1.6,  # 放宽
+    },
+    grid_defaults={
+        'pullback_k':[0.3,0.5,0.8],
+        'max_lag':[5,7,10],  # 放宽
+        'atr_sl_mult':[1.5,2.0,2.5],  # 放宽
+        'atr_trail_mult':[1.5,1.8,2.0],
+        'tp1_R':[0.6,0.8,1.0], 'tp1_frac':[0.3,0.5,0.7],
+        'tp2_R':[1.2,1.6,2.0],  # 放宽
+        'trend_logic':['or','and'],  # 新增参数
+    },
+    coercer=_coerce_macd,
     multi_symbol=False,
 ))
 
