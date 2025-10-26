@@ -67,6 +67,7 @@ class SQLiteDataManager:
                     data_type TEXT NOT NULL,
                     adj_type TEXT NOT NULL,
                     table_name TEXT NOT NULL,
+                    name TEXT,
                     start_date TEXT,
                     end_date TEXT,
                     record_count INTEGER DEFAULT 0,
@@ -82,6 +83,71 @@ class SQLiteDataManager:
             """)
             
             conn.commit()
+    
+    @staticmethod
+    def _get_symbol_name(symbol: str) -> str:
+        """
+        Get display name for symbol.
+        
+        Args:
+            symbol: Symbol code (e.g., "600519.SH", "^GSPC")
+        
+        Returns:
+            Display name (Chinese for A-shares, English+Chinese for others)
+        """
+        # A股名称字典（部分常用股票）
+        a_share_names = {
+            "600519.SH": "贵州茅台",
+            "000001.SZ": "平安银行",
+            "600036.SH": "招商银行",
+            "601318.SH": "中国平安",
+            "600887.SH": "伊利股份",
+            "000858.SZ": "五粮液",
+            "600031.SH": "三一重工",
+            "600104.SH": "上汽集团",
+            "600276.SH": "恒瑞医药",
+            "000002.SZ": "万科A",
+            "000568.SZ": "泸州老窖",
+            "000651.SZ": "格力电器",
+            "000725.SZ": "京东方A",
+            "000799.SZ": "酒鬼酒",
+            "000333.SZ": "美的集团",
+            # A股指数
+            "000300.SH": "沪深300指数",
+            "000001.SH": "上证指数",
+            "399001.SZ": "深证成指",
+            "399006.SZ": "创业板指",
+        }
+        
+        # 国际指数名称
+        intl_index_names = {
+            "^GSPC": "S&P 500 (标普500)",
+            "^DJI": "Dow Jones (道琼斯)",
+            "^IXIC": "NASDAQ (纳斯达克)",
+            "^HSI": "Hang Seng (恒生指数)",
+            "^N225": "Nikkei 225 (日经225)",
+            "^FTSE": "FTSE 100 (富时100)",
+        }
+        
+        # 国际股票名称（示例）
+        intl_stock_names = {
+            "AAPL": "Apple Inc. (苹果)",
+            "MSFT": "Microsoft (微软)",
+            "GOOGL": "Alphabet (谷歌)",
+            "TSLA": "Tesla (特斯拉)",
+            "AMZN": "Amazon (亚马逊)",
+        }
+        
+        # 查找名称
+        if symbol in a_share_names:
+            return a_share_names[symbol]
+        elif symbol in intl_index_names:
+            return intl_index_names[symbol]
+        elif symbol in intl_stock_names:
+            return intl_stock_names[symbol]
+        else:
+            # 未知标的，返回代码本身
+            return symbol
     
     @staticmethod
     def _normalize_table_name(symbol: str, data_type: str) -> str:
@@ -374,18 +440,24 @@ class SQLiteDataManager:
             conn: Database connection
             symbol: Symbol code
             data_type: 'stock' or 'index'
-            adj_type: Adjustment type
+            adj_type: Adjustment type (noadj/qfq/hfq)
+                - noadj: 不复权 (原始价格)
+                - qfq: 前复权 (向前复权，保持最新价格不变)
+                - hfq: 后复权 (向后复权，保持历史价格不变)
             table_name: Name of the data table
             start_date: First date in data
             end_date: Last date in data
             record_count: Number of records
         """
+        # Get display name
+        name = self._get_symbol_name(symbol)
+        
         conn.execute("""
             INSERT OR REPLACE INTO metadata
-            (symbol, data_type, adj_type, table_name, start_date, end_date, record_count, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (symbol, data_type, adj_type, table_name, name, start_date, end_date, record_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            symbol, data_type, adj_type, table_name,
+            symbol, data_type, adj_type, table_name, name,
             start_date.strftime('%Y-%m-%d'),
             end_date.strftime('%Y-%m-%d'),
             record_count,

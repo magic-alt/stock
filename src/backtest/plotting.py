@@ -8,6 +8,8 @@ from __future__ import annotations
 from typing import Optional, Tuple, List
 import pandas as pd
 import datetime
+import os
+import traceback
 
 try:
     import backtrader as bt
@@ -206,7 +208,10 @@ def plot_backtest_with_indicators(
     figsize: Tuple[int, int] = (16, 10),
     out_file: Optional[str] = None,
     indicator_preset: str = "clean",   # 新增：'clean' | 'full'
-) -> None:
+    auto_save: bool = False,           # 新增：自动保存到report目录
+    strategy_name: str = "strategy",   # 新增：策略名称
+    symbols: List[str] = None,         # 新增：股票代码列表
+) -> Optional[str]:
     """
     绘制 Backtrader 回测结果，并添加技术指标。
     
@@ -219,9 +224,37 @@ def plot_backtest_with_indicators(
         indicator_preset: 指标预设模式
             - 'clean': 仅主图(K线+布林+均线)、子图(成交量、MACD)
             - 'full' : 全量指标(MACD/ADX/RSI/Stoch/CCI等)
+        auto_save: 是否自动保存到report目录（覆盖out_file）
+        strategy_name: 策略名称（用于目录命名）
+        symbols: 股票代码列表（用于目录命名）
+    
+    Returns:
+        保存的目录路径（如果auto_save=True）
     """
     # 先打印交易分析
     print_trade_analysis(cerebro)
+    
+    # 自动保存模式：创建报告目录
+    report_dir = None
+    if auto_save:
+        # 生成目录名：股票名_策略_时间
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        symbol_part = "_".join(symbols) if symbols else "unknown"
+        # 简化符号名（去除.SH/.SZ等）
+        symbol_part = symbol_part.replace(".SH", "").replace(".SZ", "").replace(".", "_")
+        dir_name = f"{symbol_part}_{strategy_name}_{timestamp}"
+        
+        # 创建report目录
+        report_dir = os.path.join("report", dir_name)
+        os.makedirs(report_dir, exist_ok=True)
+        
+        # 设置输出文件路径
+        out_file_png = os.path.join(report_dir, "backtest_result.png")
+        out_file_pkl = os.path.join(report_dir, "backtest_result.pkl")
+        
+        print(f"\n[自动保存] 报告目录: {report_dir}")
+        print(f"  - PNG图表: {out_file_png}")
+        print(f"  - 原生格式: {out_file_pkl}")
     
     try:
         import matplotlib
@@ -518,7 +551,38 @@ def plot_backtest_with_indicators(
             pass  # 格式化失败也继续
         
         # 保存或显示
-        if out_file:
+        if auto_save:
+            # 自动保存模式：保存PNG和原生格式
+            try:
+                import pickle
+                
+                if figs and len(figs) > 0:
+                    fig_to_save = figs[0][0]
+                else:
+                    fig_to_save = plt.gcf()
+                
+                # 保存PNG格式
+                fig_to_save.savefig(out_file_png, dpi=300, bbox_inches='tight')
+                print(f"  ✓ PNG图表已保存")
+                
+                # 保存原生matplotlib格式（pickle）
+                with open(out_file_pkl, 'wb') as f:
+                    pickle.dump(fig_to_save, f)
+                print(f"  ✓ 原生格式已保存（可用pickle加载）")
+                
+                # 关闭所有图表
+                plt.close('all')
+                
+                print(f"\n[完成] 报告已保存到: {report_dir}")
+                return report_dir
+                
+            except Exception as e:
+                print(f"[错误] 保存报告失败: {e}")
+                traceback.print_exc()
+                return None
+                
+        elif out_file:
+            # 传统模式：保存到指定文件
             # 只保存第一个有效的图表
             if figs and len(figs) > 0:
                 fig_to_save = figs[0][0]
@@ -530,6 +594,7 @@ def plot_backtest_with_indicators(
                 print(f"[OK] 图表已保存到: {out_file}")
             # 关闭所有图表，避免残留
             plt.close('all')
+            return None
         else:
             # 交互显示模式：只显示第一个有效的图表
             if figs and len(figs) > 0:
@@ -545,6 +610,7 @@ def plot_backtest_with_indicators(
             plt.show()
             # 显示后关闭所有
             plt.close('all')
+            return None
             
     except ImportError as e:
         print(f"[错误] 绘图失败: 缺少依赖库 - {e}")
@@ -553,3 +619,4 @@ def plot_backtest_with_indicators(
         print(f"[错误] 绘图失败: {e}")
         import traceback
         traceback.print_exc()
+        return None

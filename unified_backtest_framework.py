@@ -168,14 +168,19 @@ def main() -> None:
         
         # Plot if enabled and cerebro is available
         if args.plot and cerebro:
-            out_file = os.path.join(args.out_dir, f"{args.strategy}_chart.png") if args.out_dir else None
-            plot_backtest_with_indicators(
+            # 自动保存模式：保存到report目录
+            report_dir = plot_backtest_with_indicators(
                 cerebro,
                 style='candlestick',
                 show_indicators=True,
                 figsize=(16, 10),
-                out_file=out_file,
+                out_file=None,  # 不使用传统out_file
+                auto_save=True,  # 启用自动保存
+                strategy_name=args.strategy,
+                symbols=args.symbols,
             )
+            if report_dir:
+                print(f"\n[报告] 详细报告已保存到: {report_dir}")
         return
 
     # ===== grid command =====
