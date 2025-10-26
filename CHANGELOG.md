@@ -2,6 +2,215 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V2.10.1.1] - 2025-01-26
+
+### 🚀 Database Structure Optimization - Per-Symbol Tables
+
+**Theme**: 数据库结构优化 + 国际指数支持 + CSV导入
+
+**Milestone**: 优化数据库架构，为每个股票/指数创建独立表，提升查询性能
+
+**Test Results**: 13/13 tests passed, 59 CSV files imported ✅
+
+---
+
+#### 核心改进
+
+**1. 优化数据库架构**
+- 🔴 `src/data_sources/db_manager.py` (V2架构):
+  - **Per-Symbol Tables**:
+    - 旧方案: `stock_daily` (所有股票), `index_daily` (所有指数)
+    - 新方案: `stock_600519_SH`, `index_000300_SH` (每个标的独立表)
+  - **Benefits**:
+    - ✅ 查询性能提升 (无需symbol过滤)
+    - ✅ 支持多样化标的代码 (沪A/深A/港股/美股指数)
+    - ✅ 数据导入导出更简单
+    - ✅ 数据库管理更直观
+  - **Schema Changes**:
+    - Metadata表增强: `table_name`, `record_count` 字段
+    - 按需创建表 (不再预创建统一表)
+    - 标的名规范化: `_normalize_table_name()`
+
+**2. 国际指数支持**
+- 支持多种指数格式:
+  - **A股指数**: 000300.SH (沪深300), 000001.SH (上证指数), 399001.SZ (深证成指)
+  - **港股指数**: ^HSI (恒生指数)
+  - **美股指数**: ^GSPC (标普500), ^DJI (道琼斯), ^IXIC (纳斯达克)
+- 表名转换示例:
+  - `600519.SH` → `stock_600519_SH`
+  - `^GSPC` → `index_GSPC`
+  - `000300.SH` → `index_000300_SH`
+
+**3. CSV导入功能**
+- 🆕 `import_from_csv()`:
+  - 支持英文/中文列名: date/日期, open/开盘, close/收盘
+  - 自动识别股票/指数数据格式
+  - 导入旧cache目录CSV文件到数据库
+- 🆕 `batch_import_from_cache()`:
+  - 批量导入cache目录所有CSV
+  - 自动解析文件名: `ak_SYMBOL_START_END_ADJ.csv`
+  - 智能识别股票/指数类型
+  - 统计导入结果: success/failed/skipped
+
+**4. 完整测试覆盖**
+- 🟢 `test/test_sqlite_v2_schema.py` (+330 lines):
+  - **TestSQLiteV2Schema**: 核心功能测试
+    - `test_table_name_normalization` - 表名生成
+    - `test_stock_save_and_load` - 股票数据存取
+    - `test_index_save_and_load` - 指数数据存取
+    - `test_international_index_support` - 国际指数支持
+    - `test_metadata_tracking` - 元数据追踪
+    - `test_incremental_update` - 增量更新
+    - `test_multiple_symbols` - 多标的处理
+    - `test_clear_symbol_data` - 数据清除
+    - `test_nonexistent_symbol` - 不存在标的处理
+  - **TestCSVImport**: CSV导入测试
+    - `test_import_stock_csv` - 单个股票CSV导入
+    - `test_import_index_csv` - 单个指数CSV导入
+    - `test_batch_import` - 批量导入
+    - `test_import_nonexistent_csv` - 错误处理
+- 🟢 `test/test_sqlite_v2_integration.py`:
+  - 真实环境集成测试
+  - 从cache目录导入59个CSV文件
+  - 验证数据查询和检索
+  - 测试多种股票代码格式
+
+---
+
+#### 技术细节
+
+**Database Schema V2**:
+```sql
+-- Metadata table (enhanced)
+CREATE TABLE metadata (
+    symbol TEXT NOT NULL,
+    data_type TEXT NOT NULL,
+    adj_type TEXT NOT NULL,
+    table_name TEXT NOT NULL,      -- NEW: 对应的数据表名
+    start_date TEXT,
+    end_date TEXT,
+    record_count INTEGER DEFAULT 0, -- NEW: 记录数
+    last_updated TEXT,
+    PRIMARY KEY (symbol, data_type, adj_type)
+)
+
+-- Per-symbol stock table (example: stock_600519_SH)
+CREATE TABLE stock_600519_SH (
+    date TEXT NOT NULL PRIMARY KEY,
+    open REAL,
+    high REAL,
+    low REAL,
+    close REAL,
+    volume REAL,
+    adj_type TEXT
+)
+
+-- Per-symbol index table (example: index_000300_SH)
+CREATE TABLE index_000300_SH (
+    date TEXT NOT NULL PRIMARY KEY,
+    close REAL,
+    adj_type TEXT
+)
+```
+
+**Key Methods Updated**:
+```python
+# Table management
+_normalize_table_name(symbol, data_type)  # 标的代码转表名
+_create_stock_table(table_name)           # 创建股票表
+_create_index_table(table_name)           # 创建指数表
+
+# Data operations
+save_stock_data(symbol, df, adj_type)     # 保存到独立表
+load_stock_data(symbol, start, end, adj)  # 从独立表加载
+save_index_data(symbol, df, adj_type)     # 指数保存
+load_index_data(symbol, start, end, adj)  # 指数加载
+
+# Metadata
+_update_metadata(conn, symbol, data_type, adj_type, 
+                 table_name, start_date, end_date, record_count)
+
+# CSV import
+import_from_csv(csv_path, symbol, data_type, adj_type)
+batch_import_from_cache(cache_dir)
+```
+
+**CSV Column Mapping**:
+```python
+column_mapping = {
+    '日期': 'date', 'Date': 'date',
+    '开盘': 'open', 'Open': 'open',
+    '收盘': 'close', 'Close': 'close',
+    '最高': 'high', 'High': 'high',
+    '最低': 'low', 'Low': 'low',
+    '成交量': 'volume', 'Volume': 'volume'
+}
+```
+
+---
+
+#### Breaking Changes
+
+⚠️ **不兼容V2.10.1数据库**:
+- 新schema与旧版不兼容
+- 需要重新导入数据或使用CSV导入功能迁移
+- Metadata表结构变化: `first_date/last_date/last_update` → `start_date/end_date/last_updated`
+
+---
+
+#### Migration Guide
+
+**从V2.10.1迁移到V2.10.1.1**:
+
+1. **保留旧数据** (可选):
+   ```bash
+   # 备份旧数据库
+   cp cache/market_data.db cache/market_data_v2.10.1_backup.db
+   ```
+
+2. **使用CSV导入** (如果有cache目录CSV):
+   ```python
+   from src.data_sources.db_manager import SQLiteDataManager
+   
+   db = SQLiteDataManager("./cache/market_data.db")
+   stats = db.batch_import_from_cache("./cache")
+   print(f"Imported: {stats['success']} files")
+   ```
+
+3. **或重新下载数据**:
+   - 删除旧数据库
+   - 运行回测，系统自动创建新数据库并下载数据
+
+---
+
+#### Performance Improvements
+
+- **查询速度**: 独立表无需symbol过滤，查询更快
+- **写入速度**: 无重复检查，INSERT OR REPLACE直接写入
+- **存储效率**: 每个表独立索引，更高效
+- **可维护性**: 表结构清晰，易于理解和管理
+
+---
+
+#### 测试统计
+
+```
+test_sqlite_v2_schema.py:
+  ✓ 13/13 tests passed
+  ✓ Stock CRUD operations
+  ✓ Index CRUD operations  
+  ✓ International index support
+  ✓ CSV import with Chinese columns
+  ✓ Batch import functionality
+
+test_sqlite_v2_integration.py:
+  ✓ 59/59 CSV files imported successfully
+  ✓ Real-world data verification
+  ✓ Multiple stock codes tested
+```
+
+---
+
 ## [V2.10.1] - 2025-01-26
 
 ### 🚀 SQLite3 Data Caching System

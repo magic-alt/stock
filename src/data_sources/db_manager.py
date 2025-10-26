@@ -26,10 +26,16 @@ class SQLiteDataManager:
     """
     Manages SQLite3 database for market data storage.
     
-    Schema:
-        stock_daily: symbol, date, open, high, low, close, volume, adj_type
-        index_daily: symbol, date, close, adj_type
-        metadata: symbol, data_type, first_date, last_date, last_update
+    Optimized Schema V2:
+        - Each stock has its own table: stock_<symbol> (e.g., stock_600519_SH)
+        - Each index has its own table: index_<code> (e.g., index_000300_SH, index_HSI, index_NASDAQ)
+        - metadata: Tracks all symbols and their table information
+        
+    Benefits:
+        - Better performance (no symbol filtering needed)
+        - Easier maintenance and querying
+        - Support for different index types (A股, 港股, 美股指数等)
+        - Simpler data import/export
     """
     
     def __init__(self, db_path: str = "./cache/market_data.db"):
@@ -50,60 +56,87 @@ class SQLiteDataManager:
         logger.info(f"SQLiteDataManager initialized: {db_path}")
     
     def _init_schema(self) -> None:
-        """Create database tables if they don't exist."""
+        """Create metadata table. Individual tables created on demand."""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
-            # Stock daily data table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS stock_daily (
-                    symbol TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    open REAL,
-                    high REAL,
-                    low REAL,
-                    close REAL,
-                    volume REAL,
-                    adj_type TEXT,
-                    PRIMARY KEY (symbol, date, adj_type)
-                )
-            """)
-            
-            # Index daily data table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS index_daily (
-                    symbol TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    close REAL,
-                    adj_type TEXT,
-                    PRIMARY KEY (symbol, date, adj_type)
-                )
-            """)
-            
-            # Metadata table for tracking data ranges
+            # Metadata table for tracking all symbols and tables
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
                     symbol TEXT NOT NULL,
                     data_type TEXT NOT NULL,
                     adj_type TEXT NOT NULL,
-                    first_date TEXT,
-                    last_date TEXT,
-                    last_update TEXT,
+                    table_name TEXT NOT NULL,
+                    start_date TEXT,
+                    end_date TEXT,
+                    record_count INTEGER DEFAULT 0,
+                    last_updated TEXT,
                     PRIMARY KEY (symbol, data_type, adj_type)
                 )
             """)
             
-            # Create indexes for faster queries
+            # Create index for faster lookups
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_stock_symbol_date 
-                ON stock_daily (symbol, date)
+                CREATE INDEX IF NOT EXISTS idx_metadata_symbol 
+                ON metadata (symbol, data_type)
             """)
             
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_index_symbol_date 
-                ON index_daily (symbol, date)
+            conn.commit()
+    
+    @staticmethod
+    def _normalize_table_name(symbol: str, data_type: str) -> str:
+        """
+        Generate normalized table name from symbol.
+        
+        Args:
+            symbol: Symbol code (e.g., "600519.SH", "000300.SH", "^GSPC")
+            data_type: 'stock' or 'index'
+        
+        Returns:
+            Normalized table name (e.g., "stock_600519_SH", "index_000300_SH")
+        """
+        # Remove special characters and replace with underscore
+        normalized = symbol.replace(".", "_").replace("^", "").replace("-", "_")
+        return f"{data_type}_{normalized}"
+    
+    def _create_stock_table(self, table_name: str) -> None:
+        """Create table for individual stock."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    date TEXT NOT NULL PRIMARY KEY,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    close REAL,
+                    volume REAL,
+                    adj_type TEXT
+                )
             """)
-            
+            # Create index on date
+            cursor.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_date 
+                ON {table_name} (date)
+            """)
+            conn.commit()
+    
+    def _create_index_table(self, table_name: str) -> None:
+        """Create table for individual index."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {table_name} (
+                    date TEXT NOT NULL PRIMARY KEY,
+                    close REAL,
+                    adj_type TEXT
+                )
+            """)
+            # Create index on date
+            cursor.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_{table_name}_date 
+                ON {table_name} (date)
+            """)
             conn.commit()
     
     # -----------------------------------------------------------------------
@@ -120,51 +153,45 @@ class SQLiteDataManager:
         Save stock OHLCV data to database.
         
         Args:
-            symbol: Stock symbol
+            symbol: Stock symbol (e.g., "600519.SH")
             df: DataFrame with date index and OHLCV columns
             adj_type: Adjustment type (noadj, qfq, hfq)
         """
         if df.empty:
             return
         
+        # Generate table name
+        table_name = self._normalize_table_name(symbol, 'stock')
+        
+        # Create table if not exists
+        self._create_stock_table(table_name)
+        
         # Prepare data
         df = df.copy()
-        df['symbol'] = symbol
         df['adj_type'] = adj_type
         df['date'] = df.index.strftime('%Y-%m-%d')
         
         # Required columns
-        columns = ['symbol', 'date', 'open', 'high', 'low', 'close', 'volume', 'adj_type']
+        columns = ['date', 'open', 'high', 'low', 'close', 'volume', 'adj_type']
         
         with sqlite3.connect(self.db_path) as conn:
             # Insert or replace data
-            df[columns].to_sql(
-                'stock_daily',
-                conn,
-                if_exists='append',
-                index=False,
-                method='multi'
-            )
-            
-            # Remove duplicates (keep latest)
-            conn.execute("""
-                DELETE FROM stock_daily
-                WHERE rowid NOT IN (
-                    SELECT MAX(rowid)
-                    FROM stock_daily
-                    GROUP BY symbol, date, adj_type
-                )
-            """)
+            for _, row in df[columns].iterrows():
+                conn.execute(f"""
+                    INSERT OR REPLACE INTO {table_name} 
+                    (date, open, high, low, close, volume, adj_type)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, tuple(row))
             
             # Update metadata
             self._update_metadata(
-                conn, symbol, 'stock', adj_type,
-                df.index.min(), df.index.max()
+                conn, symbol, 'stock', adj_type, table_name,
+                df.index.min(), df.index.max(), len(df)
             )
             
             conn.commit()
         
-        logger.debug(f"Saved {len(df)} rows for {symbol} ({adj_type})")
+        logger.debug(f"Saved {len(df)} rows for {symbol} to table {table_name}")
     
     def load_stock_data(
         self,
@@ -185,20 +212,27 @@ class SQLiteDataManager:
         Returns:
             DataFrame with date index, or None if no data
         """
-        query = """
+        table_name = self._normalize_table_name(symbol, 'stock')
+        
+        # Check if table exists
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name=?
+            """, (table_name,))
+            if not cursor.fetchone():
+                return None
+        
+        query = f"""
             SELECT date, open, high, low, close, volume
-            FROM stock_daily
-            WHERE symbol = ? AND adj_type = ?
-              AND date >= ? AND date <= ?
+            FROM {table_name}
+            WHERE adj_type = ? AND date >= ? AND date <= ?
             ORDER BY date
         """
         
         with sqlite3.connect(self.db_path) as conn:
-            df = pd.read_sql_query(
-                query,
-                conn,
-                params=(symbol, adj_type, start, end)
-            )
+            df = pd.read_sql_query(query, conn, params=(adj_type, start, end))
         
         if df.empty:
             return None
@@ -222,6 +256,11 @@ class SQLiteDataManager:
         """
         Save index data to database.
         
+        Supports various index types:
+        - A股指数: 000300.SH (沪深300), 000001.SH (上证指数), 399001.SZ (深证成指)
+        - 港股指数: ^HSI (恒生指数)
+        - 美股指数: ^GSPC (标普500), ^DJI (道琼斯), ^IXIC (纳斯达克)
+        
         Args:
             symbol: Index symbol
             df: DataFrame with date index and close column
@@ -230,44 +269,38 @@ class SQLiteDataManager:
         if df.empty:
             return
         
+        # Generate table name
+        table_name = self._normalize_table_name(symbol, 'index')
+        
+        # Create table if not exists
+        self._create_index_table(table_name)
+        
         # Prepare data
         df = df.copy()
-        df['symbol'] = symbol
         df['adj_type'] = adj_type
         df['date'] = df.index.strftime('%Y-%m-%d')
         
         # Required columns
-        columns = ['symbol', 'date', 'close', 'adj_type']
+        columns = ['date', 'close', 'adj_type']
         
         with sqlite3.connect(self.db_path) as conn:
             # Insert or replace data
-            df[columns].to_sql(
-                'index_daily',
-                conn,
-                if_exists='append',
-                index=False,
-                method='multi'
-            )
-            
-            # Remove duplicates
-            conn.execute("""
-                DELETE FROM index_daily
-                WHERE rowid NOT IN (
-                    SELECT MAX(rowid)
-                    FROM index_daily
-                    GROUP BY symbol, date, adj_type
-                )
-            """)
+            for _, row in df[columns].iterrows():
+                conn.execute(f"""
+                    INSERT OR REPLACE INTO {table_name} 
+                    (date, close, adj_type)
+                    VALUES (?, ?, ?)
+                """, tuple(row))
             
             # Update metadata
             self._update_metadata(
-                conn, symbol, 'index', adj_type,
-                df.index.min(), df.index.max()
+                conn, symbol, 'index', adj_type, table_name,
+                df.index.min(), df.index.max(), len(df)
             )
             
             conn.commit()
         
-        logger.debug(f"Saved {len(df)} rows for index {symbol} ({adj_type})")
+        logger.debug(f"Saved {len(df)} rows for index {symbol} to table {table_name}")
     
     def load_index_data(
         self,
@@ -288,20 +321,27 @@ class SQLiteDataManager:
         Returns:
             DataFrame with date index, or None if no data
         """
-        query = """
+        table_name = self._normalize_table_name(symbol, 'index')
+        
+        # Check if table exists
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name=?
+            """, (table_name,))
+            if not cursor.fetchone():
+                return None
+        
+        query = f"""
             SELECT date, close
-            FROM index_daily
-            WHERE symbol = ? AND adj_type = ?
-              AND date >= ? AND date <= ?
+            FROM {table_name}
+            WHERE adj_type = ? AND date >= ? AND date <= ?
             ORDER BY date
         """
         
         with sqlite3.connect(self.db_path) as conn:
-            df = pd.read_sql_query(
-                query,
-                conn,
-                params=(symbol, adj_type, start, end)
-            )
+            df = pd.read_sql_query(query, conn, params=(adj_type, start, end))
         
         if df.empty:
             return None
@@ -322,50 +362,35 @@ class SQLiteDataManager:
         symbol: str,
         data_type: str,
         adj_type: str,
-        first_date: datetime,
-        last_date: datetime
+        table_name: str,
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp,
+        record_count: int
     ) -> None:
-        """Update metadata table with data range information."""
-        cursor = conn.cursor()
+        """
+        Update metadata for symbol.
         
-        # Check if metadata exists
-        cursor.execute("""
-            SELECT first_date, last_date
-            FROM metadata
-            WHERE symbol = ? AND data_type = ? AND adj_type = ?
-        """, (symbol, data_type, adj_type))
-        
-        row = cursor.fetchone()
-        
-        if row:
-            # Update existing metadata
-            existing_first = datetime.strptime(row[0], '%Y-%m-%d')
-            existing_last = datetime.strptime(row[1], '%Y-%m-%d')
-            
-            new_first = min(first_date, existing_first)
-            new_last = max(last_date, existing_last)
-            
-            cursor.execute("""
-                UPDATE metadata
-                SET first_date = ?, last_date = ?, last_update = ?
-                WHERE symbol = ? AND data_type = ? AND adj_type = ?
-            """, (
-                new_first.strftime('%Y-%m-%d'),
-                new_last.strftime('%Y-%m-%d'),
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                symbol, data_type, adj_type
-            ))
-        else:
-            # Insert new metadata
-            cursor.execute("""
-                INSERT INTO metadata (symbol, data_type, adj_type, first_date, last_date, last_update)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                symbol, data_type, adj_type,
-                first_date.strftime('%Y-%m-%d'),
-                last_date.strftime('%Y-%m-%d'),
-                datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            ))
+        Args:
+            conn: Database connection
+            symbol: Symbol code
+            data_type: 'stock' or 'index'
+            adj_type: Adjustment type
+            table_name: Name of the data table
+            start_date: First date in data
+            end_date: Last date in data
+            record_count: Number of records
+        """
+        conn.execute("""
+            INSERT OR REPLACE INTO metadata
+            (symbol, data_type, adj_type, table_name, start_date, end_date, record_count, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            symbol, data_type, adj_type, table_name,
+            start_date.strftime('%Y-%m-%d'),
+            end_date.strftime('%Y-%m-%d'),
+            record_count,
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ))
     
     def get_data_range(
         self,
@@ -382,10 +407,10 @@ class SQLiteDataManager:
             adj_type: Adjustment type
         
         Returns:
-            Tuple of (first_date, last_date) or None if no data
+            Tuple of (start_date, end_date) or None if no data
         """
         query = """
-            SELECT first_date, last_date
+            SELECT start_date, end_date
             FROM metadata
             WHERE symbol = ? AND data_type = ? AND adj_type = ?
         """
@@ -463,21 +488,20 @@ class SQLiteDataManager:
         """
         Clear all data for a specific symbol.
         
+        Drops the symbol's data table and removes metadata entry.
+        
         Args:
             symbol: Symbol identifier
             data_type: 'stock' or 'index'
             adj_type: Adjustment type
         """
-        table_name = f"{data_type}_daily"
+        table_name = self._normalize_table_name(symbol, data_type)
         
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
-            # Delete data
-            cursor.execute(
-                f"DELETE FROM {table_name} WHERE symbol = ? AND adj_type = ?",
-                (symbol, adj_type)
-            )
+            # Drop the table
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
             
             # Delete metadata
             cursor.execute(
@@ -487,7 +511,7 @@ class SQLiteDataManager:
             
             conn.commit()
         
-        logger.info(f"Cleared data for {symbol} ({data_type}, {adj_type})")
+        logger.info(f"Cleared data for {symbol} ({data_type}, {adj_type}), dropped table {table_name}")
     
     def get_all_symbols(self, data_type: str = "stock") -> List[str]:
         """
@@ -513,3 +537,186 @@ class SQLiteDataManager:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("VACUUM")
         logger.info("Database vacuumed")
+    
+    # -----------------------------------------------------------------------
+    # CSV Import Methods
+    # -----------------------------------------------------------------------
+    
+    def import_from_csv(
+        self,
+        csv_path: str,
+        symbol: str,
+        data_type: str,
+        adj_type: str = "noadj"
+    ) -> bool:
+        """
+        Import data from CSV file to database.
+        
+        Supports old CSV format from cache directory:
+        - Stock: ak_SYMBOL_START_END_ADJ.csv with columns: date, open, high, low, close, volume
+        - Index: ak_SYMBOL_START_END_ADJ.csv with columns: date, close
+        
+        Also supports Chinese column names:
+        - 日期 (date), 开盘 (open), 收盘 (close), 最高 (high), 最低 (low), 成交量 (volume)
+        
+        Args:
+            csv_path: Path to CSV file
+            symbol: Symbol code (e.g., "600519.SH", "000300.SH")
+            data_type: 'stock' or 'index'
+            adj_type: Adjustment type (noadj, qfq, hfq)
+        
+        Returns:
+            True if import successful, False otherwise
+        """
+        try:
+            import os
+            if not os.path.exists(csv_path):
+                logger.error(f"CSV file not found: {csv_path}")
+                return False
+            
+            # Read CSV
+            df = pd.read_csv(csv_path)
+            
+            # Map Chinese column names to English
+            column_mapping = {
+                '日期': 'date',
+                'Date': 'date',
+                '开盘': 'open',
+                'Open': 'open',
+                '收盘': 'close',
+                'Close': 'close',
+                '最高': 'high',
+                'High': 'high',
+                '最低': 'low',
+                'Low': 'low',
+                '成交量': 'volume',
+                'Volume': 'volume'
+            }
+            
+            # Rename columns
+            df.rename(columns=column_mapping, inplace=True)
+            
+            # Convert date column to datetime and set as index
+            if 'date' not in df.columns:
+                logger.error(f"No date column found in CSV: {csv_path}")
+                return False
+            
+            df['date'] = pd.to_datetime(df['date'])
+            df.set_index('date', inplace=True)
+            
+            if df.empty:
+                logger.warning(f"CSV file is empty: {csv_path}")
+                return False
+            
+            # Import based on data type
+            if data_type == 'stock':
+                # Validate required columns
+                required_cols = ['open', 'high', 'low', 'close', 'volume']
+                missing_cols = [col for col in required_cols if col not in df.columns]
+                if missing_cols:
+                    logger.error(f"Missing columns in stock CSV: {missing_cols}")
+                    return False
+                
+                # Select only required columns
+                df = df[required_cols]
+                self.save_stock_data(symbol, df, adj_type)
+                logger.info(f"Imported {len(df)} stock records from {csv_path}")
+                
+            elif data_type == 'index':
+                # Validate required columns
+                if 'close' not in df.columns:
+                    logger.error(f"Missing 'close' column in index CSV: {csv_path}")
+                    return False
+                
+                # Select only close column
+                df = df[['close']]
+                self.save_index_data(symbol, df, adj_type)
+                logger.info(f"Imported {len(df)} index records from {csv_path}")
+            
+            else:
+                logger.error(f"Invalid data_type: {data_type}")
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error importing CSV {csv_path}: {e}")
+            return False
+    
+    def batch_import_from_cache(
+        self,
+        cache_dir: str = "./cache"
+    ) -> Dict[str, int]:
+        """
+        Batch import all CSV files from cache directory.
+        
+        Automatically detects symbol, date range, and adjustment type from filename.
+        Filename pattern: ak_SYMBOL_START_END_ADJ.csv
+        
+        Args:
+            cache_dir: Path to cache directory containing CSV files
+        
+        Returns:
+            Dictionary with import statistics: {
+                'success': count,
+                'failed': count,
+                'skipped': count,
+                'files': [list of imported files]
+            }
+        """
+        import os
+        import re
+        
+        stats = {
+            'success': 0,
+            'failed': 0,
+            'skipped': 0,
+            'files': []
+        }
+        
+        if not os.path.exists(cache_dir):
+            logger.error(f"Cache directory not found: {cache_dir}")
+            return stats
+        
+        # Pattern: ak_SYMBOL_START_END_ADJ.csv
+        pattern = re.compile(r'ak_(.+?)_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}_(.+?)\.csv')
+        
+        for filename in os.listdir(cache_dir):
+            if not filename.endswith('.csv'):
+                continue
+            
+            match = pattern.match(filename)
+            if not match:
+                logger.debug(f"Skipping file with unrecognized pattern: {filename}")
+                stats['skipped'] += 1
+                continue
+            
+            symbol = match.group(1)
+            adj_type = match.group(2)
+            
+            # Determine data type based on symbol pattern
+            # Stock: 6 digits.SH/SZ (e.g., 600519.SH, 000001.SZ)
+            # Index: starts with 0003xx or 3990xx or other index patterns
+            if symbol.startswith('0003') or symbol.startswith('3990'):
+                data_type = 'index'
+            elif re.match(r'^\d{6}\.(SH|SZ)$', symbol):
+                data_type = 'stock'
+            elif symbol.startswith('^'):
+                data_type = 'index'
+            else:
+                # Default to stock for unknown patterns
+                data_type = 'stock'
+            
+            csv_path = os.path.join(cache_dir, filename)
+            
+            if self.import_from_csv(csv_path, symbol, data_type, adj_type):
+                stats['success'] += 1
+                stats['files'].append(filename)
+            else:
+                stats['failed'] += 1
+        
+        logger.info(f"Batch import complete: {stats['success']} success, "
+                    f"{stats['failed']} failed, {stats['skipped']} skipped")
+        
+        return stats
+
