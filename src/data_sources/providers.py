@@ -7,15 +7,25 @@ Provides unified interfaces for loading stock data from multiple sources:
 - TuShare
 
 Each provider implements the DataProvider interface for consistency.
+
+V2.10.1 Update:
+- Migrated from CSV file storage to SQLite3 database
+- Intelligent incremental data fetching (only download missing ranges)
+- Automatic data range detection and gap filling
 """
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Dict, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+
+from src.data_sources.db_manager import SQLiteDataManager
+
+logger = logging.getLogger(__name__)
 
 CACHE_DEFAULT = "./cache"
 
@@ -39,6 +49,18 @@ class DataProvider:
 
     name: str = "unknown"
 
+    def __init__(self, cache_dir: str = CACHE_DEFAULT):
+        """
+        Initialize data provider with SQLite database support.
+        
+        Args:
+            cache_dir: Cache directory for database storage
+        """
+        self.cache_dir = cache_dir
+        # Initialize database manager
+        db_path = os.path.join(cache_dir, "market_data.db")
+        self.db = SQLiteDataManager(db_path)
+
     def load_stock_daily(
         self,
         symbols: Sequence[str],
@@ -49,6 +71,46 @@ class DataProvider:
         cache_dir: str = CACHE_DEFAULT,
     ) -> Dict[str, pd.DataFrame]:
         """Return OHLCV history in a consistent pandas format."""
+        raise NotImplementedError
+
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch stock data from remote source (to be implemented by subclasses).
+        
+        Args:
+            symbol: Stock symbol
+            start: Start date
+            end: End date
+            adj: Adjustment type
+        
+        Returns:
+            DataFrame or None if fetch fails
+        """
+        raise NotImplementedError
+    
+    def _fetch_index_from_source(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch index data from remote source (to be implemented by subclasses).
+        
+        Args:
+            index_code: Index code
+            start: Start date
+            end: End date
+        
+        Returns:
+            DataFrame or None if fetch fails
+        """
         raise NotImplementedError
 
     def get_data(
@@ -84,11 +146,29 @@ class DataProvider:
 
     @staticmethod
     def _validate_dates(start: str, end: str) -> Tuple[str, str]:
-        """Ensure provider-friendly YYYYMMDD date strings."""
+        """
+        Validate and normalize date format to YYYY-MM-DD.
+        
+        Args:
+            start: Start date (YYYY-MM-DD or YYYYMMDD)
+            end: End date (YYYY-MM-DD or YYYYMMDD)
+        
+        Returns:
+            Tuple of normalized dates in YYYY-MM-DD format
+        """
         if not start or not end:
-            raise ValueError("start and end dates are required (YYYY-MM-DD)")
-        start_clean = start.replace("-", "").replace("/", "")
-        end_clean = end.replace("-", "").replace("/", "")
+            raise ValueError("start and end dates are required")
+        
+        # Normalize to YYYY-MM-DD format
+        start_clean = start.replace("/", "-")
+        if "-" not in start_clean and len(start_clean) == 8:
+            # Convert YYYYMMDD to YYYY-MM-DD
+            start_clean = f"{start_clean[:4]}-{start_clean[4:6]}-{start_clean[6:8]}"
+        
+        end_clean = end.replace("/", "-")
+        if "-" not in end_clean and len(end_clean) == 8:
+            end_clean = f"{end_clean[:4]}-{end_clean[4:6]}-{end_clean[6:8]}"
+        
         return start_clean, end_clean
 
 
@@ -187,7 +267,7 @@ def _nav_from_close(close: pd.Series) -> pd.Series:
 # ---------------------------------------------------------------------------
 
 class AkshareProvider(DataProvider):
-    """Load stock/index data from AKShare."""
+    """Load stock/index data from AKShare with SQLite3 caching."""
 
     name = "akshare"
 
@@ -200,7 +280,11 @@ class AkshareProvider(DataProvider):
         adj: Optional[str] = None,
         cache_dir: str = CACHE_DEFAULT,
     ) -> Dict[str, pd.DataFrame]:
-        """Load daily OHLCV data for multiple stocks."""
+        """
+        Load daily OHLCV data for multiple stocks.
+        
+        Uses SQLite3 database for caching. Only fetches missing data ranges.
+        """
         try:
             import akshare as ak
         except ImportError as exc:
@@ -208,62 +292,106 @@ class AkshareProvider(DataProvider):
 
         self._ensure_cache(cache_dir)
         start_clean, end_clean = self._validate_dates(start, end)
+        
         # AKShare expects: "qfq" (前复权), "hfq" (后复权), "" (不复权)
-        adj_str = ""  # Default to no adjustment
+        adj_type = "noadj"
+        adj_str = ""
         if adj and adj.lower() in ["qfq", "hfq"]:
             adj_str = adj.lower()
+            adj_type = adj_str
 
         result = {}
         for symbol in symbols:
-            # AKShare expects pure symbol without exchange suffix (e.g., "600519" not "600519.SH")
-            ak_symbol = symbol.replace(".SH", "").replace(".SZ", "")
-            
-            cache_suffix = adj_str if adj_str else "noadj"
-            cache_file = os.path.join(
-                cache_dir, f"ak_{symbol}_{start}_{end}_{cache_suffix}.csv"
-            )
-            if os.path.exists(cache_file):
-                # Try to read with index_col=0 first (standardized format)
-                try:
-                    df = pd.read_csv(cache_file, index_col=0, parse_dates=[0])
-                    # Check if already standardized
-                    if 'date' not in df.index.name and df.index.name != 'date':
-                        # Not standardized, try to standardize
-                        df = _standardize_stock_frame(df.reset_index())
-                except Exception:
-                    # Old format with Chinese columns, re-standardize
-                    df = pd.read_csv(cache_file)
-                    df = _standardize_stock_frame(df)
-            else:
-                try:
-                    df = ak.stock_zh_a_hist(
-                        symbol=ak_symbol,
-                        period="daily",
-                        start_date=start_clean,
-                        end_date=end_clean,
-                        adjust=adj_str,
-                    )
-                    if df.empty:
-                        print(f"⚠️ {symbol}: AKShare returned empty DataFrame")
+            try:
+                # Check database for existing data
+                existing_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                
+                # Check for missing ranges
+                missing_ranges = self.db.get_missing_ranges(
+                    symbol, 'stock', start_clean, end_clean, adj_type
+                )
+                
+                if not missing_ranges:
+                    # All data available in database
+                    if existing_df is not None and not existing_df.empty:
+                        logger.info(f"✓ {symbol}: Loaded from database ({len(existing_df)} bars)")
+                        result[symbol] = existing_df
                         continue
-                    df = _standardize_stock_frame(df)
-                    if df.empty:
-                        print(f"⚠️ {symbol}: DataFrame is empty after standardization")
-                        continue
-                    df.to_csv(cache_file)
-                    time.sleep(0.3)
-                except Exception as e:
-                    import traceback
-                    print(f"⚠️ Failed to load {symbol} from AKShare: {e}")
-                    print(f"   Traceback: {traceback.format_exc()[:200]}")
-                    continue
-
-            if not df.empty:
-                result[symbol] = df
-            else:
-                print(f"⚠️ {symbol}: DataFrame is empty after loading")
+                
+                # Fetch missing data from AKShare
+                logger.info(f"↓ {symbol}: Fetching {len(missing_ranges)} missing range(s) from AKShare")
+                
+                for fetch_start, fetch_end in missing_ranges:
+                    df_new = self._fetch_stock_from_source(symbol, fetch_start, fetch_end, adj_str)
+                    if df_new is not None and not df_new.empty:
+                        # Save to database
+                        self.db.save_stock_data(symbol, df_new, adj_type)
+                        logger.debug(f"  Saved {len(df_new)} bars for range {fetch_start} to {fetch_end}")
+                
+                # Load complete data from database
+                final_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                
+                if final_df is not None and not final_df.empty:
+                    result[symbol] = final_df
+                    logger.info(f"✓ {symbol}: Complete ({len(final_df)} bars)")
+                else:
+                    logger.warning(f"✗ {symbol}: No data available")
+                    
+            except Exception as e:
+                logger.error(f"✗ {symbol}: Error loading data: {e}")
+                continue
 
         return result
+    
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch stock data from AKShare API.
+        
+        Args:
+            symbol: Stock symbol (e.g., "600519.SH")
+            start: Start date
+            end: End date
+            adj: Adjustment type ("qfq", "hfq", or empty)
+        
+        Returns:
+            Standardized DataFrame or None
+        """
+        try:
+            import akshare as ak
+        except ImportError:
+            return None
+        
+        # AKShare expects pure symbol without exchange suffix
+        ak_symbol = symbol.replace(".SH", "").replace(".SZ", "")
+        
+        try:
+            df = ak.stock_zh_a_hist(
+                symbol=ak_symbol,
+                period="daily",
+                start_date=start.replace("-", ""),
+                end_date=end.replace("-", ""),
+                adjust=adj or "",
+            )
+            
+            if df is None or df.empty:
+                return None
+            
+            df = _standardize_stock_frame(df)
+            
+            # Filter to requested date range
+            df = df.loc[start:end]
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"AKShare fetch error for {symbol}: {e}")
+            return None
 
     def load_index_nav(
         self,
@@ -273,7 +401,11 @@ class AkshareProvider(DataProvider):
         *,
         cache_dir: str = CACHE_DEFAULT,
     ) -> pd.Series:
-        """Load index data and convert to NAV series."""
+        """
+        Load index data and convert to NAV series.
+        
+        Uses SQLite3 database for caching with incremental updates.
+        """
         try:
             import akshare as ak
         except ImportError as exc:
@@ -281,7 +413,65 @@ class AkshareProvider(DataProvider):
 
         self._ensure_cache(cache_dir)
         start_clean, end_clean = self._validate_dates(start, end)
+        adj_type = "noadj"  # Indexes don't have adjustments
 
+        try:
+            # Check database for existing data
+            existing_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
+            
+            # Check for missing ranges
+            missing_ranges = self.db.get_missing_ranges(
+                index_code, 'index', start_clean, end_clean, adj_type
+            )
+            
+            if not missing_ranges:
+                # All data available
+                if existing_df is not None and not existing_df.empty:
+                    logger.info(f"✓ Index {index_code}: Loaded from database")
+                    return _nav_from_close(existing_df["close"])
+            
+            # Fetch missing data
+            logger.info(f"↓ Index {index_code}: Fetching {len(missing_ranges)} missing range(s)")
+            
+            for fetch_start, fetch_end in missing_ranges:
+                df_new = self._fetch_index_from_source(index_code, fetch_start, fetch_end)
+                if df_new is not None and not df_new.empty:
+                    self.db.save_index_data(index_code, df_new, adj_type)
+            
+            # Load complete data
+            final_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
+            
+            if final_df is None or final_df.empty or "close" not in final_df.columns:
+                raise DataProviderError(f"No data available for index {index_code}")
+            
+            return _nav_from_close(final_df["close"])
+            
+        except Exception as e:
+            logger.error(f"Error loading index {index_code}: {e}")
+            raise DataProviderError(f"Failed to load index {index_code}: {e}")
+    
+    def _fetch_index_from_source(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+    ) -> Optional[pd.DataFrame]:
+        """
+        Fetch index data from AKShare API.
+        
+        Args:
+            index_code: Index code (e.g., "000300.SH")
+            start: Start date
+            end: End date
+        
+        Returns:
+            Standardized DataFrame or None
+        """
+        try:
+            import akshare as ak
+        except ImportError:
+            return None
+        
         # Convert index code to akshare format
         # e.g., 000300.SH -> sh000300, 399001.SZ -> sz399001
         ak_index_code = index_code
@@ -291,39 +481,25 @@ class AkshareProvider(DataProvider):
                 ak_index_code = f'sh{symbol}'
             elif exchange.upper() == 'SZ':
                 ak_index_code = f'sz{symbol}'
+        
+        try:
+            df = ak.stock_zh_index_daily(symbol=ak_index_code)
+            
+            if df is None or df.empty:
+                return None
+            
+            df = _standardize_index_frame(df)
+            
+            # Filter to requested date range
+            if not df.empty:
+                df = df.loc[start:end]
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"AKShare index fetch error for {index_code}: {e}")
+            return None
 
-        cache_file = os.path.join(
-            cache_dir, f"ak_index_{index_code}_{start_clean}_{end_clean}.csv"
-        )
-
-        if os.path.exists(cache_file):
-            try:
-                # Try reading with index_col=0 (standardized format)
-                df = pd.read_csv(cache_file, index_col=0, parse_dates=[0])
-                # Ensure index name is 'date'
-                if df.index.name != 'date':
-                    df.index.name = 'date'
-            except Exception:
-                # Fallback: re-standardize from raw data
-                df = pd.read_csv(cache_file)
-                df = _standardize_index_frame(df)
-        else:
-            try:
-                df = ak.stock_zh_index_daily(symbol=ak_index_code)
-                if df.empty:
-                    raise DataProviderError(f"AKShare returned empty data for {index_code}")
-                df = _standardize_index_frame(df)
-                # Filter date range
-                if not df.empty:
-                    df = df.loc[start_clean:end_clean]
-                df.to_csv(cache_file)
-            except Exception as e:
-                raise DataProviderError(f"Failed to load index {index_code}: {e}")
-
-        if df.empty or "close" not in df.columns:
-            raise DataProviderError(f"No close price data for index {index_code}")
-
-        return _nav_from_close(df["close"])
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +538,7 @@ def _standardize_yf(df: pd.DataFrame) -> pd.DataFrame:
 
 
 class YFinanceProvider(DataProvider):
-    """Load stock/index data from Yahoo Finance via yfinance."""
+    """Load stock/index data from Yahoo Finance via yfinance with SQLite3 caching."""
 
     name = "yfinance"
 
@@ -375,37 +551,71 @@ class YFinanceProvider(DataProvider):
         adj: Optional[str] = None,
         cache_dir: str = CACHE_DEFAULT,
     ) -> Dict[str, pd.DataFrame]:
-        """Load daily OHLCV data for multiple stocks."""
+        """Load daily OHLCV data with intelligent caching."""
         try:
             import yfinance as yf
         except ImportError as exc:
             raise DataProviderUnavailable("yfinance not available") from exc
 
         self._ensure_cache(cache_dir)
+        start_clean, end_clean = self._validate_dates(start, end)
+        adj_type = "qfq" if adj == "qfq" else "noadj"
+
         result = {}
-
         for symbol in symbols:
-            cache_file = os.path.join(
-                cache_dir, f"yf_{symbol}_{start}_{end}.csv"
-            )
-
-            if os.path.exists(cache_file):
-                df = pd.read_csv(cache_file, parse_dates=["date"], index_col="date")
-            else:
-                try:
-                    ticker = yf.Ticker(symbol)
-                    df = ticker.history(start=start, end=end, auto_adjust=(adj == "qfq"))
-                    df = _standardize_yf(df)
-                    df.to_csv(cache_file)
-                    time.sleep(0.2)
-                except Exception as e:
-                    print(f"⚠️ Failed to load {symbol} from YFinance: {e}")
+            try:
+                # Check database
+                existing_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                missing_ranges = self.db.get_missing_ranges(
+                    symbol, 'stock', start_clean, end_clean, adj_type
+                )
+                
+                if not missing_ranges and existing_df is not None:
+                    logger.info(f"✓ {symbol}: Loaded from database")
+                    result[symbol] = existing_df
                     continue
-
-            if not df.empty:
-                result[symbol] = df
+                
+                # Fetch missing data
+                logger.info(f"↓ {symbol}: Fetching from YFinance")
+                for fetch_start, fetch_end in missing_ranges:
+                    df_new = self._fetch_stock_from_source(symbol, fetch_start, fetch_end, adj)
+                    if df_new is not None:
+                        self.db.save_stock_data(symbol, df_new, adj_type)
+                
+                # Load complete data
+                final_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                if final_df is not None:
+                    result[symbol] = final_df
+                    
+            except Exception as e:
+                logger.error(f"✗ {symbol}: {e}")
+                continue
 
         return result
+    
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        """Fetch stock data from YFinance API."""
+        try:
+            import yfinance as yf
+        except ImportError:
+            return None
+        
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(start=start, end=end, auto_adjust=(adj == "qfq"))
+            if df is None or df.empty:
+                return None
+            df = _standardize_yf(df)
+            return df
+        except Exception as e:
+            logger.error(f"YFinance fetch error for {symbol}: {e}")
+            return None
 
     def load_index_nav(
         self,
@@ -415,32 +625,64 @@ class YFinanceProvider(DataProvider):
         *,
         cache_dir: str = CACHE_DEFAULT,
     ) -> pd.Series:
-        """Load index data and convert to NAV series."""
+        """Load index data with SQLite3 caching."""
         try:
             import yfinance as yf
         except ImportError as exc:
             raise DataProviderUnavailable("yfinance not available") from exc
 
         self._ensure_cache(cache_dir)
-        cache_file = os.path.join(
-            cache_dir, f"yf_index_{index_code}_{start}_{end}.csv"
-        )
+        start_clean, end_clean = self._validate_dates(start, end)
+        adj_type = "noadj"
 
-        if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file, parse_dates=["date"], index_col="date")
-        else:
-            try:
-                ticker = yf.Ticker(index_code)
-                df = ticker.history(start=start, end=end)
-                df = _standardize_yf(df)
-                df.to_csv(cache_file)
-            except Exception as e:
-                raise DataProviderError(f"Failed to load index {index_code}: {e}")
-
-        if "close" not in df.columns or df.empty:
-            raise DataProviderError(f"No close price data for index {index_code}")
-
-        return _nav_from_close(df["close"])
+        try:
+            # Check database
+            existing_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
+            missing_ranges = self.db.get_missing_ranges(
+                index_code, 'index', start_clean, end_clean, adj_type
+            )
+            
+            if not missing_ranges and existing_df is not None:
+                return _nav_from_close(existing_df["close"])
+            
+            # Fetch missing data
+            for fetch_start, fetch_end in missing_ranges:
+                df_new = self._fetch_index_from_source(index_code, fetch_start, fetch_end)
+                if df_new is not None:
+                    self.db.save_index_data(index_code, df_new, adj_type)
+            
+            # Load complete data
+            final_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
+            if final_df is None or "close" not in final_df.columns:
+                raise DataProviderError(f"No data for index {index_code}")
+            
+            return _nav_from_close(final_df["close"])
+            
+        except Exception as e:
+            raise DataProviderError(f"Failed to load index {index_code}: {e}")
+    
+    def _fetch_index_from_source(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+    ) -> Optional[pd.DataFrame]:
+        """Fetch index data from YFinance API."""
+        try:
+            import yfinance as yf
+        except ImportError:
+            return None
+        
+        try:
+            ticker = yf.Ticker(index_code)
+            df = ticker.history(start=start, end=end)
+            if df is None or df.empty:
+                return None
+            df = _standardize_yf(df)
+            return df
+        except Exception as e:
+            logger.error(f"YFinance index fetch error for {index_code}: {e}")
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -448,12 +690,14 @@ class YFinanceProvider(DataProvider):
 # ---------------------------------------------------------------------------
 
 class TuShareProvider(DataProvider):
-    """Load stock/index data from TuShare (requires token)."""
+    """Load stock/index data from TuShare (requires token) with SQLite3 caching."""
 
     name = "tushare"
 
-    def __init__(self, token: Optional[str] = None):
-        """Initialize TuShare provider with API token."""
+    def __init__(self, token: Optional[str] = None, cache_dir: str = CACHE_DEFAULT):
+        """Initialize TuShare provider with API token and database."""
+        super().__init__(cache_dir)
+        
         try:
             import tushare as ts
         except ImportError as exc:
@@ -477,45 +721,74 @@ class TuShareProvider(DataProvider):
         adj: Optional[str] = None,
         cache_dir: str = CACHE_DEFAULT,
     ) -> Dict[str, pd.DataFrame]:
-        """Load daily OHLCV data for multiple stocks."""
+        """Load daily OHLCV data with intelligent caching."""
         self._ensure_cache(cache_dir)
         start_clean, end_clean = self._validate_dates(start, end)
+        adj_type = "qfq" if adj == "qfq" else "noadj"
 
         result = {}
-        adj_factor = "qfq" if adj == "qfq" else None
-
         for symbol in symbols:
-            cache_file = os.path.join(
-                cache_dir, f"ts_{symbol}_{start_clean}_{end_clean}_{adj or 'noadj'}.csv"
-            )
-
-            if os.path.exists(cache_file):
-                df = pd.read_csv(cache_file, parse_dates=["date"], index_col="date")
-            else:
-                try:
-                    df = self.pro.daily(
-                        ts_code=symbol,
-                        start_date=start_clean,
-                        end_date=end_clean,
-                        adj=adj_factor,
-                    )
-                    if df.empty:
-                        continue
-
-                    df = df.rename(columns={"trade_date": "date", "vol": "volume"})
-                    df["date"] = pd.to_datetime(df["date"])
-                    df.set_index("date", inplace=True)
-                    df = df.sort_index()
-                    df.to_csv(cache_file)
-                    time.sleep(0.3)
-                except Exception as e:
-                    print(f"⚠️ Failed to load {symbol} from TuShare: {e}")
+            try:
+                # Check database
+                existing_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                missing_ranges = self.db.get_missing_ranges(
+                    symbol, 'stock', start_clean, end_clean, adj_type
+                )
+                
+                if not missing_ranges and existing_df is not None:
+                    logger.info(f"✓ {symbol}: Loaded from database")
+                    result[symbol] = existing_df
                     continue
-
-            if not df.empty:
-                result[symbol] = df
+                
+                # Fetch missing data
+                logger.info(f"↓ {symbol}: Fetching from TuShare")
+                for fetch_start, fetch_end in missing_ranges:
+                    df_new = self._fetch_stock_from_source(symbol, fetch_start, fetch_end, adj)
+                    if df_new is not None:
+                        self.db.save_stock_data(symbol, df_new, adj_type)
+                
+                # Load complete data
+                final_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                if final_df is not None:
+                    result[symbol] = final_df
+                    
+            except Exception as e:
+                logger.error(f"✗ {symbol}: {e}")
+                continue
 
         return result
+    
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        """Fetch stock data from TuShare API."""
+        try:
+            adj_factor = "qfq" if adj == "qfq" else None
+            df = self.pro.daily(
+                ts_code=symbol,
+                start_date=start.replace("-", ""),
+                end_date=end.replace("-", ""),
+                adj=adj_factor,
+            )
+            
+            if df is None or df.empty:
+                return None
+            
+            # Standardize
+            df = df.rename(columns={"trade_date": "date", "vol": "volume"})
+            df["date"] = pd.to_datetime(df["date"])
+            df.set_index("date", inplace=True)
+            df = df.sort_index()
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"TuShare fetch error for {symbol}: {e}")
+            return None
 
     def load_index_nav(
         self,
@@ -525,51 +798,91 @@ class TuShareProvider(DataProvider):
         *,
         cache_dir: str = CACHE_DEFAULT,
     ) -> pd.Series:
-        """Load index data and convert to NAV series."""
+        """Load index data with SQLite3 caching."""
         self._ensure_cache(cache_dir)
         start_clean, end_clean = self._validate_dates(start, end)
+        adj_type = "noadj"
 
-        cache_file = os.path.join(
-            cache_dir, f"ts_index_{index_code}_{start_clean}_{end_clean}.csv"
-        )
-
-        if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file, parse_dates=["date"], index_col="date")
-        else:
-            try:
-                df = self.pro.index_daily(
-                    ts_code=index_code, start_date=start_clean, end_date=end_clean
-                )
-                df = df.rename(columns={"trade_date": "date"})
-                df["date"] = pd.to_datetime(df["date"])
-                df.set_index("date", inplace=True)
-                df = df.sort_index()
-                df.to_csv(cache_file)
-            except Exception as e:
-                raise DataProviderError(f"Failed to load index {index_code}: {e}")
-
-        if "close" not in df.columns or df.empty:
-            raise DataProviderError(f"No close price data for index {index_code}")
-
-        return _nav_from_close(df["close"])
+        try:
+            # Check database
+            existing_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
+            missing_ranges = self.db.get_missing_ranges(
+                index_code, 'index', start_clean, end_clean, adj_type
+            )
+            
+            if not missing_ranges and existing_df is not None:
+                return _nav_from_close(existing_df["close"])
+            
+            # Fetch missing data
+            for fetch_start, fetch_end in missing_ranges:
+                df_new = self._fetch_index_from_source(index_code, fetch_start, fetch_end)
+                if df_new is not None:
+                    self.db.save_index_data(index_code, df_new, adj_type)
+            
+            # Load complete data
+            final_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
+            if final_df is None or "close" not in final_df.columns:
+                raise DataProviderError(f"No data for index {index_code}")
+            
+            return _nav_from_close(final_df["close"])
+            
+        except Exception as e:
+            raise DataProviderError(f"Failed to load index {index_code}: {e}")
+    
+    def _fetch_index_from_source(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+    ) -> Optional[pd.DataFrame]:
+        """Fetch index data from TuShare API."""
+        try:
+            df = self.pro.index_daily(
+                ts_code=index_code,
+                start_date=start.replace("-", ""),
+                end_date=end.replace("-", "")
+            )
+            
+            if df is None or df.empty:
+                return None
+            
+            df = df.rename(columns={"trade_date": "date"})
+            df["date"] = pd.to_datetime(df["date"])
+            df.set_index("date", inplace=True)
+            df = df.sort_index()
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"TuShare index fetch error for {index_code}: {e}")
+            return None
 
 
 # ---------------------------------------------------------------------------
 # Factory Function
 # ---------------------------------------------------------------------------
+# Factory Function
+# ---------------------------------------------------------------------------
 
-_PROVIDER_FACTORIES = {
-    "akshare": lambda: AkshareProvider(),
-    "yfinance": lambda: YFinanceProvider(),
-    "tushare": lambda: TuShareProvider(),
-}
+def get_provider(name: str, cache_dir: str = CACHE_DEFAULT) -> DataProvider:
+    """
+    Factory function to create data provider instances.
+    
+    Args:
+        name: Provider name ('akshare', 'yfinance', 'tushare')
+        cache_dir: Cache directory for database storage
+    
+    Returns:
+        DataProvider instance
+    """
+    if name == "akshare":
+        return AkshareProvider(cache_dir)
+    elif name == "yfinance":
+        return YFinanceProvider(cache_dir)
+    elif name == "tushare":
+        return TuShareProvider(cache_dir=cache_dir)
+    else:
+        raise ValueError(f"Unknown provider: {name}. Available: {PROVIDER_NAMES}")
 
 # Export available provider names for CLI
-PROVIDER_NAMES = list(_PROVIDER_FACTORIES.keys())
-
-
-def get_provider(name: str) -> DataProvider:
-    """Factory function to create data provider instances."""
-    if name not in _PROVIDER_FACTORIES:
-        raise ValueError(f"Unknown provider: {name}. Available: {PROVIDER_NAMES}")
-    return _PROVIDER_FACTORIES[name]()
+PROVIDER_NAMES = ["akshare", "yfinance", "tushare"]

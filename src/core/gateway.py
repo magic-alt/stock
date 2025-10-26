@@ -149,7 +149,7 @@ class BacktestGateway:
             cache_dir: Directory for caching downloaded data
         """
         from src.data_sources.providers import get_provider
-        self._prov = get_provider(source)
+        self._prov = get_provider(source, cache_dir=cache_dir)
         self._cache = cache_dir
         self._source = source
 
