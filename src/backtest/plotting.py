@@ -24,6 +24,7 @@ class TradeLogger(bt.Observer):
     
     def __init__(self):
         self.trades = []
+        self.processed_orders = set()  # 记录已处理的订单，避免重复
     
     def next(self):
         # 记录当前日期和价格
@@ -33,16 +34,28 @@ class TradeLogger(bt.Observer):
         # 检查是否有订单执行
         for order in self._owner.broker.orders:
             if order.status == order.Completed:
+                # 使用订单ID避免重复处理
+                order_id = id(order)
+                if order_id in self.processed_orders:
+                    continue
+                self.processed_orders.add(order_id)
+                
+                # 根据value直接计算费用（避免order.executed.comm的复杂存储方式）
+                value = abs(order.executed.value)
+                if order.isbuy():
+                    total_cost = value * 0.0001  # 买入：仅佣金
+                else:
+                    total_cost = value * 0.0006  # 卖出：佣金+印花税
+                
                 trade_info = {
                     'date': current_date,
                     'type': 'BUY' if order.isbuy() else 'SELL',
                     'size': order.executed.size,
                     'price': order.executed.price,
                     'value': order.executed.value,
-                    'commission': order.executed.comm,
+                    'commission': total_cost,
                 }
-                if trade_info not in self.trades:
-                    self.trades.append(trade_info)
+                self.trades.append(trade_info)
 
 
 def print_trade_analysis(cerebro: bt.Cerebro) -> None:
@@ -77,6 +90,13 @@ def print_trade_analysis(cerebro: bt.Cerebro) -> None:
             for order in strat._orders:
                 if order.status in [order.Completed]:
                     exec_date = bt.num2date(order.executed.dt)
+                    # 根据value直接计算费用
+                    value = abs(order.executed.value)
+                    if order.isbuy():
+                        total_cost = value * 0.0001  # 买入：仅佣金
+                    else:
+                        total_cost = value * 0.0006  # 卖出：佣金+印花税
+                    
                     orders_log.append({
                         'date': exec_date,
                         'type': 'BUY' if order.isbuy() else 'SELL',
@@ -84,7 +104,7 @@ def print_trade_analysis(cerebro: bt.Cerebro) -> None:
                         'size': order.executed.size,
                         'price': order.executed.price,
                         'cost': order.executed.value,
-                        'commission': order.executed.comm,
+                        'commission': total_cost,
                     })
         
         # 如果没有找到订单，尝试从 notify 系统获取
@@ -100,15 +120,15 @@ def print_trade_analysis(cerebro: bt.Cerebro) -> None:
                 date_str = log['date'].strftime('%Y-%m-%d')
                 if log['action'] == 'EXECUTED':
                     if log['type'] == 'BUY':
-                        # 买入：显示佣金（保留4位小数以显示小额佣金）
+                        # 买入：显示总佣金（保留2位小数）
                         print(f"{date_str}, BUY EXECUTED, Size {int(log['size'])}, "
                               f"Price: {log['price']:.2f}, Cost: {log['cost']:.2f}, "
-                              f"Commission {log['commission']:.4f}")
+                              f"Commission {log['commission']:.2f}")
                     else:
                         # 卖出：显示总费用（佣金+印花税）
                         print(f"{date_str}, SELL EXECUTED, Size {int(log['size'])}, "
                               f"Price: {log['price']:.2f}, Value: {log['cost']:.2f}, "
-                              f"Commission {log['commission']:.4f}")
+                              f"Commission {log['commission']:.2f}")
         else:
             print("提示: 无法获取详细交易日志，请查看下方统计摘要")
         
@@ -284,7 +304,17 @@ def plot_backtest_with_indicators(
         )
         
         print("\n正在生成图表...")
-        figs = cerebro.plot(**plot_kwargs)
+        
+        # 临时关闭matplotlib交互模式，防止弹出多余窗口
+        was_interactive = plt.isinteractive()
+        plt.ioff()  # 关闭交互模式
+        
+        try:
+            figs = cerebro.plot(**plot_kwargs)
+        finally:
+            # 恢复原始交互模式
+            if was_interactive:
+                plt.ion()
         
         # 手动添加买卖点标记（因为 Backtrader 默认标记可能不明显）
         try:
@@ -440,20 +470,32 @@ def plot_backtest_with_indicators(
         
         # 保存或显示
         if out_file:
-            # 关闭所有空白图表，只保存第一个
+            # 只保存第一个有效的图表
             if figs and len(figs) > 0:
                 fig_to_save = figs[0][0]
                 fig_to_save.savefig(out_file, dpi=300, bbox_inches='tight')
                 print(f"[OK] 图表已保存到: {out_file}")
-                # 关闭所有图表
-                plt.close('all')
             else:
+                # 如果 cerebro.plot() 没有返回figure，尝试保存当前figure
                 plt.savefig(out_file, dpi=300, bbox_inches='tight')
                 print(f"[OK] 图表已保存到: {out_file}")
-                plt.close('all')
+            # 关闭所有图表，避免残留
+            plt.close('all')
         else:
+            # 交互显示模式：只显示第一个有效的图表
+            if figs and len(figs) > 0:
+                # 关闭除第一个之外的所有图表
+                all_figs = plt.get_fignums()
+                if len(all_figs) > 1:
+                    # 保留第一个figure，关闭其他
+                    for fignum in all_figs[1:]:
+                        plt.close(fignum)
+                    print(f"[提示] 已关闭 {len(all_figs)-1} 个空白图表，只显示主图")
+            
             print("[OK] 图表生成完成，关闭窗口继续...")
             plt.show()
+            # 显示后关闭所有
+            plt.close('all')
             
     except ImportError as e:
         print(f"[错误] 绘图失败: 缺少依赖库 - {e}")

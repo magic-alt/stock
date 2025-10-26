@@ -267,7 +267,7 @@ class MACD_RegimePullback(bt.Strategy):
                                        period_signal=self.params.signal)
         self.xover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal, plot=False)
         self.ema_trend = bt.indicators.EMA(self.data.close, period=self.params.ema_trend_period, plot=False)
-        self.ema_trend_slope = self.ema_trend - self.ema_trend(-1)
+        # 移除危险的数组操作：self.ema_trend_slope = self.ema_trend - self.ema_trend(-1)
         self.roc = bt.indicators.RateOfChange(self.data.close, period=self.params.roc_period, plot=False)
         self.ema_entry = bt.indicators.EMA(self.data.close, period=self.params.ema_entry_period, plot=False)
         self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period, plot=False)
@@ -291,6 +291,10 @@ class MACD_RegimePullback(bt.Strategy):
     def log(self, s):
         if self.params.printlog:
             print(self.datas[0].datetime.date(0).isoformat(), s)
+
+    def prenext(self):
+        """在指标未完全初始化时被调用，避免访问未就绪的数据"""
+        pass
 
     def _atr_safe(self) -> float:
         """Safe ATR getter with fallback to 0"""
@@ -367,8 +371,15 @@ class MACD_RegimePullback(bt.Strategy):
         # 趋势过滤（更宽松：'or'）
         regime_ok = True
         if self.params.trend_filter:
-            ema_up = (self.ema_trend_slope[0] > 0)
+            # 安全访问，避免数组越界
+            ema_up = False
+            if len(self.ema_trend) >= 2:
+                ema_now = float(self.ema_trend[0])
+                ema_prev = float(self.ema_trend[-1])
+                ema_up = (ema_now > ema_prev)
+            
             roc_up = (self.roc[0] > 0)
+            
             if self.params.trend_logic.lower() == "and":
                 regime_ok = ema_up and roc_up
             else:
@@ -384,7 +395,11 @@ class MACD_RegimePullback(bt.Strategy):
         atr = self._atr_safe()
         ema20 = float(self.ema_entry[0])
         pullback_line = ema20 - self.params.pullback_k * (atr if atr > 0 else 0.01 * close)
-        macd_up = self.macd.macd[0] > self.macd.macd[-1]
+        
+        # 安全访问MACD历史数据
+        macd_up = False
+        if len(self.macd.macd) >= 2:
+            macd_up = self.macd.macd[0] > self.macd.macd[-1]
 
         cond_a = (float(self.data.low[0]) <= pullback_line) and (close > ema20)
         cond_b = (close <= ema20) and macd_up  # 相对温和
@@ -451,7 +466,8 @@ class MACD_EnhancedStrategy(bt.Strategy):
             period=self.params.ema_trend_period, 
             plot=False
         )
-        self.ema_trend_slope = self.ema_trend - self.ema_trend(-1)  # 简单斜率
+        # 使用安全的方式计算斜率，避免数组越界
+        # self.ema_trend_slope = self.ema_trend - self.ema_trend(-1)  # 危险：第一根K线会越界
         self.order = None
         self.last_exit_bar = -10**9
         self.entry_bar = None
@@ -461,6 +477,10 @@ class MACD_EnhancedStrategy(bt.Strategy):
         if self.params.printlog:
             dt = dt or self.datas[0].datetime.date(0)
             print(f"{dt.isoformat()} {txt}")
+
+    def prenext(self):
+        """在指标未完全初始化时被调用，避免访问未就绪的数据"""
+        pass
 
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
@@ -477,6 +497,10 @@ class MACD_EnhancedStrategy(bt.Strategy):
         i = len(self)
         close = float(self.data.close[0])
 
+        # 确保有足够的历史数据
+        if i < self.params.ema_trend_period + 1:
+            return
+
         # 止损/止盈（持仓中）
         if self.position:
             hold_bars = i - (self.entry_bar or i)
@@ -484,22 +508,27 @@ class MACD_EnhancedStrategy(bt.Strategy):
                 if self.params.take_profit_pct > 0 and self.entry_price:
                     if close >= self.entry_price * (1.0 + self.params.take_profit_pct):
                         self.log(f"TAKE PROFIT @ {close:.2f}")
-                        self.order = self.sell()
+                        self.order = self.close()  # 修复：使用close()而非sell()
+                        self.last_exit_bar = i
                         return
                 if self.params.stop_loss_pct > 0 and self.entry_price:
                     if close <= self.entry_price * (1.0 - self.params.stop_loss_pct):
                         self.log(f"STOP LOSS @ {close:.2f}")
-                        self.order = self.sell()
+                        self.order = self.close()  # 修复：使用close()而非sell()
+                        self.last_exit_bar = i
                         return
 
         # 冷却期：平仓后若干 bar 不再开仓
         if (i - self.last_exit_bar) < int(self.params.cooldown):
             return
 
-        # 趋势过滤：EMA200 斜率>0 才允许做多
+        # 趋势过滤：EMA200 斜率>0 才允许做多（安全访问）
         trend_ok = True
-        if self.params.trend_filter:
-            trend_ok = (self.ema_trend_slope[0] > 0)
+        if self.params.trend_filter and len(self.ema_trend) >= 2:
+            # 使用安全的索引访问，避免数组越界
+            ema_now = float(self.ema_trend[0])
+            ema_prev = float(self.ema_trend[-1])
+            trend_ok = (ema_now > ema_prev)
 
         if not self.position:
             if trend_ok and self.crossover > 0:
@@ -509,7 +538,7 @@ class MACD_EnhancedStrategy(bt.Strategy):
                 self.log(f"BUY (trend_ok={trend_ok}) @ {close:.2f}")
         else:
             if self.crossover < 0:
-                self.order = self.sell()
+                self.order = self.close()  # 修复：使用close()而非sell()
                 self.last_exit_bar = i
                 self.log(f"SELL @ {close:.2f}")
 

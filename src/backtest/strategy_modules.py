@@ -579,3 +579,592 @@ STRATEGY_REGISTRY: Dict[str, StrategyModule] = {}
 STRATEGY_REGISTRY.update(_convert_backtrader_registry_to_legacy())
 STRATEGY_REGISTRY["turning_point"] = TURNING_POINT_MODULE
 STRATEGY_REGISTRY["risk_parity"] = RISK_PARITY_MODULE  # Now added!
+
+
+# ---------------------------------------------------------------------------
+# ML Walk-Forward Strategy (Backtrader)
+# ---------------------------------------------------------------------------
+try:
+    from src.strategies.ml_strategies import MLWalkForwardStrategy
+    _ML_AVAILABLE = True
+except Exception:
+    _ML_AVAILABLE = False
+
+if _ML_AVAILABLE:
+    class MLWalkForwardBT(bt.Strategy):
+        """
+        Backtrader 版 ML 走步策略：
+        - 每根 bar 用"到前一日"的样本扩展训练
+        - 依据今日概率与阈值生成意图（多/空/空仓），下单由本框架成交模型处理
+        """
+        params = dict(
+            label_h=1,
+            min_train=200,
+            prob_long=0.60,          # 调高默认入场阈值（更稳健）
+            prob_short=0.60,
+            prob_exit_long=0.54,     # 新增：出场阈值（滞回带）
+            prob_exit_short=0.46,    # 新增：做空出场阈值
+            model_type="auto",   # 'auto'|'xgb'|'rf'|'lr'|'sgd'|'mlp'
+            regime_ma=200,       # 更严趋势过滤
+            allow_short=False,
+            use_partial_fit=False,
+            risk_per_trade=0.05, # 默认更小的单笔风险
+            atr_period=14,
+            atr_sl=2.0,
+            atr_tp=None,
+            max_pos_value_frac=0.3,
+            min_holding_bars=2,  # 新增更稳健默认
+            cooldown_bars=3,     # 新增：冷却期，避免来回打
+        )
+
+        def __init__(self) -> None:
+            # 仅单标的数据（StrategyModule.add_data 会只加第一个）
+            self.data0 = self.datas[0]
+            # 从 feed 提取原始 DataFrame（GenericPandasData.dataname）
+            self._raw_df = getattr(self.data0, "_dataname", None)
+            if not isinstance(self._raw_df, pd.DataFrame):
+                raise ValueError("MLWalkForwardBT requires PandasData with underlying DataFrame")
+            # 规范列名
+            df = self._raw_df.copy()
+            # 尝试多种列名规范化方案
+            if 'close' in df.columns:
+                df = df.rename(columns={
+                    "open":"开盘","high":"最高","low":"最低","close":"收盘","volume":"成交量"
+                })
+            elif '收盘' not in df.columns and 'close' not in df.columns:
+                # 如果没有这些列，尝试使用索引
+                raise ValueError("DataFrame must contain OHLCV data")
+            
+            # 预先计算特征矩阵与标签
+            self._ml = MLWalkForwardStrategy(
+                label_horizon=int(self.p.label_h),
+                min_train=int(self.p.min_train),
+                prob_long=float(self.p.prob_long),
+                prob_short=float(self.p.prob_short),
+                model=str(self.p.model_type),
+                use_regime_ma=int(self.p.regime_ma),
+                allow_short=bool(self.p.allow_short),
+                use_partial_fit=bool(self.p.use_partial_fit),
+            )
+            self._feat = self._ml._ta(df)
+            self._label = self._ml._build_label(df["收盘"])
+            self._probs = pd.Series(0.0, index=df.index)
+            self._trained_upto = None  # 扩展窗口截止索引
+
+            # 交易风控指标
+            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period))
+            self._hold = 0
+            self._since_trade = 99999   # 冷却计数器
+            self._state = 0             # -1/0/1 当前意图，用于滞回
+
+        def log(self, txt, dt=None):
+            """日志输出辅助函数"""
+            dt = dt or self.datas[0].datetime.date(0)
+            print(f"{dt}, {txt}")
+
+        def notify_order(self, order):
+            """订单状态通知"""
+            if order.status in [order.Submitted, order.Accepted]:
+                return
+
+            if order.status in [order.Completed]:
+                # 计算总费用（佣金+印花税）
+                value = abs(order.executed.value)
+                if order.isbuy():
+                    # 买入：仅佣金 (0.01%)
+                    total_cost = value * 0.0001
+                else:
+                    # 卖出：佣金 (0.01%) + 印花税 (0.05%)
+                    total_cost = value * 0.0006
+                
+                if order.isbuy():
+                    self.log(
+                        f"BUY EXECUTED, Size {order.executed.size:.0f}, "
+                        f"Price: {order.executed.price:.2f}, "
+                        f"Cost: {order.executed.value:.2f}, Commission {total_cost:.2f}"
+                    )
+                else:
+                    self.log(
+                        f"SELL EXECUTED, Size {order.executed.size:.0f}, "
+                        f"Price: {order.executed.price:.2f}, "
+                        f"Value: {order.executed.value:.2f}, Commission {total_cost:.2f}"
+                    )
+            elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+                self.log("Order Canceled/Margin/Rejected")
+
+        def next(self) -> None:
+            # 当前时间戳
+            cur_dt = bt.num2date(self.data0.datetime[0])
+            cur_ts = pd.Timestamp(cur_dt)
+            if cur_ts not in self._feat.index:
+                return
+
+            # 走步训练：用严格早于"当前 bar"的样本，预测当前 bar 概率（执行在下一根由回测器处理）
+            i = self._feat.index.get_loc(cur_ts)
+            if i < max(int(self.p.min_train), self.p.label_h):
+                return
+
+            X_train = self._feat.iloc[:i, :].values
+            y_train = self._label.iloc[:i].values
+            X_pred = self._feat.iloc[i:i+1, :].values
+
+            model = self._ml._make_model()
+            prob = 0.0
+            try:
+                if isinstance(model, tuple) and model[0] == "torch_mlp":
+                    net = self._ml._torch_fit(model[1], X_train, y_train)
+                    prob = self._ml._torch_predict(net, X_pred) if net is not None else 0.0
+                else:
+                    if self.p.use_partial_fit and hasattr(model, "partial_fit"):
+                        model.partial_fit(X_train, y_train, classes=np.array([0,1]))
+                    else:
+                        model.fit(X_train, y_train)
+                    if hasattr(model, "predict_proba"):
+                        prob = float(model.predict_proba(X_pred)[0, 1])
+                    elif hasattr(model, "decision_function"):
+                        z = float(model.decision_function(X_pred)[0])
+                        prob = 1.0 / (1.0 + np.exp(-z))
+                    else:
+                        prob = float(model.predict(X_pred)[0])
+            except Exception:
+                prob = 0.0
+
+            self._probs.iloc[i] = prob
+
+            # --- 概率滞回：入场与出场不同阈值，减少抖动 ---
+            enter_long = float(self.p.prob_long)
+            exit_long  = float(self.p.prob_exit_long) if self.p.prob_exit_long is not None else max(0.5, enter_long - 0.05)
+            enter_short = float(self.p.prob_short)
+            exit_short  = float(self.p.prob_exit_short) if self.p.prob_exit_short is not None else max(0.5, enter_short - 0.05)
+
+            intent = self._state
+            if self._state == 0:
+                if prob >= enter_long:
+                    intent = 1
+                elif bool(self.p.allow_short) and (prob <= (1.0 - enter_short)):
+                    intent = -1
+            elif self._state == 1:
+                if prob <= exit_long:
+                    intent = 0
+            elif self._state == -1:
+                if prob >= (1.0 - exit_short):
+                    intent = 0
+
+            price = float(self.data0.close[0])
+            atr = float(self._atr[0]) if self._atr[0] else 0.0
+            pos = self.getposition(self.data0)
+
+            # 头寸规模：ATR 风控 / 价值上限
+            if atr > 0:
+                risk_amt = float(self.broker.getvalue()) * float(self.p.risk_per_trade)
+                risk_per_share = float((self.p.atr_sl or 1.0) * atr)
+                size = int(max(0, risk_amt / max(risk_per_share, 1e-8)))
+            else:
+                size = int(self.broker.getvalue() * float(self.p.risk_per_trade) / max(price, 1e-8))
+            if self.p.max_pos_value_frac and price > 0:
+                cap_shares = int(self.broker.getvalue() * float(self.p.max_pos_value_frac) / price)
+                size = max(0, min(size, cap_shares))
+            
+            # 强制100股整数倍（A股规则）
+            lots = max(1, size // 100)
+            size = lots * 100
+
+            # 冷却：若刚交易完，必须等待 cooldown_bars
+            if self._since_trade < int(self.p.cooldown_bars):
+                intent = self._state  # 忽略新意图
+
+            # 执行（最小持有周期/止盈止损基于 ATR）
+            if intent > 0 and pos.size <= 0:
+                if pos.size < 0:
+                    self.close(data=self.data0)
+                if size > 0:
+                    self.buy(data=self.data0, size=size)
+                    self._hold = 0
+                    self._since_trade = 0
+            elif intent < 0 and pos.size >= 0 and bool(self.p.allow_short):
+                if pos.size > 0:
+                    self.close(data=self.data0)
+                if size > 0:
+                    self.sell(data=self.data0, size=size)
+                    self._hold = 0
+                    self._since_trade = 0
+            elif intent == 0 and pos.size != 0:
+                if self._hold >= int(self.p.min_holding_bars):
+                    self.close(data=self.data0)
+                    self._since_trade = 0
+
+            # 出场：ATR-based
+            if pos.size != 0 and atr > 0:
+                entry = float(pos.price)
+                if (self.p.atr_sl and price <= entry - float(self.p.atr_sl) * atr and self._hold >= int(self.p.min_holding_bars)):
+                    self.close(data=self.data0)
+                    self._since_trade = 0
+                if (self.p.atr_tp and price >= entry + float(self.p.atr_tp) * atr and self._hold >= int(self.p.min_holding_bars)):
+                    self.close(data=self.data0)
+                    self._since_trade = 0
+                self._hold += 1
+
+            # 递增冷却计数器、保存状态
+            self._since_trade += 1
+            self._state = intent
+
+    def _coerce_ml(p: Dict[str, Any]) -> Dict[str, Any]:
+        """Force user-supplied ML walk-forward params into safe numeric ranges."""
+        p["label_h"] = max(1, int(round(float(p.get("label_h", 1)))))
+        p["min_train"] = max(50, int(round(float(p.get("min_train", 200)))))
+        p["prob_long"] = float(p.get("prob_long", 0.60))
+        p["prob_short"] = float(p.get("prob_short", 0.60))
+        p["prob_exit_long"] = float(p.get("prob_exit_long", 0.54)) if p.get("prob_exit_long", None) is not None else None
+        p["prob_exit_short"] = float(p.get("prob_exit_short", 0.46)) if p.get("prob_exit_short", None) is not None else None
+        p["model_type"] = str(p.get("model_type", "auto")).lower()
+        p["regime_ma"] = max(0, int(round(float(p.get("regime_ma", 200)))))
+        p["allow_short"] = bool(p.get("allow_short", False))
+        p["use_partial_fit"] = bool(p.get("use_partial_fit", False))
+        p["risk_per_trade"] = min(1.0, max(0.001, float(p.get("risk_per_trade", 0.05))))
+        p["atr_period"] = max(5, int(round(float(p.get("atr_period", 14)))))
+        p["atr_sl"] = float(p.get("atr_sl", 2.0)) if p.get("atr_sl", None) is not None else None
+        p["atr_tp"] = float(p.get("atr_tp", None)) if p.get("atr_tp", None) is not None else None
+        p["max_pos_value_frac"] = float(min(0.9, max(0.05, float(p.get("max_pos_value_frac", 0.3)))))
+        p["min_holding_bars"] = max(0, int(round(float(p.get("min_holding_bars", 2)))))
+        p["cooldown_bars"] = max(0, int(round(float(p.get("cooldown_bars", 3)))))
+        return p
+
+    ML_WALK_MODULE = StrategyModule(
+        name="ml_walk",
+        description="Walk-forward ML classifier with auto features & probability thresholds",
+        strategy_cls=MLWalkForwardBT,
+        param_names=[
+            "label_h","min_train","prob_long","prob_short","prob_exit_long","prob_exit_short","model_type",
+            "regime_ma","allow_short","use_partial_fit",
+            "risk_per_trade","atr_period","atr_sl","atr_tp","max_pos_value_frac","min_holding_bars","cooldown_bars"
+        ],
+        defaults=dict(
+            label_h=1, min_train=200, prob_long=0.60, prob_short=0.60, prob_exit_long=0.54, prob_exit_short=0.46, model_type="auto",
+            regime_ma=200, allow_short=False, use_partial_fit=False,
+            risk_per_trade=0.05, atr_period=14, atr_sl=2.0, atr_tp=None, max_pos_value_frac=0.3, min_holding_bars=2, cooldown_bars=3
+        ),
+        grid_defaults={
+            "label_h": [1, 3, 5],
+            "min_train": [150, 200, 300],
+            "model_type": ["auto", "rf", "xgb", "lr"],
+            "prob_long": [0.58, 0.60, 0.65],
+            "prob_short": [0.52, 0.55],
+            "prob_exit_long": [0.52, 0.54, 0.56],
+            "allow_short": [False, True],
+            "cooldown_bars": [2, 3, 5],
+            "min_holding_bars": [2, 3, 5],
+        },
+        coercer=_coerce_ml,
+        multi_symbol=False,
+    )
+    STRATEGY_REGISTRY["ml_walk"] = ML_WALK_MODULE
+
+    # -----------------------------------------------------------------------
+    # 新策略 1：ml_meta —— 基础技术面候选 + ML 概率过滤（明显降频）
+    # -----------------------------------------------------------------------
+    class MLMetaFilterBT(bt.Strategy):
+        """元标注策略：先用SMA金叉产生候选信号，再用ML概率过滤"""
+        params = dict(
+            fast=10, slow=60,             # 基础信号：SMA 金叉/死叉
+            min_train=200, label_h=1,
+            prob_filter=0.58,             # 仅当 ML 概率 >= 该阈值才允许进场
+            prob_exit=0.52,               # 滞回退出
+            model_type="auto", regime_ma=200,
+            risk_per_trade=0.05, atr_period=14, atr_sl=2.0, atr_tp=None,
+            max_pos_value_frac=0.3, min_holding_bars=2, cooldown_bars=3,
+            allow_short=False
+        )
+        
+        def __init__(self):
+            self.data0 = self.datas[0]
+            base_df = getattr(self.data0, "_dataname", None)
+            if not isinstance(base_df, pd.DataFrame):
+                raise ValueError("MLMetaFilterBT requires PandasData with underlying DataFrame")
+            df = base_df.copy()
+            if 'close' in df.columns:
+                df = df.rename(columns={"open":"开盘","high":"最高","low":"最低","close":"收盘","volume":"成交量"})
+            
+            self._ml = MLWalkForwardStrategy(
+                label_horizon=int(self.p.label_h),
+                min_train=int(self.p.min_train),
+                prob_long=float(self.p.prob_filter),
+                model=str(self.p.model_type),
+                use_regime_ma=int(self.p.regime_ma),
+                allow_short=False
+            )
+            self._feat = self._ml._ta(df)
+            self._label = self._ml._build_label(df["收盘"])
+            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period))
+            self._fast = bt.indicators.SMA(self.data0.close, period=int(self.p.fast))
+            self._slow = bt.indicators.SMA(self.data0.close, period=int(self.p.slow))
+            self._hold = 0
+            self._since_trade = 99999
+            self._ml_model = None
+            self._last_side = 0
+
+        def log(self, txt, dt=None):
+            dt = dt or self.datas[0].datetime.date(0)
+            print(f"{dt}, {txt}")
+
+        def notify_order(self, order):
+            if order.status in [order.Submitted, order.Accepted]:
+                return
+            if order.status in [order.Completed]:
+                # 计算总费用（佣金+印花税）
+                value = abs(order.executed.value)
+                if order.isbuy():
+                    total_cost = value * 0.0001  # 买入：仅佣金
+                else:
+                    total_cost = value * 0.0006  # 卖出：佣金+印花税
+                
+                if order.isbuy():
+                    self.log(f"BUY EXECUTED, Size {order.executed.size:.0f}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Commission {total_cost:.2f}")
+                else:
+                    self.log(f"SELL EXECUTED, Size {order.executed.size:.0f}, Price: {order.executed.price:.2f}, Value: {order.executed.value:.2f}, Commission {total_cost:.2f}")
+            elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+                self.log("Order Canceled/Margin/Rejected")
+
+        def next(self):
+            cur_dt = bt.num2date(self.data0.datetime[0])
+            cur_ts = pd.Timestamp(cur_dt)
+            if cur_ts not in self._feat.index:
+                return
+            i = self._feat.index.get_loc(cur_ts)
+            if i < max(int(self.p.min_train), int(self.p.label_h)):
+                return
+
+            # 基础金叉/死叉产生"候选"
+            long_candidate = float(self._fast[0]) > float(self._slow[0]) and float(self._fast[-1]) <= float(self._slow[-1])
+            flat_candidate = float(self._fast[0]) < float(self._slow[0]) and float(self._fast[-1]) >= float(self._slow[-1])
+
+            # ML 概率（扩展窗口）
+            X_train, y_train = self._feat.iloc[:i, :].values, self._label.iloc[:i].values
+            X_pred = self._feat.iloc[i:i+1, :].values
+            if self._ml_model is None:
+                self._ml_model = self._ml._make_model()
+            prob = 0.0
+            try:
+                m = self._ml_model
+                if hasattr(m, "partial_fit"):
+                    m.partial_fit(X_train, y_train, classes=np.array([0,1]))
+                else:
+                    m.fit(X_train, y_train)
+                prob = float(m.predict_proba(X_pred)[0,1]) if hasattr(m,"predict_proba") else float(m.predict(X_pred)[0])
+            except Exception:
+                prob = 0.0
+
+            pos = self.getposition(self.data0)
+            price = float(self.data0.close[0])
+            atr = float(self._atr[0]) if self._atr[0] else 0.0
+            if atr > 0:
+                risk_amt = float(self.broker.getvalue()) * float(self.p.risk_per_trade)
+                size = int(max(0, risk_amt / max(float(self.p.atr_sl) * atr, 1e-8)))
+            else:
+                size = int(self.broker.getvalue() * float(self.p.risk_per_trade) / max(price, 1e-8))
+            if self.p.max_pos_value_frac and price > 0:
+                cap_shares = int(self.broker.getvalue() * float(self.p.max_pos_value_frac) / price)
+                size = max(0, min(size, cap_shares))
+            size = max(1, size//100)*100
+
+            # 冷却
+            if self._since_trade < int(self.p.cooldown_bars):
+                long_candidate = False
+                flat_candidate = False
+
+            # 仅当基础信号触发 + ML 概率通过阈值，才入场；退出用滞回
+            if long_candidate and prob >= float(self.p.prob_filter) and pos.size <= 0:
+                if pos.size < 0:
+                    self.close(data=self.data0)
+                if size > 0:
+                    self.buy(data=self.data0, size=size)
+                    self._since_trade = 0
+                    self._hold = 0
+                    self._last_side = 1
+            elif flat_candidate and pos.size > 0 and (prob <= float(self.p.prob_exit) or self._hold >= int(self.p.min_holding_bars)):
+                self.close(data=self.data0)
+                self._since_trade = 0
+                self._last_side = 0
+
+            if pos.size != 0 and atr > 0:
+                entry = float(pos.price)
+                if self.p.atr_sl and price <= entry - float(self.p.atr_sl)*atr and self._hold >= int(self.p.min_holding_bars):
+                    self.close(data=self.data0); self._since_trade = 0; self._last_side = 0
+                if self.p.atr_tp and price >= entry + float(self.p.atr_tp)*atr and self._hold >= int(self.p.min_holding_bars):
+                    self.close(data=self.data0); self._since_trade = 0; self._last_side = 0
+                self._hold += 1
+            self._since_trade += 1
+
+    def _coerce_meta(p):
+        p["fast"] = max(3, int(round(float(p.get("fast", 10)))))
+        p["slow"] = max(p["fast"]+1, int(round(float(p.get("slow", 60)))))
+        p["prob_filter"] = float(p.get("prob_filter", 0.58))
+        p["prob_exit"] = float(p.get("prob_exit", 0.52))
+        p["min_train"] = max(100, int(round(float(p.get("min_train", 200)))))
+        p["label_h"] = max(1, int(round(float(p.get("label_h", 1)))))
+        p["risk_per_trade"] = min(1.0, max(0.001, float(p.get("risk_per_trade", 0.05))))
+        p["min_holding_bars"] = max(0, int(round(float(p.get("min_holding_bars", 2)))))
+        p["cooldown_bars"] = max(0, int(round(float(p.get("cooldown_bars", 3)))))
+        p["regime_ma"] = max(0, int(round(float(p.get("regime_ma", 200)))))
+        p["allow_short"] = bool(p.get("allow_short", False))
+        p["model_type"] = str(p.get("model_type", "auto")).lower()
+        return p
+
+    ML_META_MODULE = StrategyModule(
+        name="ml_meta",
+        description="Meta-labeling: base SMA cross candidates filtered by ML probability (low turnover).",
+        strategy_cls=MLMetaFilterBT,
+        param_names=["fast","slow","min_train","label_h","prob_filter","prob_exit","model_type","regime_ma",
+                     "risk_per_trade","atr_period","atr_sl","atr_tp","max_pos_value_frac","min_holding_bars","cooldown_bars","allow_short"],
+        defaults=dict(fast=10, slow=60, min_train=200, label_h=1, prob_filter=0.58, prob_exit=0.52, model_type="auto",
+                      regime_ma=200, risk_per_trade=0.05, atr_period=14, atr_sl=2.0, atr_tp=None,
+                      max_pos_value_frac=0.3, min_holding_bars=2, cooldown_bars=3, allow_short=False),
+        grid_defaults={"fast":[5,10],"slow":[50,60,90],"prob_filter":[0.58,0.62],"prob_exit":[0.50,0.52,0.54]},
+        coercer=_coerce_meta,
+        multi_symbol=False,
+    )
+    STRATEGY_REGISTRY["ml_meta"] = ML_META_MODULE
+
+    # -----------------------------------------------------------------------
+    # 新策略 2：ml_prob_band —— 概率分段 + 滞回（天然低换手；可选做空）
+    # -----------------------------------------------------------------------
+    class MLProbBandBT(bt.Strategy):
+        """概率分段策略：将ML概率映射为长/空/空仓三段，带滞回带，天然低换手"""
+        params = dict(
+            min_train=200, label_h=1, model_type="auto", regime_ma=200,
+            hi=0.62, lo=0.38,          # 三段阈值；lo=1-hi 对称时仅做多/空
+            band_gap=0.04,             # 滞回带（入/出不同）
+            allow_short=False,
+            risk_per_trade=0.05, atr_period=14, atr_sl=2.0, atr_tp=None,
+            max_pos_value_frac=0.3, min_holding_bars=2, cooldown_bars=3
+        )
+        
+        def __init__(self):
+            self.data0 = self.datas[0]
+            df = getattr(self.data0, "_dataname", None)
+            if not isinstance(df, pd.DataFrame):
+                raise ValueError("MLProbBandBT requires PandasData with underlying DataFrame")
+            if 'close' in df.columns:
+                df = df.rename(columns={"open":"开盘","high":"最高","low":"最低","close":"收盘","volume":"成交量"})
+            
+            self._ml = MLWalkForwardStrategy(
+                label_horizon=int(self.p.label_h), min_train=int(self.p.min_train),
+                model=str(self.p.model_type), use_regime_ma=int(self.p.regime_ma), allow_short=bool(self.p.allow_short)
+            )
+            self._feat = self._ml._ta(df)
+            self._label = self._ml._build_label(df["收盘"])
+            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period))
+            self._state = 0
+            self._since_trade = 99999
+
+        def log(self, txt, dt=None):
+            dt = dt or self.datas[0].datetime.date(0)
+            print(f"{dt}, {txt}")
+
+        def notify_order(self, order):
+            if order.status in [order.Submitted, order.Accepted]:
+                return
+            if order.status in [order.Completed]:
+                # 计算总费用（佣金+印花税）
+                value = abs(order.executed.value)
+                if order.isbuy():
+                    total_cost = value * 0.0001  # 买入：仅佣金
+                else:
+                    total_cost = value * 0.0006  # 卖出：佣金+印花税
+                
+                if order.isbuy():
+                    self.log(f"BUY EXECUTED, Size {order.executed.size:.0f}, Price: {order.executed.price:.2f}, Cost: {order.executed.value:.2f}, Commission {total_cost:.2f}")
+                else:
+                    self.log(f"SELL EXECUTED, Size {order.executed.size:.0f}, Price: {order.executed.price:.2f}, Value: {order.executed.value:.2f}, Commission {total_cost:.2f}")
+            elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+                self.log("Order Canceled/Margin/Rejected")
+
+        def next(self):
+            cur_dt = bt.num2date(self.data0.datetime[0]); cur_ts = pd.Timestamp(cur_dt)
+            if cur_ts not in self._feat.index: return
+            i = self._feat.index.get_loc(cur_ts)
+            if i < max(int(self.p.min_train), int(self.p.label_h)): return
+            
+            X_train, y_train = self._feat.iloc[:i,:].values, self._label.iloc[:i].values
+            X_pred = self._feat.iloc[i:i+1,:].values
+            m = self._ml._make_model(); prob = 0.0
+            try:
+                if hasattr(m,"partial_fit"): m.partial_fit(X_train,y_train,classes=np.array([0,1]))
+                else: m.fit(X_train,y_train)
+                prob = float(m.predict_proba(X_pred)[0,1]) if hasattr(m,"predict_proba") else float(m.predict(X_pred)[0])
+            except Exception: prob = 0.0
+
+            hi, lo, gap = float(self.p.hi), float(self.p.lo), float(self.p.band_gap)
+            enter_long, exit_long = hi, max(0.5, hi-gap)
+            enter_short, exit_short = (1.0-lo), min(0.5, lo+gap)
+
+            intent = self._state
+            if self._state == 0:
+                if prob >= enter_long: intent = 1
+                elif bool(self.p.allow_short) and prob <= lo: intent = -1
+            elif self._state == 1 and prob <= exit_long:
+                intent = 0
+            elif self._state == -1 and prob >= exit_short:
+                intent = 0
+
+            pos = self.getposition(self.data0); price = float(self.data0.close[0])
+            atr = float(self._atr[0]) if self._atr[0] else 0.0
+            if atr>0:
+                risk_amt = float(self.broker.getvalue()) * float(self.p.risk_per_trade)
+                size = int(max(0, risk_amt / max(float(self.p.atr_sl)*atr,1e-8)))
+            else:
+                size = int(self.broker.getvalue()*float(self.p.risk_per_trade)/max(price,1e-8))
+            if self.p.max_pos_value_frac and price>0:
+                cap_shares = int(self.broker.getvalue()*float(self.p.max_pos_value_frac)/price)
+                size = max(0, min(size, cap_shares))
+            size = max(1, size//100)*100
+
+            # 冷却
+            if self._since_trade < int(self.p.cooldown_bars):
+                intent = self._state
+
+            if intent>0 and pos.size<=0:
+                if pos.size<0: self.close(data=self.data0)
+                if size>0: self.buy(data=self.data0,size=size); self._since_trade=0
+            elif intent<0 and pos.size>=0 and bool(self.p.allow_short):
+                if pos.size>0: self.close(data=self.data0)
+                if size>0: self.sell(data=self.data0,size=size); self._since_trade=0
+            elif intent==0 and pos.size!=0 and self._since_trade>=int(self.p.min_holding_bars):
+                self.close(data=self.data0); self._since_trade=0
+
+            if pos.size!=0 and atr>0:
+                entry=float(pos.price)
+                if self.p.atr_sl and price<=entry-float(self.p.atr_sl)*atr and self._since_trade>=int(self.p.min_holding_bars):
+                    self.close(data=self.data0); self._since_trade=0
+                if self.p.atr_tp and price>=entry+float(self.p.atr_tp)*atr and self._since_trade>=int(self.p.min_holding_bars):
+                    self.close(data=self.data0); self._since_trade=0
+            self._since_trade += 1; self._state = intent
+
+    def _coerce_band(p):
+        p["min_train"] = max(100, int(round(float(p.get("min_train", 200)))))
+        p["label_h"] = max(1, int(round(float(p.get("label_h", 1)))))
+        p["hi"] = float(p.get("hi", 0.62))
+        p["lo"] = float(p.get("lo", 0.38))
+        p["band_gap"] = float(p.get("band_gap", 0.04))
+        p["risk_per_trade"] = min(1.0, max(0.001, float(p.get("risk_per_trade", 0.05))))
+        p["min_holding_bars"] = max(0, int(round(float(p.get("min_holding_bars", 2)))))
+        p["cooldown_bars"] = max(0, int(round(float(p.get("cooldown_bars", 3)))))
+        p["regime_ma"] = max(0, int(round(float(p.get("regime_ma", 200)))))
+        p["allow_short"] = bool(p.get("allow_short", False))
+        p["model_type"] = str(p.get("model_type", "auto")).lower()
+        return p
+
+    ML_PROB_BAND_MODULE = StrategyModule(
+        name="ml_prob_band",
+        description="Probability banding with hysteresis; optional short; low turnover.",
+        strategy_cls=MLProbBandBT,
+        param_names=["min_train","label_h","model_type","regime_ma","hi","lo","band_gap",
+                     "allow_short","risk_per_trade","atr_period","atr_sl","atr_tp",
+                     "max_pos_value_frac","min_holding_bars","cooldown_bars"],
+        defaults=dict(min_train=200,label_h=1,model_type="auto",regime_ma=200,hi=0.62,lo=0.38,band_gap=0.04,
+                      allow_short=False,risk_per_trade=0.05,atr_period=14,atr_sl=2.0,atr_tp=None,
+                      max_pos_value_frac=0.3,min_holding_bars=2,cooldown_bars=3),
+        grid_defaults={"hi":[0.60,0.62,0.65],"band_gap":[0.03,0.04,0.05],"min_holding_bars":[2,3,5],"cooldown_bars":[2,3,5]},
+        coercer=_coerce_band,
+        multi_symbol=False,
+    )
+    STRATEGY_REGISTRY["ml_prob_band"] = ML_PROB_BAND_MODULE

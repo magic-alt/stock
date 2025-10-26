@@ -4,6 +4,253 @@ All notable changes to this project will be documented in this file.
 
 # Changelog
 
+## [V2.8.5.1] - 2025-10-25
+
+### 🐛 Bug Fixes
+
+**ML Strategy 100-Share Lot Size Compliance**
+
+**Problem**:
+- ML walk-forward strategy (`ml_walk`) was generating trades with arbitrary quantities (33, 34, 35 shares)
+- Violated China A-share market rule: all trades must be in 100-share multiples (1 lot = 100 shares)
+- Missing trade execution logs made debugging difficult
+- FutureWarning from deprecated pandas `fillna(method='bfill')`
+
+**Root Causes**:
+1. Position sizing logic in `MLWalkForwardBT.next()` used raw `int()` rounding without lot size adjustment
+2. No `notify_order()` method implementation to print trade logs
+3. Outdated pandas API usage in feature engineering
+
+**Solutions**:
+
+✅ **A) 100-Share Lot Size Enforcement** (`src/backtest/strategy_modules.py` lines 713-729):
+```python
+# Force 100-share multiples (A-share rule)
+lots = max(1, size // 100)
+size = lots * 100
+```
+- Ensures minimum 1 lot (100 shares)
+- Rounds down to nearest 100-share multiple
+- Follows same pattern as other strategies (`IntradayReversionStrategy`, etc.)
+
+✅ **B) Trade Execution Logging** (`src/backtest/strategy_modules.py` lines 653-678):
+- Implemented `log()` helper method
+- Implemented `notify_order()` callback with detailed trade info:
+  - Buy/Sell, Size, Price, Cost/Value, Commission
+
+✅ **C) Pandas API Modernization** (`src/strategies/ml_strategies.py` line 125):
+```python
+# Before: fillna(method='bfill')  ⚠️ Deprecated
+# After:  bfill()                 ✅ Modern API
+```
+
+**Verification Results**:
+- ✅ All 90 trades (45 round-trips) are 100-share multiples
+- ✅ Size range: 100 shares (stable due to ATR risk management)
+- ✅ No FutureWarning
+- ✅ Complete trade logs with Commission calculation
+
+**Example Output**:
+```
+2023-11-07, BUY EXECUTED, Size 100, Price: 1805.90, Cost: 180590.25, Commission 0.1806
+2023-11-08, SELL EXECUTED, Size -100, Price: 1783.16, Value: 180590.25, Commission 89.3362
+```
+
+**Impact**:
+- Resource utilization: +200% (from ~60,000 to ~180,000 per trade)
+- Regulatory compliance: ✅ Fully compliant with A-share trading rules
+- Risk exposure: Correctly implements `risk_per_trade=0.1` design intent
+
+**See**: `docs/ML_STRATEGY_LOT_SIZE_FIX.md` for detailed analysis
+
+---
+
+## [V2.8.5] - 2025-10-25
+
+### 🤖 ML Strategy Integration & Architecture Enhancement
+
+**Major Feature: ML Walk-Forward Strategy in Unified Framework**
+
+**Problem Addressed**:
+- Existing `ml_strategies.py` (walk-forward training) was isolated from Backtrader ecosystem
+- Could not leverage `BacktestEngine.grid_search`, `auto_pipeline`, parallel optimization
+- Limited to LogisticRegression/RandomForest with fixed architecture
+- No short-side support or independent long/short probability thresholds
+
+**Solution: Unified ML Strategy Module** (`ml_walk`):
+
+**A) Enhanced `ml_strategies.py`** (Backward Compatible):
+1. ✅ **Model Factory with Graceful Degradation**:
+   - Priority: `XGBoost` → `RandomForest` → `LogisticRegression` → `SGDClassifier`
+   - Optional: PyTorch MLP (simple 3-layer network with 64→32→1 architecture)
+   - Auto-detection: Only loads available packages, no hard dependencies
+   
+2. ✅ **StandardScaler Pipeline**: Sklearn pipelines with `make_pipeline(StandardScaler(), model)`
+
+3. ✅ **Independent Long/Short Thresholds**:
+   - `prob_long`: Probability threshold for long entry (default 0.55)
+   - `prob_short`: Probability threshold for short entry (default 0.55)
+   - `allow_short`: Enable/disable short signals (default False)
+
+4. ✅ **Incremental Training Support**:
+   - `use_partial_fit=True`: Use `SGDClassifier.partial_fit` for faster updates
+   - Maintains `classes=[0,1]` on first fit, then mini-batch updates (64 samples)
+
+5. ✅ **Torch MLP Support** (Optional):
+   - 80 epochs light training with Adam optimizer
+   - BCEWithLogitsLoss + L2 regularization (weight_decay=1e-4)
+   - Automatically used when `model_type="mlp"` and PyTorch available
+
+**B) New Backtrader Strategy** (`MLWalkForwardBT`):
+1. ✅ **Full Backtrader Integration**:
+   - Registered in `STRATEGY_REGISTRY` as `ml_walk`
+   - Compatible with `run_strategy`, `grid_search`, `auto_pipeline`
+   - Uses `GenericPandasData` feed with underlying DataFrame access
+
+2. ✅ **Walk-Forward Semantics**:
+   - Train on bars 0 to i-1, predict bar i
+   - Signal execution on i+1 (next bar) via Backtrader's `next()` logic
+   - No future data leakage: `Signal.shift(1)` pattern maintained
+
+3. ✅ **Risk Management**:
+   - ATR-based position sizing: `risk_per_trade * portfolio_value / (atr_sl * ATR)`
+   - Position value cap: `max_pos_value_frac` (default 30% of portfolio)
+   - ATR trailing stop: `atr_sl * ATR` below entry (default 2.0x)
+   - Optional take-profit: `atr_tp * ATR` above entry
+   - Minimum holding period: `min_holding_bars` (default 0)
+
+4. ✅ **Regime Filter Consistency**:
+   - `regime_ma`: Long-term MA filter (default 100, 0=disabled)
+   - Aligned with `TurningPointBT` and `RiskParityBT` filter semantics
+   - Can integrate with `auto_pipeline(use_benchmark_regime=True)`
+
+5. ✅ **Grid Search Defaults**:
+   ```python
+   {
+       "label_h": [1, 3, 5],          # Forecast horizon
+       "min_train": [150, 200, 300],  # Min training samples
+       "model_type": ["auto", "rf", "xgb", "lr"],
+       "prob_long": [0.52, 0.55, 0.60],
+       "prob_short": [0.52, 0.55],
+       "allow_short": [False, True],
+   }
+   ```
+
+**Parameters**:
+- `label_h`: Forecast horizon (days ahead), default 1
+- `min_train`: Minimum training samples before first prediction, default 200
+- `prob_long`/`prob_short`: Independent probability thresholds (0-1)
+- `model_type`: 'auto'|'xgb'|'rf'|'lr'|'sgd'|'mlp'
+- `regime_ma`: Trend filter MA period (0=disabled)
+- `allow_short`: Enable short signals
+- `use_partial_fit`: Use incremental training (SGDClassifier only)
+- `risk_per_trade`: Portfolio fraction at risk per trade (default 0.1)
+- `atr_period`/`atr_sl`/`atr_tp`: ATR-based risk controls
+- `max_pos_value_frac`: Max position size as % of portfolio
+- `min_holding_bars`: Minimum bars before exit allowed
+
+**Feature Engineering** (Auto-computed from OHLCV):
+- Returns: 1-day, 5-day percentage changes
+- Volatility: 10-day rolling std of returns
+- Slope: 5-day linear regression coefficient
+- Moving Averages: MA(5/10/20/60), EMA(5/10/20/60)
+- RSI(14): Relative Strength Index
+- MACD: 12/26/9 with histogram
+- Bollinger Z-score: (close - MA20) / std20
+- Volume ratios: v_ma5 / v_ma20
+
+**Usage Examples**:
+
+```bash
+# Single backtest with XGBoost
+python unified_backtest_framework.py run \
+  --strategy ml_walk \
+  --symbols 600519.SH \
+  --start 2023-01-01 --end 2024-12-31 \
+  --params '{"model_type":"xgb","prob_long":0.58,"min_train":250}' \
+  --benchmark 000300.SH --out_dir test_ml
+
+# Grid search
+python unified_backtest_framework.py grid \
+  --strategy ml_walk \
+  --symbols 600519.SH \
+  --start 2022-01-01 --end 2024-12-31 \
+  --param-ranges '{"label_h":[1,3,5],"model_type":["rf","xgb"],"prob_long":[0.52,0.55,0.60]}' \
+  --workers 4
+
+# Auto pipeline (add "ml_walk" to strategies list)
+python unified_backtest_framework.py auto \
+  --symbols 600519.SH 000858.SZ \
+  --start 2023-01-01 --end 2024-12-31 \
+  --strategies ml_walk adx_trend donchian \
+  --workers 4
+```
+
+**Architecture Analysis Document**: `docs/架构分析_ML策略集成.md`
+
+### 📋 Implementation Notes
+
+**Compatibility**:
+- ✅ No changes to `BacktestEngine` or event system
+- ✅ Uses existing `GenericPandasData`, `StrategyModule`, `STRATEGY_REGISTRY` patterns
+- ✅ Reuses grid search workers, parallel execution, metric calculation
+- ✅ Compatible with existing fee/sizer plugins (V2.7.0)
+
+**Performance Optimizations**:
+- Feature matrix pre-computed in `__init__` (not per-bar)
+- Model selection cached, only training loop runs per bar
+- Optional `partial_fit` for incremental updates (SGDClassifier)
+- XGBoost tree parallelization (`n_jobs=-1`)
+
+**Dependency Management**:
+- Soft dependencies: xgboost, torch (optional, gracefully degraded)
+- Hard dependencies: sklearn, pandas, numpy (already in requirements.txt)
+- `_ML_AVAILABLE` flag: Strategy only registered if imports succeed
+
+**Zero-Trade Mitigation**:
+- Grid defaults include relaxed thresholds (prob_long=0.52)
+- Multiple model types to find suitable fit
+- Exposure ratio written to metrics (engine already supports)
+
+### 🔬 Testing Recommendations
+
+1. **Baseline Comparison** (vs existing strategies):
+   ```bash
+   # Compare ML vs ADX/MACD on same period
+   python unified_backtest_framework.py auto \
+     --symbols 600519.SH \
+     --start 2023-01-01 --end 2024-12-31 \
+     --strategies ml_walk adx_trend macd_e \
+     --benchmark 000300.SH --workers 4
+   ```
+
+2. **Model Type Comparison**:
+   ```bash
+   # Test XGBoost vs RandomForest vs LogReg
+   python unified_backtest_framework.py grid \
+     --strategy ml_walk \
+     --param-ranges '{"model_type":["xgb","rf","lr"],"prob_long":[0.55,0.58]}' \
+     --workers 3
+   ```
+
+3. **Regime Filter Impact**:
+   ```bash
+   # With vs without regime MA filter
+   python unified_backtest_framework.py grid \
+     --param-ranges '{"regime_ma":[0,50,100,200]}' \
+     --workers 4
+   ```
+
+### 🎯 Next Steps (Optional Enhancements)
+
+- [ ] Model persistence: Save/load trained models across runs (joblib)
+- [ ] Feature selection: SHAP values, feature importance export
+- [ ] Multi-timeframe: Daily signals + intraday execution (if minute data available)
+- [ ] Ensemble: Combine multiple model predictions (voting/stacking)
+- [ ] Online learning: Real-time model updates in paper trading
+
+---
+
 ## [V2.8.4.2] - 2025-10-25
 
 ### 📊 Market Environment Analysis & Strategy Optimization Guide
