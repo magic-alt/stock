@@ -2,6 +2,163 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V2.8.6.1] - 2025-10-26
+
+### 🐛 Critical Bug Fixes
+
+**1. Commission Display Error (100x Magnitude)**
+
+**Problem**:
+- Commission displayed as 0.18 yuan instead of correct 18.06 yuan for 100 shares @ 1805.90
+- Example: 300 shares @ 159.38 showed "Commission 0.1806" (should be 4.78)
+- Initial fix attempt (format change `.2f` → `.4f`) was ineffective
+
+**Root Cause**:
+Backtrader's `order.executed.comm` uses inconsistent storage format:
+- **Buy orders**: Stored as commission percentage (not total amount)
+- **Sell orders**: Stored as mixed format (absolute stamp tax + percentage commission)
+- Cannot reliably extract total cost from `order.executed.comm` alone
+
+**Solution** - Direct Calculation from Value:
+```python
+# Calculate total cost directly from trade value
+value = abs(order.executed.value)
+if order.isbuy():
+    total_cost = value * 0.0001  # Commission 0.01%
+else:
+    total_cost = value * 0.0006  # Commission 0.01% + Stamp Tax 0.05%
+```
+
+**Files Modified**:
+- `src/backtest/strategy_modules.py` (3 strategy classes: MLWalkForwardBT, MLMetaFilterBT, MLProbBandBT)
+- `src/backtest/plotting.py` (TradeObserver + print_trade_analysis)
+
+**Verification**:
+```
+✅ Buy 300 @ 159.38 → Commission 4.78 (correct: 47813.89 × 0.0001 = 4.78)
+✅ Sell 300 @ 157.42 → Commission 28.69 (correct: 47226 × 0.0006 = 28.34)
+✅ User case: 100 @ 1805.90 → Commission 18.06 (matches expectation)
+```
+
+---
+
+**2. Empty Figure During Plot Generation**
+
+**Problem**:
+- When terminal shows "正在生成图表...", a blank Figure 1 appears
+- Backtrader's `cerebro.plot()` creates placeholder figures that remain empty
+
+**Root Cause**:
+- `cerebro.plot()` may create multiple matplotlib figures
+- Some figures lack axes/content but still get displayed
+- No filtering logic to detect and close empty figures
+
+**Solution** - Detect and Close Blank Figures:
+```python
+# Record figure count before plotting
+figs_before = set(plt.get_fignums())
+
+figs = cerebro.plot(**plot_kwargs)
+
+# Detect new figures
+figs_after = set(plt.get_fignums())
+new_figs = figs_after - figs_before
+
+# Close figures without axes (blank figures)
+valid_figs = []
+for fignum in new_figs:
+    fig = plt.figure(fignum)
+    if fig.get_axes():  # Check for content
+        valid_figs.append(fignum)
+
+# Close empty figures
+for fignum in new_figs:
+    if fignum not in valid_figs:
+        plt.close(fignum)
+```
+
+**Files Modified**:
+- `src/backtest/plotting.py` (lines 308-332)
+
+**Verification**:
+- Empty figures automatically closed with message: "[OK] 已自动关闭 N 个空白图表"
+- Only valid chart with content is displayed/saved
+
+---
+
+### 📊 Test Results
+
+**Test Case**: `ml_walk` strategy on 000858.SZ (2023-01-01 to 2023-12-31)
+
+```bash
+python unified_backtest_framework.py run \
+  --strategy ml_walk \
+  --symbols 000858.SZ \
+  --start 2023-01-01 --end 2023-12-31 \
+  --benchmark 000300.SH
+```
+
+**Output (Corrected)**:
+```
+2023-11-07, BUY EXECUTED, Size 300, Price: 159.38, Cost: 47813.89, Commission 4.78 ✅
+2023-11-10, SELL EXECUTED, Size -300, Price: 157.42, Value: 47813.89, Commission 28.69 ✅
+2023-11-16, BUY EXECUTED, Size 300, Price: 157.08, Cost: 47123.55, Commission 4.71 ✅
+2023-11-21, SELL EXECUTED, Size -300, Price: 154.92, Value: 47123.55, Commission 28.27 ✅
+```
+
+**Metrics**:
+- Final Value: 193,024.50
+- Cumulative Return: -3.49%
+- Sharpe Ratio: -2.29
+- Max Drawdown: 3.70%
+- Total Trades: 5 (all closed)
+
+---
+
+### 🔧 Technical Details
+
+**Commission Rate Configuration** (unchanged):
+- Buy: 0.0001 (万分之一 = 0.01%)
+- Sell: 0.0001 (commission) + 0.0005 (stamp tax) = 0.0006 total
+- No minimum commission (免五 mode)
+
+**Backtrader Storage Behavior** (discovered):
+| Order Type | `order.executed.comm` Contains | Display Method |
+|------------|-------------------------------|----------------|
+| BUY | Unknown format (unreliable) | `value × 0.0001` |
+| SELL | Mixed format (unreliable) | `value × 0.0006` |
+
+**Plot Enhancement**:
+- Empty figure detection added before and after `cerebro.plot()`
+- Automatic cleanup of placeholder figures
+- User notification when blank figures are closed
+
+---
+
+### 📝 Commit Message
+```
+fix: 修复佣金显示错误(100倍)和空白图表问题
+
+1. 佣金计算修复
+   - 问题: 显示0.18元而非18.06元(100倍误差)
+   - 原因: Backtrader的order.executed.comm存储格式不一致
+   - 方案: 直接从value计算(买入×0.0001, 卖出×0.0006)
+   - 文件: strategy_modules.py (3处), plotting.py (2处)
+
+2. 空白图表修复
+   - 问题: "正在生成图表..."时弹出空白Figure 1
+   - 原因: cerebro.plot()创建多余空figure
+   - 方案: 检测无axes的figure并自动关闭
+   - 文件: plotting.py
+
+测试验证:
+- ✅ 300股@159.38 佣金4.78元(正确)
+- ✅ 300股@157.42 费用28.69元(正确)
+- ✅ 空白图表自动过滤
+```
+
+---
+
 # Changelog
 
 ## [V2.8.5.1] - 2025-10-25

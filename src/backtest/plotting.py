@@ -309,12 +309,35 @@ def plot_backtest_with_indicators(
         was_interactive = plt.isinteractive()
         plt.ioff()  # 关闭交互模式
         
+        # 记录绘图前的figure数量，用于检测空白图表
+        figs_before = set(plt.get_fignums())
+        
         try:
             figs = cerebro.plot(**plot_kwargs)
         finally:
             # 恢复原始交互模式
             if was_interactive:
                 plt.ion()
+        
+        # 检测并关闭空白图表（cerebro.plot()可能创建多余的空figure）
+        figs_after = set(plt.get_fignums())
+        new_figs = figs_after - figs_before
+        
+        if len(new_figs) > 1:
+            # 找出有效图表（包含axes的figure）
+            valid_figs = []
+            for fignum in new_figs:
+                fig = plt.figure(fignum)
+                if fig.get_axes():  # 检查是否有axes
+                    valid_figs.append(fignum)
+            
+            # 关闭空白图表（没有axes的figure）
+            for fignum in new_figs:
+                if fignum not in valid_figs:
+                    plt.close(fignum)
+            
+            if len(new_figs) - len(valid_figs) > 0:
+                print(f"[OK] 已自动关闭 {len(new_figs) - len(valid_figs)} 个空白图表")
         
         # 手动添加买卖点标记（因为 Backtrader 默认标记可能不明显）
         try:
