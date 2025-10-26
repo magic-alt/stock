@@ -178,6 +178,7 @@ def main() -> None:
                 auto_save=True,  # 启用自动保存
                 strategy_name=args.strategy,
                 symbols=args.symbols,
+                metrics=metrics,  # 传递性能指标
             )
             if report_dir:
                 print(f"\n[报告] 详细报告已保存到: {report_dir}")

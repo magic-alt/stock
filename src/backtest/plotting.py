@@ -10,6 +10,7 @@ import pandas as pd
 import datetime
 import os
 import traceback
+import json
 
 try:
     import backtrader as bt
@@ -201,6 +202,209 @@ def print_trade_analysis(cerebro: bt.Cerebro) -> None:
         traceback.print_exc()
 
 
+def generate_backtest_report(
+    cerebro: bt.Cerebro,
+    strategy_name: str,
+    symbols: List[str],
+    metrics: dict,
+    report_dir: str,
+) -> None:
+    """
+    生成回测分析报告（Markdown格式）
+    
+    Args:
+        cerebro: Backtrader Cerebro实例
+        strategy_name: 策略名称
+        symbols: 股票代码列表
+        metrics: 性能指标字典
+        report_dir: 报告保存目录
+    """
+    try:
+        strats = cerebro.runstrats
+        if not strats or not strats[0]:
+            return
+        
+        strat = strats[0][0]
+        
+        # 获取回测基本信息
+        initial_value = cerebro.broker.startingcash
+        final_value = cerebro.broker.getvalue()
+        
+        # 准备报告内容
+        report_lines = [
+            f"# 回测分析报告",
+            f"",
+            f"**生成时间**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            f"",
+            f"---",
+            f"",
+            f"## 1. 回测配置",
+            f"",
+            f"| 项目 | 内容 |",
+            f"|------|------|",
+            f"| **策略名称** | {strategy_name} |",
+            f"| **股票代码** | {', '.join(symbols)} |",
+            f"| **初始资金** | {initial_value:,.2f} |",
+            f"| **最终资金** | {final_value:,.2f} |",
+            f"",
+            f"---",
+            f"",
+            f"## 2. 性能指标",
+            f"",
+        ]
+        
+        # 添加性能指标
+        if metrics:
+            report_lines.append("| 指标 | 数值 |")
+            report_lines.append("|------|------|")
+            
+            # 关键指标顺序
+            key_metrics = [
+                ('total_return', '总收益率', '%'),
+                ('annual_return', '年化收益率', '%'),
+                ('sharpe_ratio', '夏普比率', ''),
+                ('max_drawdown', '最大回撤', '%'),
+                ('win_rate', '胜率', '%'),
+                ('profit_factor', '盈亏比', ''),
+                ('total_trades', '总交易次数', ''),
+            ]
+            
+            for key, label, unit in key_metrics:
+                if key in metrics:
+                    value = metrics[key]
+                    if unit == '%':
+                        report_lines.append(f"| **{label}** | {value:.2f}% |")
+                    elif isinstance(value, float):
+                        report_lines.append(f"| **{label}** | {value:.4f} |")
+                    else:
+                        report_lines.append(f"| **{label}** | {value} |")
+        
+        report_lines.extend([
+            f"",
+            f"---",
+            f"",
+            f"## 3. 交易统计",
+            f"",
+        ])
+        
+        # 获取交易分析数据
+        if hasattr(strat, 'analyzers') and hasattr(strat.analyzers, 'trades'):
+            trade_analysis = strat.analyzers.trades.get_analysis()
+            
+            # 总体统计
+            total = trade_analysis.get('total', {})
+            if total:
+                report_lines.extend([
+                    "### 3.1 总体统计",
+                    "",
+                    "| 指标 | 数值 |",
+                    "|------|------|",
+                    f"| 总交易次数 | {total.get('total', 0)} |",
+                    f"| 开仓次数 | {total.get('open', 0)} |",
+                    f"| 平仓次数 | {total.get('closed', 0)} |",
+                    "",
+                ])
+            
+            # 盈利交易
+            won = trade_analysis.get('won', {})
+            if won:
+                report_lines.extend([
+                    "### 3.2 盈利交易",
+                    "",
+                    "| 指标 | 数值 |",
+                    "|------|------|",
+                    f"| 盈利次数 | {won.get('total', 0)} |",
+                    f"| 平均盈利 | {won.get('pnl', {}).get('average', 0):.2f} |",
+                    f"| 最大盈利 | {won.get('pnl', {}).get('max', 0):.2f} |",
+                    "",
+                ])
+            
+            # 亏损交易
+            lost = trade_analysis.get('lost', {})
+            if lost:
+                report_lines.extend([
+                    "### 3.3 亏损交易",
+                    "",
+                    "| 指标 | 数值 |",
+                    "|------|------|",
+                    f"| 亏损次数 | {lost.get('total', 0)} |",
+                    f"| 平均亏损 | {lost.get('pnl', {}).get('average', 0):.2f} |",
+                    f"| 最大亏损 | {lost.get('pnl', {}).get('max', 0):.2f} |",
+                    "",
+                ])
+        
+        report_lines.extend([
+            f"---",
+            f"",
+            f"## 4. 策略参数",
+            f"",
+        ])
+        
+        # 添加策略参数
+        if hasattr(strat, 'params'):
+            report_lines.append("| 参数名 | 参数值 |")
+            report_lines.append("|--------|--------|")
+            for param_name in strat.params._getkeys():
+                param_value = getattr(strat.params, param_name)
+                report_lines.append(f"| {param_name} | {param_value} |")
+            report_lines.append("")
+        
+        report_lines.extend([
+            f"---",
+            f"",
+            f"## 5. 图表说明",
+            f"",
+            f"- **backtest_result.png**: K线图表，包含买卖点标记和技术指标",
+            f"- **backtest_result.pkl**: 原生matplotlib格式，可用于重新编辑",
+            f"",
+            f"---",
+            f"",
+            f"## 6. 使用建议",
+            f"",
+            f"### 风险提示",
+            f"- 历史数据回测结果不代表未来实际收益",
+            f"- 回测未考虑流动性风险、极端行情等因素",
+            f"- 实盘交易需谨慎，建议先小资金验证",
+            f"",
+            f"### 优化方向",
+            f"- 调整策略参数以适应不同市场环境",
+            f"- 结合基本面分析进行股票筛选",
+            f"- 设置合理的止损止盈点位",
+            f"- 考虑仓位管理和资金管理策略",
+            f"",
+            f"---",
+            f"",
+            f"*报告由量化回测系统自动生成*",
+        ])
+        
+        # 保存报告
+        report_path = os.path.join(report_dir, "backtest_report.md")
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(report_lines))
+        
+        print(f"  ✓ 回测报告已保存: backtest_report.md")
+        
+        # 同时保存关键数据为JSON格式
+        summary_data = {
+            'strategy': strategy_name,
+            'symbols': symbols,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'initial_value': initial_value,
+            'final_value': final_value,
+            'metrics': metrics,
+        }
+        
+        json_path = os.path.join(report_dir, "backtest_summary.json")
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(summary_data, f, indent=2, ensure_ascii=False, default=float)
+        
+        print(f"  ✓ 数据摘要已保存: backtest_summary.json")
+        
+    except Exception as e:
+        print(f"[警告] 生成回测报告失败: {e}")
+        traceback.print_exc()
+
+
 def plot_backtest_with_indicators(
     cerebro: bt.Cerebro,
     style: str = 'candlestick',
@@ -211,6 +415,7 @@ def plot_backtest_with_indicators(
     auto_save: bool = False,           # 新增：自动保存到report目录
     strategy_name: str = "strategy",   # 新增：策略名称
     symbols: List[str] = None,         # 新增：股票代码列表
+    metrics: dict = None,              # 新增：性能指标
 ) -> Optional[str]:
     """
     绘制 Backtrader 回测结果，并添加技术指标。
@@ -227,6 +432,7 @@ def plot_backtest_with_indicators(
         auto_save: 是否自动保存到report目录（覆盖out_file）
         strategy_name: 策略名称（用于目录命名）
         symbols: 股票代码列表（用于目录命名）
+        metrics: 性能指标字典（用于生成报告）
     
     Returns:
         保存的目录路径（如果auto_save=True）
@@ -569,6 +775,16 @@ def plot_backtest_with_indicators(
                 with open(out_file_pkl, 'wb') as f:
                     pickle.dump(fig_to_save, f)
                 print(f"  ✓ 原生格式已保存（可用pickle加载）")
+                
+                # 生成Markdown回测报告
+                if metrics:
+                    generate_backtest_report(
+                        cerebro=cerebro,
+                        strategy_name=strategy_name,
+                        symbols=symbols,
+                        metrics=metrics,
+                        report_dir=report_dir,
+                    )
                 
                 # 关闭所有图表
                 plt.close('all')

@@ -2,6 +2,315 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V2.10.2.0] - 2025-10-26
+
+### 🎉 Major Update - 企业级重构 + 报告系统 + CI/CD
+
+**Theme**: 项目结构标准化 + Markdown报告 + 持续集成
+
+**Milestone**: 将项目升级到企业级标准，完善自动化流程
+
+---
+
+#### 1. ✅ Markdown回测报告系统
+
+**文件**: `src/backtest/plotting.py`, `unified_backtest_framework.py`
+
+**新功能**:
+- 📝 自动生成 `backtest_report.md`:
+  - 回测配置（策略、股票、初始资金）
+  - 性能指标（收益率、夏普比率、最大回撤等）
+  - 交易统计（总次数、盈利/亏损详情）
+  - 策略参数详情
+  - 使用建议和风险提示
+- 📊 自动保存 `backtest_summary.json`:
+  - JSON格式的关键数据
+  - 便于程序读取和二次分析
+- 🔄 集成到 `--plot` 选项:
+  - 使用 `--plot` 自动生成完整报告包
+  - 包含: PNG图表 + PKL原生格式 + MD报告 + JSON数据
+
+**使用示例**:
+```bash
+python unified_backtest_framework.py run \
+    --strategy macd \
+    --symbols 600519.SH \
+    --plot
+
+# 输出到: report/600519_macd_20251026_123456/
+#   ├── backtest_result.png      # 图表
+#   ├── backtest_result.pkl      # 原生格式
+#   ├── backtest_report.md       # 📝 NEW: Markdown报告
+#   └── backtest_summary.json    # 📊 NEW: JSON数据
+```
+
+---
+
+#### 2. ✅ GitHub CI/CD 持续集成
+
+**文件**: `.github/workflows/ci.yml`, `.pre-commit-config.yaml`
+
+**新增CI/CD流程**:
+- 🧪 **自动测试**:
+  - 多环境: Ubuntu + Windows
+  - 多版本: Python 3.8-3.11
+  - 测试覆盖率报告 (Codecov集成)
+- 🔍 **代码质量检查**:
+  - Black (代码格式化)
+  - isort (导入排序)
+  - Flake8 (代码规范)
+  - Pylint (静态分析)
+- 🔒 **安全扫描**:
+  - Bandit (安全漏洞检测)
+  - Safety (依赖安全检查)
+- 📚 **文档构建**:
+  - Sphinx文档自动构建
+- 🚀 **自动发布**:
+  - Git tag触发自动发布
+  - 构建分发包
+
+**Pre-commit钩子**:
+```bash
+# 安装
+pip install pre-commit
+pre-commit install
+
+# 每次commit前自动运行检查
+```
+
+---
+
+#### 3. ✅ 项目目录结构重构
+
+**主要变更**:
+
+```
+重构前 → 重构后
+=====================
+test/         → tests/          # 标准化测试目录
+backtest_gui.py → scripts/backtest_gui.py  # GUI移到scripts
+(新增)        → examples/       # 示例代码目录
+(新增)        → .github/workflows/  # CI/CD配置
+```
+
+**新目录结构**:
+```
+stock/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # 🆕 CI/CD配置
+├── .pre-commit-config.yaml           # 🆕 Pre-commit钩子
+├── docs/                             # 📚 文档目录
+├── examples/                         # 🆕 示例代码
+│   ├── quick_start.py                # 快速开始
+│   ├── batch_backtest.py             # 批量回测
+│   └── README.md
+├── scripts/                          # 🆕 辅助脚本
+│   ├── backtest_gui.py               # GUI界面
+│   ├── gui_config_example.json
+│   └── README.md
+├── src/                              # 源代码
+├── tests/                            # ✅ 标准化测试目录
+│   ├── test_*.py                     # 所有测试文件
+│   ├── __init__.py
+│   └── README.md
+├── cache/                            # 数据缓存
+├── report/                           # 回测报告
+├── unified_backtest_framework.py    # CLI入口
+├── requirements.txt
+├── README.md                         # ✅ 主文档
+├── PROJECT_ROADMAP.md                # ✅ 项目路线图
+└── CHANGELOG.md                      # 本文件
+```
+
+**目录说明**:
+- `tests/`: 所有测试代码（pytest标准）
+- `examples/`: 使用示例（快速开始、批量回测等）
+- `scripts/`: GUI和辅助工具
+- `docs/`: 完整文档
+- `.github/`: CI/CD和GitHub配置
+
+---
+
+#### 4. ✅ 文档重构
+
+**主要变更**:
+
+| 旧文件 | 新文件 | 说明 |
+|--------|--------|------|
+| `项目总览_V2.md` | `README.md` | ✅ 标准化主文档 |
+| `PROJECT_IMPLEMENTATION_ROADMAP.md` + `PROJECT_STATUS_UPDATE.md` | `PROJECT_ROADMAP.md` | ✅ 合并路线图 |
+
+**新增文档**:
+- `tests/README.md` - 测试指南
+- `examples/README.md` - 示例说明
+- `scripts/README.md` - 脚本使用指南
+- `docs/V2.10.1.2_OPTIMIZATION_SUMMARY.md` - V2.10.1.2优化总结
+
+---
+
+#### 5. 📝 CHANGELOG更新规范
+
+**新增规范**:
+- ✅ 每次版本更新必须记录到 `CHANGELOG.md`
+- ✅ 包含版本号、日期、主题
+- ✅ 详细列出新功能、改进、修复
+- ✅ 提供使用示例和迁移指南
+
+---
+
+### 📦 文件变更统计
+
+**新增文件** (9个):
+- `.github/workflows/ci.yml`
+- `.pre-commit-config.yaml`
+- `examples/quick_start.py`
+- `examples/batch_backtest.py`
+- `examples/README.md`
+- `tests/__init__.py`
+- `tests/README.md`
+- `scripts/README.md`
+- `PROJECT_ROADMAP.md`
+
+**移动文件** (12个):
+- `test/*.py` → `tests/*.py` (10个测试文件)
+- `backtest_gui.py` → `scripts/backtest_gui.py`
+- `gui_config_example.json` → `scripts/gui_config_example.json`
+
+**重命名文件** (2个):
+- `项目总览_V2.md` → `README.md`
+- 合并 `PROJECT_*.md` → `PROJECT_ROADMAP.md`
+
+**修改文件** (3个):
+- `src/backtest/plotting.py` - 添加Markdown报告生成
+- `unified_backtest_framework.py` - 传递metrics参数
+- `CHANGELOG.md` - 本次更新记录
+
+---
+
+### 🚀 迁移指南
+
+#### 对于开发者
+
+**1. 测试文件路径更新**:
+```bash
+# 旧路径
+pytest test/test_*.py
+
+# 新路径
+pytest tests/test_*.py
+```
+
+**2. GUI启动路径更新**:
+```bash
+# 旧命令
+python backtest_gui.py
+
+# 新命令
+python scripts/backtest_gui.py
+```
+
+**3. 安装Pre-commit钩子**:
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+#### 对于用户
+
+**无影响** - CLI命令保持不变:
+```bash
+python unified_backtest_framework.py run --strategy macd --symbols 600519.SH --plot
+```
+
+---
+
+### 📚 相关文档
+
+- **V2.10.1.2优化**: `docs/V2.10.1.2_OPTIMIZATION_SUMMARY.md`
+- **测试指南**: `tests/README.md`
+- **示例代码**: `examples/README.md`
+- **CI/CD配置**: `.github/workflows/ci.yml`
+
+---
+
+## [V2.10.1.2] - 2025-01-26
+
+### 🎯 数据库优化 + 复权文档 + 自动报告
+
+**Theme**: 数据库名称字段 + adj_type详解 + 自动保存报告
+
+**Milestone**: 增强数据库可用性，完善复权说明，优化报告生成
+
+---
+
+#### 核心功能
+
+**1. 数据库增加公司名称字段**
+
+**文件**: `src/data_sources/db_manager.py`
+
+- ✅ metadata表新增 `name TEXT` 字段
+- ✅ 新增 `_get_symbol_name()` 方法:
+  - A股: 中文名称（贵州茅台、中国平安）
+  - 国际: 英文+中文（S&P 500 (标普500)）
+  - 支持25+常用标的，可扩展
+- ✅ `_update_metadata()` 自动填充name字段
+
+**2. 复权类型详细说明**
+
+**文件**: `docs/ADJ_TYPE_EXPLANATION.md` (230+行)
+
+- 📚 详细解释三种复权类型:
+  - `noadj`: 不复权（原始价格）
+  - `qfq`: 前复权（保持最新价不变，推荐技术分析）
+  - `hfq`: 后复权（保持历史价不变，长期分析）
+- 📊 包含真实案例对比
+- 💡 使用场景建议
+- 🔧 CLI/API使用示例
+- ❓ FAQ常见问题
+
+**3. 自动保存报告到report目录**
+
+**文件**: `src/backtest/plotting.py`, `unified_backtest_framework.py`
+
+- 🚀 `--plot` 选项触发自动保存:
+  - 目录命名: `{股票}_{策略}_{时间戳}`
+  - 示例: `report/601318_macd_20251026_214028/`
+- 📊 双格式保存:
+  - PNG: 300 DPI高清图表
+  - PKL: 原生matplotlib格式（可重新编辑）
+- 🔄 返回报告目录路径
+
+**4. 测试验证**
+
+**文件**: `test/test_db_name_feature.py`
+
+- ✅ 测试5种标的名称查询
+- ✅ A股、国际指数、美股指数全覆盖
+- ✅ 所有测试通过
+
+---
+
+### 使用示例
+
+```bash
+# 运行回测并生成完整报告
+python unified_backtest_framework.py run \
+    --strategy macd \
+    --symbols 601318.SH \
+    --start 2020-01-01 \
+    --end 2024-12-31 \
+    --adj qfq \
+    --plot
+
+# 输出: report/601318_macd_20251026_214028/
+#   ├── backtest_result.png  # 图表
+#   └── backtest_result.pkl  # 原生格式
+```
+
+---
+
 ## [V2.10.1.1] - 2025-01-26
 
 ### 🚀 Database Structure Optimization - Per-Symbol Tables

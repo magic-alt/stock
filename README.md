@@ -1,0 +1,984 @@
+# 量化回测系统 | Quantitative Backtesting Platform
+
+[![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![CI Status](https://github.com/magic-alt/stock/workflows/CI/badge.svg)](https://github.com/magic-alt/stock/actions)
+[![Code Coverage](https://codecov.io/gh/magic-alt/stock/branch/main/graph/badge.svg)](https://codecov.io/gh/magic-alt/stock)
+
+> **企业级量化交易回测平台** - 基于Backtrader，支持多数据源、15+策略、自动化流程、机器学习
+
+**版本**: V2.10.2.0 | **更新日期**: 2025-10-26 | **状态**: ✅ 生产就绪 (Production Ready)
+
+---
+
+## 🎯 项目特色
+
+这是一个**企业级、模块化、高性能**的量化交易回测平台，基于 Backtrader 框架构建：
+
+- ✅ **多数据源**: AKShare (免费) / YFinance (全球) / TuShare (专业)
+- ✅ **15+ 策略**: 趋势跟踪、均值回归、动量策略、风险平价、**机器学习**
+- ✅ **自动化流程**: 多股票 × 多策略 × 参数优化 × Pareto分析
+- ✅ **高性能**: 多进程并行、智能缓存、批量处理
+- ✅ **可视化**: 7种技术指标图表、中文配色、交易信号标注
+- ✅ **专业回测**: 考虑手续费、滑点、风险管理
+- ✨ **机器学习**: XGBoost/RandomForest/LogReg/PyTorch MLP，自动特征工程
+- 📊 **完整报告**: Markdown报告 + JSON数据 + PNG图表 + 原生格式
+
+---
+
+## 🚀 快速开始
+
+### 安装
+
+```bash
+# 克隆项目
+git clone https://github.com/magic-alt/stock.git
+cd stock
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 可选：安装机器学习依赖
+pip install xgboost torch
+```
+
+### 5分钟上手
+
+```bash
+# 方式1: 命令行（推荐）
+python unified_backtest_framework.py run \
+    --strategy macd \
+    --symbols 600519.SH \
+    --start 2023-01-01 \
+    --end 2024-12-31 \
+    --plot
+
+# 方式2: GUI界面（适合新手）
+python scripts/backtest_gui.py
+
+# 方式3: Python脚本
+python examples/quick_start.py
+```
+
+### 输出结果
+
+```
+report/600519_macd_20251026_123456/
+├── backtest_result.png      # 📊 高清图表 (300 DPI)
+├── backtest_result.pkl      # 🔧 原生matplotlib格式
+├── backtest_report.md       # 📝 详细分析报告
+└── backtest_summary.json    # 📋 JSON数据摘要
+```
+
+---
+
+## 📊 核心特性
+
+### 🤖 V2.10.2.0 新特性 (最新)
+
+#### 1. Markdown回测报告系统
+- 📝 自动生成完整的回测分析报告
+- 📊 包含性能指标、交易统计、策略参数
+- 💡 提供使用建议和风险提示
+- 🔄 集成到 `--plot` 选项，一键生成
+
+#### 2. GitHub CI/CD 持续集成
+- 🧪 自动测试（多环境 + 多Python版本）
+- 🔍 代码质量检查（Black, Flake8, Pylint）
+- 🔒 安全扫描（Bandit, Safety）
+- 🚀 自动发布（Git tag触发）
+
+#### 3. 企业级目录结构
+```
+stock/
+├── .github/workflows/    # CI/CD配置
+├── src/                  # 源代码
+├── tests/                # 测试套件
+├── examples/             # 使用示例
+├── scripts/              # GUI和工具
+├── docs/                 # 完整文档
+└── unified_backtest_framework.py  # CLI入口
+```
+
+---
+
+## A股量化回测系统 V2.8.5 - 项目总览
+
+**版本**: V2.8.5  
+**更新日期**: 2025-10-25  
+**状态**: ✅ 生产就绪 (Production Ready)  
+**架构**: Phase 2 模块化完成 + ML策略集成
+
+---
+
+## 🎯 项目定位
+
+这是一个**企业级、模块化、高性能**的量化交易回测平台，基于 Backtrader 框架构建，支持：
+
+- ✅ **多数据源**: AKShare (免费) / YFinance (全球) / TuShare (专业)
+- ✅ **15+ 策略**: 趋势跟踪、均值回归、动量策略、风险平价、**机器学习走步训练**
+- ✅ **自动化流程**: 多股票 × 多策略 × 参数优化 × Pareto分析
+- ✅ **高性能**: 多进程并行、智能缓存、批量处理
+- ✅ **可视化**: 7种技术指标图表、中文配色、交易信号标注
+- ✅ **专业回测**: 考虑手续费、滑点、风险管理
+- ✨ **机器学习**: XGBoost/RandomForest/LogReg/PyTorch MLP，自动特征工程
+
+---
+
+## 📊 核心特性
+
+### 🤖 V2.8.5 新特性 (最新) - ML 策略集成
+
+#### 机器学习走步训练策略
+1. **模型工厂** ✅
+   - 支持模型: XGBoost, RandomForest, LogisticRegression, SGDClassifier, PyTorch MLP
+   - 自动降级: 按优先级队列选择可用模型 (XGB → RF → LR → SGD)
+   - 标准化管线: sklearn Pipeline 自动归一化特征
+
+2. **多空独立阈值** ✅
+   - `prob_long`: 做多概率阈值 (默认 0.55)
+   - `prob_short`: 做空概率阈值 (默认 0.55，需开启 allow_short)
+   - 支持非对称策略: 如激进做多 + 保守做空
+
+3. **自动特征工程** ✅
+   - 30+ 特征自动生成: 收益率、波动率、MA/EMA、RSI、MACD、Bollinger、价量比
+   - 无需手动构造: 从 OHLCV 数据一键生成
+   - 特征缓存: 初始化时预计算，避免重复
+
+4. **风控系统** ✅
+   - ATR 动态止损: `atr_sl` 倍数 × ATR (默认 2.0)
+   - ATR 止盈: `atr_tp` 倍数 × ATR (可选)
+   - 仓位管理: `risk_per_trade` (默认 10%) + `max_pos_value_frac` (默认 30%)
+   - 最小持有期: `min_holding_bars` 防止过度频繁交易
+
+5. **网格搜索优化** ✅
+   - 默认网格: label_h=[1,3,5], model_type=[auto,rf,xgb,lr], prob_long=[0.52,0.55,0.60]
+   - 并行优化: 复用引擎的多进程框架
+   - 零交易缓解: 包含宽松阈值选项 (0.52)
+
+#### 弱市环境专项优化
+基于 600519.SH 与 000300.SH 市场环境分析 (2023-2024):
+- 发现: 价格 > MA200 仅 23.1% 时间（长期弱势）
+- 建议: ADX 趋势（⭐⭐⭐⭐⭐）、Donchian(55/20)（⭐⭐⭐⭐）、ML走步（待验证）
+- 文档: `docs/策略优化指南_弱市环境.md`
+
+#### 测试与验证
+- ✅ **集成测试**: `test_ml_integration.py` 全部通过
+- ✅ **策略注册**: `ml_walk` 已加入 `STRATEGY_REGISTRY`
+- ✅ **依赖探测**: sklearn ✅, xgboost ⚠️(可选), torch ✅
+- ✅ **模型工厂**: auto→RF, rf→RF, lr→Pipeline, mlp→torch_mlp, sgd→Pipeline
+
+#### 使用示例
+```bash
+# 单次回测
+python unified_backtest_framework.py run \
+  --strategy ml_walk \
+  --symbols 600519.SH \
+  --start 2023-01-01 --end 2024-12-31 \
+  --params '{"model_type":"xgb","prob_long":0.58,"regime_ma":200}' \
+  --benchmark 000300.SH
+
+# 网格搜索
+python unified_backtest_framework.py grid \
+  --strategy ml_walk \
+  --param-ranges '{"model_type":["rf","xgb"],"prob_long":[0.52,0.55,0.60]}' \
+  --workers 4
+
+# 自动流程（ML vs 技术指标）
+python unified_backtest_framework.py auto \
+  --strategies ml_walk adx_trend macd_e donchian \
+  --workers 4
+```
+
+### 🐛 V2.5.1 关键修复 (之前版本)
+
+#### StopIteration 错误修复
+1. **StopIteration 错误** ✅
+   - 问题: 数据加载失败时 `data_map` 为空导致崩溃
+   - 解决: 在 3 个关键位置添加空数据验证 + 友好错误提示
+   - 文件: `engine.py`, `strategy_modules.py`
+
+2. **AKShare 符号格式** ✅
+   - 问题: 直接传 `600519.SH` 给 API, 导致返回空数据
+   - 解决: 自动转换为 `600519` (去掉交易所后缀)
+   - 文件: `providers.py` line 178
+
+3. **时区不匹配错误** ✅
+   - 问题: `tz-naive` 与 `tz-aware` DatetimeIndex 无法合并
+   - 解决: 统一所有数据为 `tz-naive` 格式
+   - 文件: `providers.py` (3个标准化函数)
+
+### 🏗️ V2.5.0 特性 (Phase 2 完成)
+
+#### 模块化重构
+- ✅ **Phase 1**: 数据源、策略、引擎分离 (v2.4.0)
+- ✅ **Phase 2**: 分析、绘图、自动化流程模块化
+- 📉 **代码精简**: 从 2138 行 → 214 行主文件 (减少 90%)
+
+#### 新增功能
+- 🎨 **增强绘图系统**: 7种技术指标可视化
+- 📊 **Pareto 前沿分析**: 多目标优化 (夏普率/收益/回撤)
+- 🔄 **Auto Pipeline**: 一键完成 数据加载→优化→分析→报告
+- 🚀 **风险平价策略**: 多资产组合, 动态权重调整
+
+---
+
+## 📐 系统架构
+
+### V2.8.5 架构图
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    统一入口 (214 lines)                          │
+│              unified_backtest_framework.py                      │
+│    [single] [grid] [auto] [list-strategies] [test-data]       │
+└────────────────────────────────────────────────────────────────┘
+                            ↓
+┌────────────────────────────────────────────────────────────────┐
+│                    核心业务层 (src/backtest/)                    │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │  engine.py   │  │ analysis.py  │  │ plotting.py  │        │
+│  │  814 lines   │  │  184 lines   │  │  149 lines   │        │
+│  │              │  │              │  │              │        │
+│  │ • auto_pipeline │ • pareto_front│ • plot_with_  │        │
+│  │ • grid_search│  │ • save_heatmap│  indicators   │        │
+│  │ • run_single │  │ • 多目标优化 │  │ • 7种指标   │        │
+│  │ • 基准对比   │  │              │  │ • 中文配色  │        │
+│  └──────────────┘  └──────────────┘  └──────────────┘        │
+│                                                                │
+│  ┌────────────────────────────────────────────────────┐       │
+│  │           strategy_modules.py (579 lines)          │       │
+│  │  • StrategyModule dataclass (策略元数据)           │       │
+│  │  • STRATEGY_REGISTRY (15+ 策略注册表)              │       │
+│  │  • ✨ MLWalkForwardBT (机器学习策略)                │       │
+│  │  • TurningPointBT (多标的转折点)                    │       │
+│  │  • RiskParityBT (风险平价)                         │       │
+│  └────────────────────────────────────────────────────┘       │
+└────────────────────────────────────────────────────────────────┘
+                            ↓
+┌────────────────────────────────────────────────────────────────┐
+│                    数据与策略层                                 │
+│  ┌──────────────────────┐  ┌──────────────────────┐          │
+│  │  data_sources/       │  │  strategies/         │          │
+│  │  providers.py        │  │  (11+ strategy files)│          │
+│  │  501 lines           │  │                      │          │
+│  │                      │  │ • MA Cross           │          │
+│  │ • BaseDataProvider   │  │ • MACD Signal        │          │
+│  │ • AkshareProvider ✅ │  │ • Bollinger Bands    │          │
+│  │ • YfinanceProvider   │  │ • RSI                │          │
+│  │ • TushareProvider    │  │ • ADX Trend          │          │
+│  │ • 统一OHLCV格式      │  │ • Donchian Channel   │          │
+│  │ • 缓存机制           │  │ • Triple MA          │          │
+│  │ • 时区标准化 ✅      │  │ • Z-Score            │          │
+│  └──────────────────────┘  │ • Keltner Channel    │          │
+│                            │ • Risk Parity 🆕     │          │
+│                            └──────────────────────┘          │
+└────────────────────────────────────────────────────────────────┘
+                            ↓
+┌────────────────────────────────────────────────────────────────┐
+│                    基础设施层                                   │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐             │
+│  │ DataManager│  │   cache/   │  │   logs/    │             │
+│  │ 数据管理器 │  │  智能缓存  │  │   日志     │             │
+│  └────────────┘  └────────────┘  └────────────┘             │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### 设计模式
+
+| 模式 | 应用位置 | 说明 |
+|------|---------|------|
+| **工厂模式** | `DataManager` | 根据 `provider` 参数创建数据源实例 |
+| **策略模式** | `StrategyModule` | 策略可独立开发、测试、替换 |
+| **适配器模式** | `providers.py` | 统一不同数据源接口为 OHLCV 格式 |
+| **模板方法** | `BaseStrategy` | 定义策略流程, 子类实现具体逻辑 |
+| **注册表模式** | `STRATEGY_REGISTRY` | 策略自动注册与查找 |
+
+---
+
+## 📦 模块详解
+
+### 1. 数据源模块 (`src/data_sources/`)
+
+**文件结构**:
+```
+data_sources/
+├── base.py           # 抽象基类 BaseDataProvider
+├── providers.py      # 501 lines - 3大数据源实现
+└── __init__.py       # 导出接口
+```
+
+**核心类**: `providers.py`
+
+```python
+class BaseDataProvider(ABC):
+    """数据源抽象基类"""
+    
+    @abstractmethod
+    def load_stock_daily(self, symbol, start_date, end_date, adjust=''):
+        """加载股票日线数据 → 返回 OHLCV DataFrame"""
+        
+    @abstractmethod
+    def load_index_daily(self, symbol, start_date, end_date):
+        """加载指数日线数据 → 返回 OHLCV DataFrame"""
+```
+
+**三大数据源**:
+
+| Provider | 类名 | 市场 | 配置 | 特点 |
+|----------|------|------|------|------|
+| **AKShare** | `AkshareProvider` | 中国 A股 | 免费无需注册 | ✅ V2.5.1修复符号格式 |
+| **YFinance** | `YfinanceProvider` | 全球市场 | 免费无需注册 | 稳定, 支持美股港股 |
+| **TuShare** | `TushareProvider` | 中国 A股 | 需要 Token | 数据全面, 速度快 |
+
+**关键改进 (V2.5.1)**:
+
+```python
+# providers.py line 178 - AKShare 符号格式自动转换
+def load_stock_daily(self, symbol, start_date, end_date, adjust='hfq'):
+    # ✅ 自动去掉交易所后缀
+    ak_symbol = symbol.replace(".SH", "").replace(".SZ", "")
+    df = ak.stock_zh_a_hist(symbol=ak_symbol, ...)  # 600519 而非 600519.SH
+    return self._standardize_stock_frame(df)
+
+# providers.py line 116, 130, 280 - 时区统一
+def _standardize_stock_frame(self, df):
+    # ✅ 强制转为 tz-naive
+    df.index = pd.to_datetime(df['Date']).dt.tz_localize(None)
+    return df
+```
+
+### 2. 策略模块 (`src/strategies/`)
+
+**文件结构**:
+```
+strategies/
+├── sma_cross.py         # 简单移动平均线交叉
+├── ema_cross.py         # 指数移动平均线交叉
+├── macd_signal.py       # MACD信号线策略
+├── bollinger_bands.py   # 布林带策略
+├── rsi_strategy.py      # RSI超买超卖
+├── adx_trend.py         # ADX趋势跟踪
+├── donchian_channel.py  # 唐奇安通道突破
+├── triple_ma.py         # 三重移动平均线
+├── zscore_strategy.py   # Z-Score均值回归
+├── keltner_channel.py   # Keltner通道
+├── risk_parity.py       # 风险平价组合 🆕
+└── __init__.py
+```
+
+**策略分类**:
+
+| 类型 | 策略 | 适用场景 | 参数复杂度 |
+|------|------|---------|-----------|
+| **趋势跟踪** | `sma_cross`, `ema_cross`, `macd_signal`, `adx_trend`, `donchian` | 单边行情 | ⭐⭐ |
+| **均值回归** | `bollinger`, `rsi`, `zscore`, `keltner` | 震荡市 | ⭐⭐⭐ |
+| **多指标** | `triple_ma` | 复杂趋势 | ⭐⭐⭐⭐ |
+| **组合策略** | `risk_parity` | 多资产配置 | ⭐⭐⭐⭐⭐ |
+
+**策略开发框架**:
+
+```python
+# src/strategies/my_strategy.py
+import backtrader as bt
+
+class MyStrategy(bt.Strategy):
+    params = (
+        ('param1', 10),
+        ('param2', 20),
+    )
+    
+    def __init__(self):
+        # 初始化指标
+        self.indicator = bt.indicators.SMA(period=self.params.param1)
+    
+    def next(self):
+        # 交易逻辑
+        if not self.position:
+            if buy_condition:
+                self.buy()
+        elif sell_condition:
+            self.sell()
+```
+
+### 3. 回测引擎模块 (`src/backtest/engine.py`)
+
+**核心类**: `BacktestEngine` (814 lines)
+
+**主要方法**:
+
+| 方法 | 功能 | 行数 | 说明 |
+|------|------|------|------|
+| `run_single()` | 单次回测 | ~100 | 基础回测, 返回指标 |
+| `grid_search()` | 网格搜索 | ~200 | 多进程参数优化 |
+| `auto_pipeline()` | 自动化流程 | ~300 | 数据→优化→分析→报告 |
+| `_load_data()` | 数据加载 | ~80 | 多数据源支持 |
+| `_load_benchmark()` | 基准加载 | ~60 | 多级降级策略 |
+| `_rerun_top_n()` | 重跑前N名 | ~100 | Pareto最优解详细分析 |
+
+**Auto Pipeline 工作流**:
+
+```
+1. 数据加载 (_load_data)
+   - 并发加载多只股票
+   - 自动缓存
+   - ✅ 空数据验证 (V2.5.1)
+   ↓
+2. 网格搜索 (grid_search)
+   - 多策略 × 多参数组合
+   - 多进程并行 (workers=4-8)
+   - 约 100-500 组参数
+   ↓
+3. Pareto 分析 (pareto_front)
+   - 三目标优化: Sharpe / Return / MDD
+   - 识别非支配解
+   - 生成散点图
+   ↓
+4. Top-N 重跑 (_rerun_top_n)
+   - 详细回测前 5-10 名
+   - 完整指标计算
+   - 生成交易记录
+   ↓
+5. 可视化 (plot_backtest_with_indicators)
+   - 价格 K线图
+   - 7种技术指标
+   - 买卖信号标注
+   ↓
+6. 输出报告
+   - summary.json (策略指标)
+   - trades.csv (交易记录)
+   - nav_series.csv (净值曲线)
+   - backtest_plot.png (可视化图表)
+```
+
+**关键改进 (V2.5.1)**:
+
+```python
+# engine.py line 703-705 - 空数据验证
+def _rerun_top_n(self, ...):
+    if not data_map:
+        print("❌ ERROR: No data loaded, cannot rerun top configurations.")
+        return
+    # ... 继续处理
+
+# engine.py line 738-745 - 优雅降级
+def _run_single(self, ...):
+    data_map = self._load_data(symbols, ...)
+    if not data_map:
+        print("⚠️  WARNING: No valid data loaded. Skipping this configuration.")
+        return self._empty_result()  # 返回空结果而非崩溃
+```
+
+### 4. 分析模块 (`src/backtest/analysis.py`)
+
+**核心功能**: 184 lines
+
+#### 4.1 Pareto 前沿分析
+
+```python
+def pareto_front(results_df: pd.DataFrame, objectives: List[str]) -> pd.DataFrame:
+    """
+    找出多目标优化的 Pareto 最优解
+    
+    objectives = ['SharpeRatio', 'TotalReturn', 'MaxDrawdown']
+    - 最大化 SharpeRatio
+    - 最大化 TotalReturn
+    - 最小化 MaxDrawdown (转为负数处理)
+    """
+```
+
+**输出**: `pareto_front.png` - 三维散点图 (Sharpe vs Return, 颜色=MDD)
+
+#### 4.2 热力图生成
+
+```python
+def save_heatmap(results_df, strategy_name, out_dir):
+    """
+    为不同策略生成专属热力图
+    
+    支持 10 种策略类型:
+    - sma_cross: fast_period × slow_period
+    - macd: fast × slow × signal (3D切片)
+    - bollinger: period × devfactor
+    - rsi: oversold × overbought
+    - ... 等
+    """
+```
+
+### 5. 绘图模块 (`src/backtest/plotting.py`)
+
+**核心功能**: 149 lines
+
+#### 5.1 增强指标可视化
+
+```python
+def plot_backtest_with_indicators(
+    data: pd.DataFrame,
+    trades: List,
+    strategy_name: str,
+    params: dict,
+    out_path: str
+):
+    """
+    生成 7 子图:
+    1. 价格 K线 + 买卖信号
+    2. SMA (5, 10, 20, 60)
+    3. EMA (12, 26)
+    4. MACD + Signal
+    5. RSI (14)
+    6. Bollinger Bands
+    7. 成交量
+    """
+```
+
+#### 5.2 中文配色方案
+
+```python
+class CNPlotScheme:
+    """中国股市配色方案"""
+    RED = '#FF4444'      # 涨 (中国习惯)
+    GREEN = '#00CC00'    # 跌
+    BLUE = '#4444FF'     # 中性
+    
+    # 与西方相反: 中国红涨绿跌, 西方绿涨红跌
+```
+
+### 6. 策略模块定义 (`src/backtest/strategy_modules.py`)
+
+**核心类**: `StrategyModule` (dataclass)
+
+```python
+@dataclass
+class StrategyModule:
+    """策略元数据定义"""
+    name: str                      # 策略唯一标识 (如 'sma_cross')
+    display_name: str              # 显示名称 (如 '双均线交叉')
+    strategy_class: type           # Backtrader 策略类
+    default_params: dict           # 默认参数
+    param_grid: dict               # 网格搜索参数空间
+    description: str = ""          # 策略说明
+    multi_data: bool = False       # 是否需要多资产 (risk_parity=True)
+```
+
+**策略注册表**: `STRATEGY_REGISTRY`
+
+```python
+STRATEGY_REGISTRY = {
+    'sma_cross': SMA_CROSS_MODULE,
+    'ema_cross': EMA_CROSS_MODULE,
+    'macd_signal': MACD_SIGNAL_MODULE,
+    'bollinger': BOLLINGER_MODULE,
+    'rsi': RSI_MODULE,
+    'adx_trend': ADX_TREND_MODULE,
+    'donchian': DONCHIAN_MODULE,
+    'triple_ma': TRIPLE_MA_MODULE,
+    'zscore': ZSCORE_MODULE,
+    'keltner': KELTNER_MODULE,
+    'risk_parity': RISK_PARITY_MODULE,  # 🆕 V2.5.0
+}
+```
+
+**关键改进 (V2.5.1)**:
+
+```python
+# strategy_modules.py line 187-189 - 空数据验证
+def add_data(cerebro, data_map: dict, ...):
+    if not data_map:
+        raise ValueError("❌ data_map is empty. No data loaded for backtesting.")
+    # ... 继续处理
+```
+
+---
+
+## 🔄 数据流转
+
+### Auto Pipeline 完整流程 (V2.5.1)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  1. 命令行解析                                               │
+│     python unified_backtest_framework.py auto               │
+│     --symbols 600519.SH 000333.SZ ...                       │
+│     --strategies sma_cross macd_signal ...                  │
+│     --workers 4                                             │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  2. 数据加载 (engine._load_data)                            │
+│     ✅ V2.5.1: 空数据验证                                   │
+│     ✅ V2.5.1: 符号格式自动转换 (AKShare)                  │
+│     ✅ V2.5.1: 时区统一为 tz-naive                          │
+│                                                             │
+│     For symbol in symbols:                                  │
+│       provider.load_stock_daily(symbol, ...)                │
+│       → 缓存查找 → API调用 → 标准化 → data_map[symbol]     │
+│                                                             │
+│     输出: data_map = {'600519.SH': DataFrame, ...}          │
+│     📊 Loaded data for 10 symbols: [...]                    │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  3. 网格搜索 (engine.grid_search)                           │
+│     多进程并行优化                                           │
+│                                                             │
+│     For strategy in strategies:                             │
+│       param_grid = STRATEGY_REGISTRY[strategy].param_grid   │
+│       all_configs = itertools.product(*param_grid.values()) │
+│       → 生成 100-500 组参数组合                             │
+│                                                             │
+│     multiprocessing.Pool(workers=4):                        │
+│       For config in all_configs:                            │
+│         _worker_run_single(symbol, strategy, params)        │
+│         → 独立进程回测                                      │
+│         → 返回: {Sharpe, Return, MDD, Trades, ...}          │
+│                                                             │
+│     输出: results_df (124 rows × 15 columns)                 │
+│     ⚙️  Completed 124 evaluations in 26.4s                  │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  4. Pareto 分析 (analysis.pareto_front)                     │
+│     三目标优化                                               │
+│                                                             │
+│     objectives = ['SharpeRatio', 'TotalReturn', 'MaxDrawdown']│
+│                                                             │
+│     For each row in results_df:                             │
+│       Check if dominated by others                          │
+│       → 被支配: 至少一个目标更差                            │
+│       → 非支配: Pareto 最优                                 │
+│                                                             │
+│     输出: pareto_df (12 rows)                               │
+│     生成: pareto_front.png (散点图)                         │
+│     📈 Pareto front: 12 optimal configurations              │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  5. Top-N 重跑 (engine._rerun_top_n)                        │
+│     ✅ V2.5.1: 空数据验证                                   │
+│                                                             │
+│     Sort pareto_df by SharpeRatio descending                │
+│     top_configs = pareto_df.head(5)                         │
+│                                                             │
+│     For rank, config in enumerate(top_configs):             │
+│       cerebro = bt.Cerebro()                                │
+│       add_data(cerebro, data_map, symbol)                   │
+│       cerebro.addstrategy(strategy, **params)               │
+│       cerebro.run()                                         │
+│       → 详细交易记录                                        │
+│       → 完整指标计算                                        │
+│                                                             │
+│       plot_backtest_with_indicators(...)                    │
+│       → 生成 backtest_plot.png                              │
+│                                                             │
+│       save_results(rerun_rank_{rank}_{strategy}_{symbol}/)  │
+│                                                             │
+│     输出: 5个子目录, 每个包含:                              │
+│       - summary.json                                        │
+│       - trades.csv                                          │
+│       - nav_series.csv                                      │
+│       - backtest_plot.png                                   │
+│     🏆 Rerunning top 5 configurations...                    │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  6. 报告生成                                                │
+│     输出目录: reports_bulk_10/                              │
+│       pareto_front.png        ← Pareto散点图                │
+│       all_results.csv         ← 所有参数组合结果            │
+│       grid_search_log.txt     ← 详细日志                    │
+│       rerun_rank_1_*/         ← 第1名详细报告               │
+│       rerun_rank_2_*/         ← 第2名详细报告               │
+│       ...                                                   │
+│                                                             │
+│     ✅ Pipeline completed! Check reports_bulk_10/           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🛠️ 快速开始
+
+### 1. 环境准备
+
+```bash
+# Python 3.9+
+pip install -r requirements.txt
+
+# 核心依赖
+pip install backtrader pandas numpy matplotlib akshare
+
+# 可选依赖
+pip install yfinance tushare scipy
+```
+
+### 2. 五分钟上手
+
+```bash
+# 步骤1: 查看可用策略
+python unified_backtest_framework.py list-strategies
+
+# 步骤2: 单策略回测
+python unified_backtest_framework.py single \
+  --symbol 600519.SH --strategy sma_cross
+
+# 步骤3: 参数优化
+python unified_backtest_framework.py grid \
+  --symbol 600519.SH --strategy sma_cross \
+  --param-grid "fast_period=[5,10,20]" "slow_period=[30,50,60]"
+
+# 步骤4: 自动化流程 (推荐)
+python unified_backtest_framework.py auto \
+  --symbols 600519.SH 000333.SZ 600036.SH \
+  --strategies sma_cross macd_signal bollinger \
+  --workers 4 --top-n 5
+```
+
+### 3. 实战案例 (V2.5.1 测试通过)
+
+```bash
+# 中等规模: 10股票 × 8策略 ≈ 26秒
+python unified_backtest_framework.py auto \
+  --symbols 600519.SH 000333.SZ 600031.SH 000651.SZ 600036.SH \
+            600276.SH 000725.SZ 600104.SH 600887.SH 601318.SH \
+  --strategies sma_cross macd_signal triple_ma donchian \
+               zscore keltner bollinger rsi \
+  --start 2022-01-01 --end 2025-01-01 \
+  --workers 4 --top-n 5 \
+  --benchmark 000300.SH \
+  --out-dir reports_bulk_10
+
+# 预期输出:
+# 📊 Loaded data for 10 symbols: [...]
+# ⚙️  Completed 124 evaluations in 26.4s
+# 📈 Pareto front: 12 optimal configurations
+# 🏆 Rerunning top 5 configurations...
+# ✅ Pipeline completed!
+```
+
+---
+
+## 🎓 扩展开发
+
+### 添加自定义策略
+
+**步骤1**: 创建策略文件 `src/strategies/my_strategy.py`
+
+```python
+import backtrader as bt
+
+class MyStrategy(bt.Strategy):
+    params = (('param1', 10), ('param2', 20))
+    
+    def __init__(self):
+        self.indicator = bt.indicators.SMA(period=self.params.param1)
+    
+    def next(self):
+        if not self.position and self.indicator > self.data.close:
+            self.buy()
+        elif self.position and self.indicator < self.data.close:
+            self.sell()
+```
+
+**步骤2**: 注册策略 `src/backtest/strategy_modules.py`
+
+```python
+MY_STRATEGY_MODULE = StrategyModule(
+    name='my_strategy',
+    display_name='我的策略',
+    strategy_class=MyStrategy,
+    default_params={'param1': 10, 'param2': 20},
+    param_grid={'param1': [5, 10, 15], 'param2': [15, 20, 25]},
+    description='自定义策略说明'
+)
+
+STRATEGY_REGISTRY['my_strategy'] = MY_STRATEGY_MODULE
+```
+
+**步骤3**: 使用策略
+
+```bash
+python unified_backtest_framework.py single \
+  --symbol 600519.SH --strategy my_strategy
+```
+
+### 添加自定义数据源
+
+**步骤1**: 创建 Provider `src/data_sources/providers.py`
+
+```python
+class MyDataProvider(BaseDataProvider):
+    def load_stock_daily(self, symbol, start_date, end_date, adjust=''):
+        raw_df = my_api.get_data(symbol, start_date, end_date)
+        return self._standardize_stock_frame(raw_df)
+```
+
+**步骤2**: 注册到 DataManager
+
+```python
+# data_manager.py
+PROVIDERS = {
+    'akshare': AkshareProvider,
+    'yfinance': YfinanceProvider,
+    'mydata': MyDataProvider,  # 新增
+}
+```
+
+---
+
+## 🔍 故障排除
+
+### V2.5.1 已修复的问题
+
+| 问题 | 症状 | 原因 | 解决方案 | 文件 |
+|------|------|------|---------|------|
+| **StopIteration** | `next(iter(...))` 崩溃 | 空 data_map | 空数据验证 + 友好错误 | engine.py, strategy_modules.py |
+| **AKShare 空数据** | 所有股票返回空 | 符号格式错误 | 自动转换 `600519.SH` → `600519` | providers.py:178 |
+| **时区不匹配** | `tz-naive`/`tz-aware` 错误 | 混合时区索引 | 统一为 tz-naive | providers.py:116,130,280 |
+
+### 常见问题
+
+#### 1. 数据加载失败
+
+```bash
+# 症状: WARNING: AKShare returned empty DataFrame
+
+# 解决:
+# 1. 检查符号格式 (600519.SH 而非 600519)
+# 2. 检查日期范围是否合理
+# 3. 检查网络连接
+# 4. 升级到 V2.5.1+
+
+# 测试数据加载
+python unified_backtest_framework.py test-data --symbol 600519.SH
+```
+
+#### 2. TuShare Token
+
+```bash
+# Windows PowerShell
+$env:TUSHARE_TOKEN="your_token_here"
+
+# Linux/Mac
+export TUSHARE_TOKEN="your_token_here"
+```
+
+#### 3. 性能优化
+
+```bash
+# 1. 增加并行进程
+--workers 8  # 根据CPU核心数
+
+# 2. 减少参数空间
+--param-grid "fast=[10,20]" "slow=[30,60]"  # 2×2
+
+# 3. 使用缓存 (默认启用)
+# 缓存位置: cache/
+```
+
+---
+
+## 📈 性能基准
+
+### V2.5.1 测试结果
+
+| 测试规模 | 股票数 | 策略数 | 参数组合 | 时间 | Workers | 状态 |
+|---------|--------|--------|---------|------|---------|------|
+| **小型** | 3 | 3 | ~30 | 8s | 4 | ✅ |
+| **中型** | 10 | 8 | 124 | 26.4s | 4 | ✅ |
+| **大型** | 20 | 8 | ~400 | 60-90s | 6 | ✅ |
+
+### 策略指标标准
+
+| 指标 | 优秀 | 良好 | 一般 | 较差 |
+|------|------|------|------|------|
+| **夏普率** | > 2.0 | 1.0-2.0 | 0.5-1.0 | < 0.5 |
+| **年化收益** | > 30% | 15-30% | 5-15% | < 5% |
+| **最大回撤** | < 10% | 10-20% | 20-30% | > 30% |
+| **胜率** | > 60% | 50-60% | 40-50% | < 40% |
+
+---
+
+## 🗺️ 发展路线图
+
+### ✅ Phase 1 (V2.4.0) - 完成
+
+- [x] 数据源模块化 (AKShare, YFinance, TuShare)
+- [x] 策略模块化 (8+ 策略)
+- [x] 回测引擎基础架构
+- [x] 单策略回测
+- [x] 网格搜索优化
+
+### ✅ Phase 2 (V2.5.0) - 完成
+
+- [x] 分析模块 (Pareto 优化)
+- [x] 绘图模块 (7种指标可视化)
+- [x] Auto Pipeline (自动化流程)
+- [x] Risk Parity 策略
+- [x] 代码精简 (90% 减少)
+
+### ✅ Phase 2.1 (V2.5.1) - 完成
+
+- [x] StopIteration 错误修复
+- [x] AKShare 符号格式修复
+- [x] 时区不匹配修复
+- [x] 完整测试验证 (10×8)
+
+### 🔄 Phase 3 (进行中)
+
+- [ ] 单元测试覆盖 (pytest)
+- [ ] CI/CD 流程 (GitHub Actions)
+- [ ] 性能分析与优化
+- [ ] 文档完善 (API docs)
+
+### 📋 Phase 4 (计划)
+
+- [ ] Web UI (Streamlit/Dash)
+- [ ] 实时监控功能
+- [ ] 自动交易接口
+- [ ] 机器学习策略
+- [ ] 因子分析系统
+
+---
+
+## 📚 文档索引
+
+| 文档 | 说明 | 读者 |
+|------|------|------|
+| **README_V2.md** | 项目快速介绍 | 新手 |
+| **unified_backtest_framework_usage.md** | 完整使用指南 | 所有用户 |
+| **项目总览_V2.md** (本文) | 技术架构总览 | 开发者 |
+| **CHANGELOG.md** | 版本更新记录 | 所有用户 |
+| **docs/DATABASE_PREVIEW_GUIDE.md** | 数据库预览工具 | 高级用户 |
+| **docs/MODULAR_REFACTORING_REPORT.md** | 模块化重构报告 | 开发者 |
+
+---
+
+## 🤝 贡献指南
+
+### 开发规范
+
+- **代码风格**: PEP 8
+- **类型注解**: 使用 `typing`
+- **文档字符串**: Google style docstring
+- **提交信息**: Conventional Commits
+
+### 测试要求
+
+```bash
+# 运行单元测试
+pytest test/
+
+# 运行集成测试
+python test/test_auto_pipeline.py
+
+# 代码覆盖率
+pytest --cov=src --cov-report=html
+```
+
+---
+
+**企业级量化回测平台 - V2.5.1 生产就绪** 🚀
+
+**最后更新**: 2025-01-XX  
+**维护团队**: Quantitative Trading Team  
+**许可证**: MIT
