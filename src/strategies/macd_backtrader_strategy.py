@@ -18,11 +18,13 @@ class MACDStrategy(bt.Strategy):
     )
 
     def __init__(self):
+        # 关闭策略内部MACD的绘图（绘图由engine.py统一添加）
         self.macd = bt.indicators.MACD(
             self.data.close,
             period_me1=self.params.fast,
             period_me2=self.params.slow,
             period_signal=self.params.signal,
+            plot=False  # 关键：避免与engine.py的绘图指标重复
         )
         # 关闭绘图，避免额外子图
         self.crossover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal, plot=False)
@@ -87,11 +89,13 @@ class MACDZeroCrossStrategy(bt.Strategy):
     )
 
     def __init__(self):
+        # 关闭策略内部MACD的绘图（绘图由engine.py统一添加）
         self.macd = bt.indicators.MACD(
             self.data.close,
             period_me1=self.params.fast,
             period_me2=self.params.slow,
             period_signal=self.params.signal,
+            plot=False  # 关键：避免与engine.py的绘图指标重复
         )
         # 关闭绘图，避免额外子图
         self.crossover = bt.indicators.CrossOver(self.macd.macd, 0, plot=False)
@@ -137,11 +141,13 @@ class MACDHistogramStrategy(bt.Strategy):
     )
 
     def __init__(self):
+        # 关闭策略内部MACD的绘图（绘图由engine.py统一添加）
         self.macd = bt.indicators.MACD(
             self.data.close,
             period_me1=self.params.fast,
             period_me2=self.params.slow,
             period_signal=self.params.signal,
+            plot=False  # 关键：避免与engine.py的绘图指标重复
         )
         # Histogram is macd - signal
         self.histogram = self.macd.macd - self.macd.signal
@@ -260,11 +266,12 @@ class MACD_RegimePullback(bt.Strategy):
     )
 
     def __init__(self):
-        # 指标
+        # 指标（关闭MACD绘图，避免与engine.py重复）
         self.macd = bt.indicators.MACD(self.data.close,
                                        period_me1=self.params.fast,
                                        period_me2=self.params.slow,
-                                       period_signal=self.params.signal)
+                                       period_signal=self.params.signal,
+                                       plot=False)  # 关键：避免重复绘制
         self.xover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal, plot=False)
         self.ema_trend = bt.indicators.EMA(self.data.close, period=self.params.ema_trend_period, plot=False)
         # 移除危险的数组操作：self.ema_trend_slope = self.ema_trend - self.ema_trend(-1)
@@ -453,11 +460,13 @@ class MACD_EnhancedStrategy(bt.Strategy):
     )
 
     def __init__(self):
+        # 关闭策略内部MACD的绘图（绘图由engine.py统一添加）
         self.macd = bt.indicators.MACD(
             self.data.close,
             period_me1=self.params.fast,
             period_me2=self.params.slow,
             period_signal=self.params.signal,
+            plot=False  # 关键：避免与engine.py的绘图指标重复
         )
         # 关闭绘图，避免子图
         self.crossover = bt.indicators.CrossOver(self.macd.macd, self.macd.signal, plot=False)

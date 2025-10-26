@@ -1,0 +1,31 @@
+{
+  "provider": "akshare",
+  "symbols": [
+    "600519.SH",
+    "000333.SZ",
+    "600036.SH",
+    "601318.SH"
+  ],
+  "start_date": "2022-01-01",
+  "end_date": "2024-12-31",
+  "benchmark": "000300.SH",
+  "strategies": [
+    "ema",
+    "macd",
+    "bollinger",
+    "rsi"
+  ],
+  "cash": "200000",
+  "commission": "0.0001",
+  "slippage": "0.001",
+  "adj": "",
+  "output_dir": "./reports_gui",
+  "cache_dir": "./cache",
+  "mode": "auto",
+  "workers": "4",
+  "top_n": "5",
+  "min_trades": "1",
+  "hot_only": true,
+  "use_benchmark_regime": false,
+  "regime_scope": "trend"
+}

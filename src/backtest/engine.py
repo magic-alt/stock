@@ -45,6 +45,54 @@ from src.core.events import EventEngine, Event, EventType
 from src.core.gateway import BacktestGateway, HistoryGateway
 
 
+# --- Custom KDJ Indicator for Plotting ---
+class KDJ(bt.Indicator):
+    """
+    KDJ 指标（随机指标的中国化版本）
+    K线 = Stochastic %K
+    D线 = K线的移动平均
+    J线 = 3*K - 2*D
+    """
+    lines = ('percK', 'percD', 'percJ',)
+    params = (
+        ('period', 9),          # K线周期
+        ('period_dfast', 3),    # K线平滑周期
+        ('period_dslow', 3),    # D线平滑周期
+        ('upperband', 80.0),
+        ('lowerband', 20.0),
+    )
+    plotinfo = dict(
+        plot=True,
+        subplot=True,
+        plotname='KDJ',
+        plotlines=dict(
+            percK=dict(_name='K', color='blue'),
+            percD=dict(_name='D', color='red'),
+            percJ=dict(_name='J', color='orange'),
+        )
+    )
+    plotlines = dict(
+        upperband=dict(_plotskip=False, color='gray', ls='--'),
+        lowerband=dict(_plotskip=False, color='gray', ls='--'),
+    )
+    
+    def __init__(self):
+        # 使用 Stochastic 指标作为基础
+        stoch = bt.indicators.Stochastic(
+            self.data,
+            period=self.p.period,
+            period_dfast=self.p.period_dfast,
+            period_dslow=self.p.period_dslow,
+        )
+        
+        # K线和D线直接来自Stochastic
+        self.lines.percK = stoch.lines.percK
+        self.lines.percD = stoch.lines.percD
+        
+        # J线 = 3*K - 2*D
+        self.lines.percJ = 3.0 * self.lines.percK - 2.0 * self.lines.percD
+
+
 # --- globals for process workers (avoid re-sending big data blobs) --------
 _G_DATA_MAP: Optional[Dict[str, pd.DataFrame]] = None
 _G_BENCH_NAV: Optional[pd.Series] = None
@@ -210,8 +258,83 @@ class BacktestEngine:
                 bench_df.index.name = "datetime"
                 bench_feed = GenericPandasData(dataname=bench_df)
                 cerebro.adddata(bench_feed, name="__benchmark__")
+            
+            # 如果需要绘图，包装策略类以添加绘图指标
+            if return_cerebro:
+                original_strategy_cls = module.strategy_cls
                 
-            module.add_strategy(cerebro, params)
+                class StrategyWithPlotIndicators(original_strategy_cls):
+                    """包装原始策略，添加绘图指标"""
+                    def __init__(self):
+                        super().__init__()
+                        # 添加绘图指标到第一个数据源
+                        if self.datas:
+                            data = self.datas[0]
+                            # 主图均线 - 使用明确的非红绿色（蓝色系、紫色系、橙色、青色）
+                            self._plot_ma5 = bt.indicators.SimpleMovingAverage(
+                                data, period=5, plotname='MA5', 
+                                subplot=False, plotmaster=data
+                            )
+                            # 注意：Backtrader的SMA不支持直接设置颜色
+                            # 使用plotlines来设置线条样式（但颜色仍由PlotScheme控制）
+                            self._plot_ma5.plotlines.sma._samecolor = False
+                            
+                            self._plot_ma10 = bt.indicators.SimpleMovingAverage(
+                                data, period=10, plotname='MA10', 
+                                subplot=False, plotmaster=data
+                            )
+                            self._plot_ma10.plotlines.sma._samecolor = False
+                            
+                            self._plot_ma20 = bt.indicators.SimpleMovingAverage(
+                                data, period=20, plotname='MA20', 
+                                subplot=False, plotmaster=data
+                            )
+                            self._plot_ma20.plotlines.sma._samecolor = False
+                            
+                            self._plot_ma30 = bt.indicators.SimpleMovingAverage(
+                                data, period=30, plotname='MA30', 
+                                subplot=False, plotmaster=data
+                            )
+                            self._plot_bb = bt.indicators.BollingerBands(
+                                data, period=20, devfactor=2.0, 
+                                subplot=False, plotmaster=data
+                            )
+                            # 子图指标
+                            self._plot_rsi = bt.indicators.RSI(
+                                data, period=14, subplot=True, plotname='RSI(14)'
+                            )
+                            # MACD: 使用MACDHisto确保histogram清晰显示
+                            self._plot_macd = bt.indicators.MACDHisto(
+                                data, 
+                                period_me1=12, 
+                                period_me2=26, 
+                                period_signal=9,
+                                subplot=True
+                            )
+                            # 配置MACD histogram颜色：>0红色，<0绿色
+                            self._plot_macd.plotlines.histo._method = 'bar'
+                            self._plot_macd.plotlines.histo.plotname = 'histogram'
+                            
+                            # KDJ指标（第五子图）- 使用自定义KDJ指标显示K、D、J三条线
+                            self._plot_kdj = KDJ(
+                                data,
+                                period=9,
+                                period_dfast=3,
+                                period_dslow=3,
+                                upperband=80.0,
+                                lowerband=20.0,
+                            )
+                
+                # 临时替换策略类
+                temp_strategy_cls = module.strategy_cls
+                module.strategy_cls = StrategyWithPlotIndicators
+                module.add_strategy(cerebro, params)
+                # 恢复原始策略类
+                module.strategy_cls = temp_strategy_cls
+                print("[DEBUG] 已为策略添加绘图指标")
+            else:
+                module.add_strategy(cerebro, params)
+                
             cerebro.addanalyzer(bt.analyzers.TimeReturn, _name="timeret")
             cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name="sharpe")
             cerebro.addanalyzer(bt.analyzers.DrawDown, _name="drawdown")
@@ -379,7 +502,12 @@ class BacktestEngine:
         label: Optional[str] = None,
         enable_plot: bool = False,
     ) -> Tuple[pd.Series, Dict[str, Any], Optional[bt.Cerebro]]:
-        """Run a backtest for the supplied strategy module and capture metrics."""
+        """
+        Run a backtest for the supplied strategy module and capture metrics.
+        
+        Note: Plotting is now handled by plotting.py module via plot_backtest_with_indicators().
+        This method only returns the cerebro instance when enable_plot=True.
+        """
         nav, metrics, cerebro = self._run_module(
             module,
             data_map,
@@ -402,11 +530,15 @@ class BacktestEngine:
             
             if not combined.empty:
                 import matplotlib.pyplot as plt
-                plt.figure()
-                combined.plot()
-                plt.title(f"{module.name} vs benchmark")
+                plt.figure(figsize=(12, 6))
+                combined.plot(ax=plt.gca(), linewidth=2)
+                plt.title(f"{module.name} vs benchmark NAV", fontsize=14)
+                plt.ylabel("NAV")
+                plt.xlabel("Date")
+                plt.grid(True, alpha=0.3)
+                plt.legend()
                 plt.tight_layout()
-                plt.savefig(os.path.join(out_dir, f"{label or module.name}_nav_vs_benchmark.png"))
+                plt.savefig(os.path.join(out_dir, f"{label or module.name}_nav_vs_benchmark.png"), dpi=150)
                 plt.close()
         elif out_dir:
             os.makedirs(out_dir, exist_ok=True)
@@ -429,8 +561,16 @@ class BacktestEngine:
         adj: Optional[str] = None,
         out_dir: Optional[str] = None,
         enable_plot: bool = False,
+        fee_plugin: Optional[str] = None,
+        fee_plugin_params: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Convenience wrapper returning both metrics and NAV for a single run."""
+        """
+        Convenience wrapper returning both metrics and NAV for a single run.
+        
+        Args:
+            fee_plugin: Fee plugin name (e.g., 'cn_stock'). If None, uses default commission.
+            fee_plugin_params: Parameters for fee plugin (e.g., {"commission_rate": 0.0001}).
+        """
         from .strategy_modules import STRATEGY_REGISTRY
         
         if strategy not in STRATEGY_REGISTRY:
@@ -443,6 +583,14 @@ class BacktestEngine:
         data_map = self._load_data(symbols, start, end, adj=adj)
         bench_nav = self._load_benchmark(benchmark, start, end) if benchmark else None
         param_dict = module.coerce(params or {})
+        
+        # V2.9.0: Inject fee plugin configuration into params
+        if fee_plugin:
+            param_dict["_fee_plugin"] = fee_plugin
+            if fee_plugin_params:
+                # Merge fee plugin params with underscored keys
+                for key, value in fee_plugin_params.items():
+                    param_dict[f"_{key}"] = value
         
         nav, metrics, cerebro = self._execute_strategy(
             module,
@@ -590,6 +738,41 @@ class BacktestEngine:
             "strategy": strategy,
             "total_runs": len(rows),
         }))
+        
+        # V2.8.6.3: Integrate analysis.py for automatic result analysis
+        # Generate Pareto frontier and parameter heatmaps after grid search
+        try:
+            from .analysis import pareto_front, save_heatmap
+            import os
+            
+            # Create analysis output directory
+            analysis_dir = os.path.join(self.cache_dir, "grid_analysis")
+            os.makedirs(analysis_dir, exist_ok=True)
+            
+            # Generate Pareto frontier (requires sharpe, cum_return, mdd)
+            if not result_df.empty and all(col in result_df.columns for col in ["sharpe", "cum_return", "mdd"]):
+                pareto_df = pareto_front(result_df)
+                pareto_path = os.path.join(analysis_dir, f"{strategy}_pareto.csv")
+                pareto_df.to_csv(pareto_path, index=False)
+                print(f"✅ Pareto frontier saved: {pareto_path} ({len(pareto_df)} points)")
+            
+            # Generate parameter heatmaps for each parameter combination
+            if len(keys) >= 2 and not result_df.empty:
+                # Get strategy module for save_heatmap
+                from .strategy_modules import STRATEGY_REGISTRY
+                strategy_module = STRATEGY_REGISTRY.get(strategy)
+                
+                if strategy_module:
+                    # Create subdirectory for this strategy's heatmaps
+                    strategy_dir = os.path.join(analysis_dir, strategy)
+                    os.makedirs(strategy_dir, exist_ok=True)
+                    
+                    # Save heatmaps using analysis.py
+                    save_heatmap(strategy_module, result_df, strategy_dir)
+                    print(f"✅ Heatmaps saved in: {strategy_dir}")
+        except Exception as e:
+            # Use print instead of logger (logger not always available)
+            print(f"⚠️  Failed to generate analysis outputs: {e}")
         
         return result_df
 

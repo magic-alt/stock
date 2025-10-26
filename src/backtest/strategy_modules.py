@@ -197,7 +197,15 @@ class StrategyModule:
             cerebro.adddata(feed, name=sym)
 
     def add_strategy(self, cerebro: bt.Cerebro, params: Dict[str, Any]) -> None:
-        cerebro.addstrategy(self.strategy_cls, **params)
+        """
+        Add strategy to cerebro with parameters.
+        
+        V2.9.0: Filter out internal parameters (starting with '_') before passing to strategy.
+        Internal parameters are used for broker/fee configuration, not strategy logic.
+        """
+        # Filter out internal parameters (prefixed with '_')
+        strategy_params = {k: v for k, v in params.items() if not k.startswith('_')}
+        cerebro.addstrategy(self.strategy_cls, **strategy_params)
 
 
 # ---------------------------------------------------------------------------
@@ -325,10 +333,10 @@ class TurningPointBT(bt.Strategy):
                 vwap_window=self.p.vwap_window,
             )
             
-        atr_ind = bt.indicators.ATR(self.datas[0], period=self.p.atr_period)
-        ema200 = bt.indicators.EMA(self.datas[0].close, period=self.p.regime_period)
+        atr_ind = bt.indicators.ATR(self.datas[0], period=self.p.atr_period, plot=False)
+        ema200 = bt.indicators.EMA(self.datas[0].close, period=self.p.regime_period, plot=False)
         bench = next((d for d in self.datas if getattr(d, "_name", "") == self.p.benchmark_data_name), None)
-        bench_ema200 = bt.indicators.EMA(bench.close, period=self.p.regime_period) if bench is not None else None
+        bench_ema200 = bt.indicators.EMA(bench.close, period=self.p.regime_period, plot=False) if bench is not None else None
         
         for intent in intents:
             data = self._names.get(intent.symbol)
@@ -454,17 +462,17 @@ class RiskParityBT(bt.Strategy):
         self._rets = {n: bt.indicators.PctChange(d.close) 
                      for n, d in zip(self._names, self.datas) 
                      if getattr(d, "_name", "") != self.p.benchmark_data_name}
-        self._vol = {n: bt.indicators.StdDev(self._rets[n], period=self.p.vol_window) 
+        self._vol = {n: bt.indicators.StdDev(self._rets[n], period=self.p.vol_window, plot=False) 
                     for n in self._names}
-        self._ema200 = {n: bt.indicators.EMA(d.close, period=self.p.regime_period) 
+        self._ema200 = {n: bt.indicators.EMA(d.close, period=self.p.regime_period, plot=False) 
                        for n, d in zip(self._names, self.datas) 
                        if getattr(d, "_name", "") != self.p.benchmark_data_name}
-        self._mom = {n: (d.close - bt.indicators.SMA(d.close, period=self.p.mom_lookback)) 
+        self._mom = {n: (d.close - bt.indicators.SMA(d.close, period=self.p.mom_lookback, plot=False)) 
                     for n, d in zip(self._names, self.datas) 
                     if getattr(d, "_name", "") != self.p.benchmark_data_name}
         # Benchmark EMA
         self._bench = next((d for d in self.datas if getattr(d, "_name", "") == self.p.benchmark_data_name), None)
-        self._bench_ema = bt.indicators.EMA(self._bench.close, period=self.p.bench_gate_period) if self._bench is not None else None
+        self._bench_ema = bt.indicators.EMA(self._bench.close, period=self.p.bench_gate_period, plot=False) if self._bench is not None else None
 
     def _eligible(self, name: str, data) -> bool:
         """Check if asset passes momentum and regime filters."""
@@ -651,8 +659,8 @@ if _ML_AVAILABLE:
             self._probs = pd.Series(0.0, index=df.index)
             self._trained_upto = None  # 扩展窗口截止索引
 
-            # 交易风控指标
-            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period))
+            # 交易风控指标（不绘制，避免影响图表布局）
+            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period), plot=False)
             self._hold = 0
             self._since_trade = 99999   # 冷却计数器
             self._state = 0             # -1/0/1 当前意图，用于滞回
@@ -894,9 +902,9 @@ if _ML_AVAILABLE:
             )
             self._feat = self._ml._ta(df)
             self._label = self._ml._build_label(df["收盘"])
-            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period))
-            self._fast = bt.indicators.SMA(self.data0.close, period=int(self.p.fast))
-            self._slow = bt.indicators.SMA(self.data0.close, period=int(self.p.slow))
+            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period), plot=False)
+            self._fast = bt.indicators.SMA(self.data0.close, period=int(self.p.fast), plot=False)
+            self._slow = bt.indicators.SMA(self.data0.close, period=int(self.p.slow), plot=False)
             self._hold = 0
             self._since_trade = 99999
             self._ml_model = None
@@ -1052,7 +1060,7 @@ if _ML_AVAILABLE:
             )
             self._feat = self._ml._ta(df)
             self._label = self._ml._build_label(df["收盘"])
-            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period))
+            self._atr = bt.indicators.ATR(self.data0, period=int(self.p.atr_period), plot=False)
             self._state = 0
             self._since_trade = 99999
 

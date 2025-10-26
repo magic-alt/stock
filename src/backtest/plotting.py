@@ -238,39 +238,8 @@ def plot_backtest_with_indicators(
         plt.rcParams['axes.grid'] = True
         plt.rcParams['grid.alpha'] = 0.3
         
-        # 添加技术指标
-        if show_indicators and cerebro.datas:
-            data = cerebro.datas[0]  # 主数据源
-            
-            # === 主图均线（强制叠加主图）===
-            bt.indicators.SimpleMovingAverage(data, period=5, plotname='SMA_5', subplot=False, plotmaster=data)
-            bt.indicators.SimpleMovingAverage(data, period=20, plotname='SMA_20', subplot=False, plotmaster=data)
-            bt.indicators.ExponentialMovingAverage(data, period=25, plotname='EMA_25', subplot=False, plotmaster=data)
-            bt.indicators.WeightedMovingAverage(data, period=25, plotname='WMA_25', subplot=False, plotmaster=data)
-            bt.indicators.BollingerBands(data, period=20, devfactor=2.0, subplot=False, plotmaster=data)
-            
-            # === 仅计算用，不画图（避免空子图）===
-            bt.indicators.ATR(data, plot=False)
-            bt.indicators.RateOfChange(data, period=12, plot=False)
-            bt.indicators.Momentum(data, period=14, plot=False)
-            
-            # === 成交量均线叠加在成交量图 ===
-            if hasattr(data, 'volume'):
-                bt.indicators.SMA(data.volume, period=20, subplot=True, plotname='Volume_SMA')
-            
-            # === MACD（需要一个子图）===
-            macd = bt.indicators.MACD(data)
-            bt.indicators.MACDHisto(data)
-            
-            if indicator_preset == "full":
-                # 更多震荡/趋势子图（可能产生额外面板）
-                rsi = bt.indicators.RSI(data, period=14)
-                bt.indicators.SmoothedMovingAverage(rsi, period=10, subplot=True)
-                bt.indicators.StochasticSlow(data)
-                bt.indicators.CommodityChannelIndex(data, period=20)
-                bt.indicators.AverageDirectionalMovementIndex(data, period=14)
-            
-            print(f"[OK] 已添加技术指标（preset={indicator_preset}）")
+        # 注意：技术指标已在engine.py的_run_module中添加（在cerebro.run()之前）
+        # 这里不再重复添加，避免指标无历史数据的问题
         
         # 自定义绘图方案（红涨绿跌，A股习惯）
         class CNPlotScheme(PlotScheme):
@@ -288,19 +257,22 @@ def plot_backtest_with_indicators(
                 self.grid = True
                 self.gridstyle = '--'
                 self.gridalpha = 0.25
+                # MA线颜色（避免红绿色，使用蓝色系、紫色、橙色、青色）
+                # Backtrader会循环使用这些颜色
+                self.lcolors = ['blue', 'purple', 'darkorange', 'cyan', 
+                               'darkblue', 'magenta', 'gold', 'teal']
         
-        # 配置买卖点标记（使用 Backtrader plot 自定义方式）
-        # 配置绘图参数（注意：voloverlay=True 让成交量均线叠加在成交量面板）
+        # 配置绘图参数
         plot_kwargs = dict(
             style=style,
             iplot=False,
             figsize=figsize,
             numfigs=1,
-            plotdist=0.15,
+            plotdist=0.05,  # 减小子图间距，避免重叠
             scheme=CNPlotScheme(),
             volume=True,
-            voloverlay=True,   # 成交量均线叠加到成交量子图，避免额外子图
-            tight=True,
+            voloverlay=False,  # 关键修改：成交量独立子图，不叠加
+            tight=False,  # 给标签留出空间
         )
         
         print("\n正在生成图表...")
@@ -344,6 +316,60 @@ def plot_backtest_with_indicators(
             if figs and len(figs) > 0:
                 fig = figs[0][0]  # 获取第一个图表
                 axes = fig.get_axes()
+                
+                # ========== 新增：自定义 MACD histogram 颜色 ==========
+                # 遍历所有子图，找到 MACD 子图并重新绘制 histogram
+                macd_found = False
+                for ax in axes:
+                    # 检查是否是 MACD 子图（通过图例或线条标签识别）
+                    legend = ax.get_legend()
+                    ylabel = ax.get_ylabel().lower() if ax.get_ylabel() else ""
+                    title = ax.get_title().lower() if ax.get_title() else ""
+                    
+                    # 检查图例中是否包含 macd 相关标签
+                    has_macd = False
+                    if legend:
+                        legend_texts = [t.get_text().lower() for t in legend.get_texts()]
+                        has_macd = any('macd' in text or 'histo' in text or 'signal' in text 
+                                      for text in legend_texts)
+                    
+                    if has_macd or 'macd' in ylabel or 'macd' in title:
+                        # 获取所有 bar container（histogram 是 bar 类型）
+                        # Backtrader 绘制的 histogram 包含在 ax.containers 中
+                        bars_found = False
+                        for container in ax.containers:
+                            # BarContainer 包含多个 Rectangle patches
+                            if hasattr(container, '__iter__'):
+                                rectangles = [p for p in container if isinstance(p, matplotlib.patches.Rectangle)]
+                                if rectangles:
+                                    bars_found = True
+                                    # 遍历每个柱状图，根据高度设置颜色
+                                    colored_bars = 0
+                                    for bar in rectangles:
+                                        height = bar.get_height()
+                                        if height > 0:
+                                            bar.set_facecolor('red')
+                                            bar.set_edgecolor('darkred')
+                                            colored_bars += 1
+                                        elif height < 0:
+                                            bar.set_facecolor('green')
+                                            bar.set_edgecolor('darkgreen')
+                                            colored_bars += 1
+                                        else:
+                                            bar.set_facecolor('gray')
+                                            bar.set_edgecolor('darkgray')
+                                    
+                                    if colored_bars > 0:
+                                        print(f"[OK] MACD histogram 已着色：{colored_bars} 个柱状（>0红色，<0绿色）")
+                                        macd_found = True
+                                        break
+                        
+                        if macd_found:
+                            break
+                
+                if not macd_found:
+                    print("[提示] 未找到 MACD histogram 柱状图，可能使用了线条模式")
+                # ========== MACD histogram 颜色优化结束 ==========
                 
                 # 获取策略实例以访问交易记录
                 if cerebro.runstrats and len(cerebro.runstrats) > 0:
@@ -400,10 +426,10 @@ def plot_backtest_with_indicators(
                                 buy_indices, buy_prices,
                                 marker='^',
                                 color='red',
-                                s=200,  # 大小
+                                s=80,  # 缩小标记，避免遮挡K线
                                 alpha=0.9,
                                 edgecolors='darkred',
-                                linewidths=2,
+                                linewidths=1.5,
                                 zorder=5,  # 确保在其他元素上方
                                 label='买入'
                             )
@@ -414,10 +440,10 @@ def plot_backtest_with_indicators(
                                 sell_indices, sell_prices,
                                 marker='v',
                                 color='lime',
-                                s=200,  # 大小
+                                s=80,  # 缩小标记，避免遮挡K线
                                 alpha=0.9,
                                 edgecolors='darkgreen',
-                                linewidths=2,
+                                linewidths=1.5,
                                 zorder=5,  # 确保在其他元素上方
                                 label='卖出'
                             )

@@ -49,6 +49,10 @@ def parse_args() -> argparse.Namespace:
     run_p.add_argument("--out_dir", default=None)
     run_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
     run_p.add_argument("--plot", action="store_true", help="Display backtest chart with technical indicators")
+    run_p.add_argument("--fee-config", dest="fee_config", default=None, 
+                       help="Fee plugin name (e.g., 'cn_stock'). If not specified, uses default commission.")
+    run_p.add_argument("--fee-params", dest="fee_params", default=None,
+                       help='Fee plugin parameters as JSON string (e.g., \'{"commission_rate":0.0001,"min_commission":5.0}\')')
 
     # ===== grid command =====
     grid_p = sub.add_parser("grid", help="Run grid search for a strategy")
@@ -67,6 +71,10 @@ def parse_args() -> argparse.Namespace:
     grid_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
     grid_p.add_argument("--out_csv", default=None)
     grid_p.add_argument("--workers", type=int, default=1)
+    grid_p.add_argument("--fee-config", dest="fee_config", default=None,
+                        help="Fee plugin name (e.g., 'cn_stock')")
+    grid_p.add_argument("--fee-params", dest="fee_params", default=None,
+                        help='Fee plugin parameters as JSON string')
 
     # ===== auto command =====
     auto_p = sub.add_parser("auto", help="Run multi-strategy optimisation + Pareto + Top-N")
@@ -92,6 +100,10 @@ def parse_args() -> argparse.Namespace:
                         help="Use benchmark EMA200 as bull regime filter (see --regime_scope)")
     auto_p.add_argument("--regime_scope", default="trend", choices=["trend", "all", "none"],
                         help="Apply regime filter to: trend strategies only (ema/macd/turning_point), or all, or none.")
+    auto_p.add_argument("--fee-config", dest="fee_config", default=None,
+                        help="Fee plugin name (e.g., 'cn_stock')")
+    auto_p.add_argument("--fee-params", dest="fee_params", default=None,
+                        help='Fee plugin parameters as JSON string')
 
     # ===== list command =====
     sub.add_parser("list", help="List registered strategies")
@@ -113,6 +125,17 @@ def main() -> None:
     # ===== run command =====
     if args.command == "run":
         params = json.loads(args.params) if args.params else None
+        
+        # V2.9.0: Parse fee plugin parameters
+        fee_plugin = args.fee_config if hasattr(args, 'fee_config') else None
+        fee_plugin_params = None
+        if hasattr(args, 'fee_params') and args.fee_params:
+            try:
+                fee_plugin_params = json.loads(args.fee_params)
+            except json.JSONDecodeError as e:
+                print(f"Error parsing --fee-params: {e}")
+                return
+        
         engine = BacktestEngine(
             source=args.source,
             benchmark_source=args.benchmark_source or args.source,
@@ -131,6 +154,8 @@ def main() -> None:
             adj=args.adj,
             out_dir=args.out_dir,
             enable_plot=args.plot,
+            fee_plugin=fee_plugin,
+            fee_plugin_params=fee_plugin_params,
         )
         nav = metrics.pop("nav")
         cerebro = metrics.pop("_cerebro", None)
