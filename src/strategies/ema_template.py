@@ -3,6 +3,10 @@ EMA Strategy Template Example
 
 Demonstrates simplified strategy development using StrategyTemplate protocol.
 This strategy uses exponential moving average crossover logic.
+
+V3.0.0 优化:
+- 增加入场价追踪和止损管理
+- 5% 止损保护防止大幅回撤
 """
 from __future__ import annotations
 
@@ -19,7 +23,12 @@ class EMATemplate(StrategyTemplate):
     Logic:
     - Calculate EMA(period) for each symbol
     - Buy signal: price crosses above EMA
-    - Sell signal: price crosses below EMA
+    - Sell signal: price crosses below EMA OR stop loss triggered
+    
+    V3.0.0 优化:
+    - entry_price: 记录入场价格
+    - stop_pct: 止损百分比 (默认 5%)
+    - 状态管理确保止损逻辑正确执行
     
     This template demonstrates:
     - Per-symbol state management (self.ctx)
@@ -28,7 +37,7 @@ class EMATemplate(StrategyTemplate):
     - Framework independence (can run on Backtrader or PaperRunner)
     """
     
-    params: Dict[str, Any] = {"period": 20}
+    params: Dict[str, Any] = {"period": 20, "stop_pct": 0.05}
     
     def on_init(self) -> None:
         """
@@ -38,6 +47,7 @@ class EMATemplate(StrategyTemplate):
         - closes: List of historical close prices
         - ema: Current EMA value
         - position: Current position state (0=flat, 1=long)
+        - entry_price: V3.0 入场价格 (用于止损计算)
         """
         self.ctx: Dict[str, Dict[str, Any]] = {}
     
@@ -57,6 +67,7 @@ class EMATemplate(StrategyTemplate):
         1. Accumulate close prices
         2. Calculate EMA when sufficient data
         3. Detect crossovers and update position state
+        4. V3.0: Check stop loss if in position
         
         Note: This is a demonstration - actual order submission would be handled by:
         - Backtrader: via self.buy()/self.sell() in BacktraderAdapter
@@ -68,6 +79,7 @@ class EMATemplate(StrategyTemplate):
             "ema": None,
             "position": 0,
             "last_signal": None,
+            "entry_price": None,  # V3.0: 入场价格
         })
         
         # Accumulate close prices
@@ -87,11 +99,23 @@ class EMATemplate(StrategyTemplate):
         # Detect crossovers
         price = close
         prev_position = ctx["position"]
+        stop_pct = float(self.params.get("stop_pct", 0.05))  # V3.0: 止损百分比
+        
+        # V3.0: 止损检查 (优先级最高)
+        if prev_position == 1 and ctx["entry_price"] is not None:
+            stop_price = ctx["entry_price"] * (1 - stop_pct)
+            if price < stop_price:
+                ctx["position"] = 0
+                ctx["last_signal"] = "STOP_LOSS"
+                ctx["entry_price"] = None
+                # In production: emit stop loss event
+                return
         
         # Buy signal: price crosses above EMA
         if price > ema and prev_position == 0:
             ctx["position"] = 1
             ctx["last_signal"] = "BUY"
+            ctx["entry_price"] = price  # V3.0: 记录入场价
             # In production: emit event or call gateway.send_order()
             # self.events.put(Event(EventType.STRATEGY_SIGNAL, {
             #     "symbol": symbol, "action": "BUY", "price": price
@@ -101,6 +125,7 @@ class EMATemplate(StrategyTemplate):
         elif price < ema and prev_position == 1:
             ctx["position"] = 0
             ctx["last_signal"] = "SELL"
+            ctx["entry_price"] = None  # V3.0: 清空入场价
             # In production: emit event or call gateway.send_order()
             # self.events.put(Event(EventType.STRATEGY_SIGNAL, {
             #     "symbol": symbol, "action": "SELL", "price": price
@@ -124,7 +149,7 @@ def build_ema_strategy(**params: Any):
     Factory function to create Backtrader strategy from EMA template.
     
     Args:
-        **params: Strategy parameters (e.g., period=20)
+        **params: Strategy parameters (e.g., period=20, stop_pct=0.05)
     
     Returns:
         Backtrader Strategy class
@@ -135,8 +160,8 @@ def build_ema_strategy(**params: Any):
         ...     name="ema_template",
         ...     description="EMA crossover using template pattern",
         ...     strategy_cls=build_ema_strategy,  # Factory function
-        ...     param_names=["period"],
-        ...     defaults={"period": 20},
+        ...     param_names=["period", "stop_pct"],
+        ...     defaults={"period": 20, "stop_pct": 0.05},
         ...     multi_symbol=False,
         ... )
     """

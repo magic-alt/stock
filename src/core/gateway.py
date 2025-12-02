@@ -220,33 +220,18 @@ class BacktestGateway:
             return pd.Series(1.0, index=date_range, name=index_code)
 
 
-# Future implementations (placeholder for documentation)
-
-class PaperGateway:
-    """
-    Paper trading gateway (to be implemented).
-    
-    Features:
-    - Real-time or delayed market data
-    - Simulated order matching
-    - Realistic slippage and fill models
-    - No real money at risk
-    
-    Usage:
-        >>> gateway = PaperGateway(source="yfinance")
-        >>> gateway.subscribe(["AAPL", "TSLA"])
-        >>> gateway.send_order("AAPL", "buy", 100, 150.0)
-    """
-    pass
-
+# ---------------------------------------------------------------------------
+# Placeholder Gateway Classes (for future implementation)
+# ---------------------------------------------------------------------------
 
 class LiveGateway:
     """
-    Live trading gateway (to be implemented).
+    Live trading gateway interface (placeholder for future implementation).
     
-    Implementations per broker:
-    - IBGateway: Interactive Brokers
+    Planned implementations per broker:
+    - IBGateway: Interactive Brokers (US/Global)
     - CTPGateway: CTP futures (China)
+    - XtQuantGateway: XtQuant/QMT (A-share)
     - BinanceGateway: Binance crypto
     
     Features:
@@ -254,5 +239,24 @@ class LiveGateway:
     - Position and account synchronization
     - Risk management hooks
     - Error handling and reconnection
+    - Heartbeat monitoring
+    
+    Usage:
+        >>> gateway = IBGateway(account="DU123456")
+        >>> gateway.connect()
+        >>> gateway.send_order("AAPL", "buy", 100, price=150.0, order_type="limit")
+        >>> gateway.query_account()
     """
-    pass
+    
+    def connect(self) -> bool:
+        """Connect to broker API."""
+        raise NotImplementedError("LiveGateway implementations required")
+    
+    def disconnect(self) -> None:
+        """Disconnect from broker API."""
+        raise NotImplementedError
+    
+    def is_connected(self) -> bool:
+        """Check connection status."""
+        raise NotImplementedError
+

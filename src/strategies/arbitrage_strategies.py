@@ -1,4 +1,11 @@
 # -*- coding: utf-8 -*-
+"""
+套利策略集合
+
+V3.0.0 优化:
+- 增加 z_stop 极端 Z-Score 强制止损
+- 防止趋势行情下价差持续发散
+"""
 import numpy as np
 import pandas as pd
 from .base import BaseStrategy
@@ -40,10 +47,15 @@ class CrossCommodityArbStrategy(BaseStrategy):
     """
     跨品种套利（期货）：价差 ZScore 回归
     需要 '对冲收盘' 列（另一品种），基于 spread = target - hedge*beta
+    
+    V3.0.0 优化:
+    - z_stop: 极端 Z-Score 止损阈值 (默认 4.0)
+    - 当 |Z| > z_stop 时强制平仓，防止价差趋势性发散
     """
-    def __init__(self, hedge_col: str = "对冲收盘", z_window: int = 60, z_entry: float = 1.5, z_exit: float = 0.5):
+    def __init__(self, hedge_col: str = "对冲收盘", z_window: int = 60, 
+                 z_entry: float = 1.5, z_exit: float = 0.5, z_stop: float = 4.0):
         super().__init__(name="跨品种套利")
-        self.hcol, self.w, self.ze, self.zx = hedge_col, z_window, z_entry, z_exit
+        self.hcol, self.w, self.ze, self.zx, self.zs = hedge_col, z_window, z_entry, z_exit, z_stop
 
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.hcol not in df.columns:
@@ -64,8 +76,11 @@ class CrossCommodityArbStrategy(BaseStrategy):
         raw = np.where(z < -self.ze, 1, np.where(z > self.ze, -1, np.nan))
         # 平仓条件 |z|<zx
         exit_sig = (z.abs() < self.zx)
+        # V3.0: z_stop 强制止损
+        stop_sig = (z.abs() > self.zs)
         sig = pd.Series(raw, index=out.index).ffill()
         sig[exit_sig] = 0
+        sig[stop_sig] = 0  # V3.0: 极端 Z-Score 强制平仓
         out['Signal'] = sig.shift(1).fillna(0)
         out['Position'] = out['Signal'].diff().fillna(0)
         return out
@@ -75,11 +90,15 @@ class CalendarSpreadArbStrategy(BaseStrategy):
     """
     跨期套利（期货）：近远月价差 ZScore 回归
     需要 '近月收盘'、'远月收盘' 列。
+    
+    V3.0.0 优化:
+    - z_stop: 极端 Z-Score 止损阈值 (默认 4.0)
     """
     def __init__(self, near_col: str = "近月收盘", far_col: str = "远月收盘",
-                 z_window: int = 60, z_entry: float = 1.5, z_exit: float = 0.5):
+                 z_window: int = 60, z_entry: float = 1.5, z_exit: float = 0.5,
+                 z_stop: float = 4.0):
         super().__init__(name="跨期套利")
-        self.ncol, self.fcol, self.w, self.ze, self.zx = near_col, far_col, z_window, z_entry, z_exit
+        self.ncol, self.fcol, self.w, self.ze, self.zx, self.zs = near_col, far_col, z_window, z_entry, z_exit, z_stop
 
     def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.ncol not in df.columns or self.fcol not in df.columns:
@@ -94,8 +113,11 @@ class CalendarSpreadArbStrategy(BaseStrategy):
         z = ((spread - ma) / sd).fillna(0)
         raw = np.where(z < -self.ze, 1, np.where(z > self.ze, -1, np.nan))
         exit_sig = (z.abs() < self.zx)
+        # V3.0: z_stop 强制止损
+        stop_sig = (z.abs() > self.zs)
         sig = pd.Series(raw, index=out.index).ffill()
         sig[exit_sig] = 0
+        sig[stop_sig] = 0  # V3.0: 极端 Z-Score 强制平仓
         out['Signal'] = sig.shift(1).fillna(0)
         out['Position'] = out['Signal'].diff().fillna(0)
         return out

@@ -39,15 +39,23 @@ class FuturesMACrossStrategy(bt.Strategy):
 
 
 class FuturesGridStrategy(bt.Strategy):
-    """期货网格交易策略"""
+    """
+    期货网格交易策略
+    
+    V3.0.0 优化:
+    - ATR 动态网格间距，适应不同波动环境
+    - 避免固定百分比在高波动期网格过密
+    """
     params = (
-        ('grid_pct', 0.004),  # 网格间距百分比
+        ('atr_period', 14),    # V3.0: ATR 周期
+        ('atr_mult', 0.5),     # V3.0: 网格间距 = ATR * atr_mult
         ('layers', 6),         # 网格层数
         ('max_pos', 3),        # 最大持仓档位
         ('lookback', 50),      # 基准价计算周期
     )
     
     def __init__(self):
+        self.atr = bt.indicators.ATR(self.data, period=self.p.atr_period)  # V3.0
         self.grid_lines = []
         self.position_level = 0
         self.base_price = None
@@ -58,15 +66,22 @@ class FuturesGridStrategy(bt.Strategy):
             self.next()
     
     def next(self):
-        # 首次运行，建立网格
+        # V3.0: 动态网格间距
+        grid_gap = self.atr[0] * self.p.atr_mult
+        if grid_gap == 0:
+            grid_gap = self.data.close[0] * 0.004  # 回退到 0.4%
+        
+        # 首次运行或重建网格
         if self.base_price is None:
             prices = [self.data.close[i] for i in range(-self.p.lookback, 0)]
             self.base_price = sorted(prices)[len(prices)//2]  # 中位数
-            self.grid_lines = [
-                self.base_price * (1 + self.p.grid_pct * i)
-                for i in range(-self.p.layers, self.p.layers + 1)
-            ]
-            self.grid_lines.sort()
+        
+        # V3.0: 使用 ATR 动态间距建立网格
+        self.grid_lines = [
+            self.base_price + grid_gap * i
+            for i in range(-self.p.layers, self.p.layers + 1)
+        ]
+        self.grid_lines.sort()
         
         current_price = self.data.close[0]
         current_level = self._get_grid_level(current_price)
@@ -191,7 +206,8 @@ def _coerce_futures_ma(d: dict) -> dict:
 
 def _coerce_futures_grid(d: dict) -> dict:
     return {
-        'grid_pct': float(d.get('grid_pct', 0.004)),
+        'atr_period': int(d.get('atr_period', 14)),
+        'atr_mult': float(d.get('atr_mult', 0.5)),
         'layers': int(d.get('layers', 6)),
         'max_pos': int(d.get('max_pos', 3)),
         'lookback': int(d.get('lookback', 50)),

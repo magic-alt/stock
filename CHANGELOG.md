@@ -2,6 +2,363 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V3.0.0-beta.2] - 2025-12-03
+
+### 🔧 策略优化 - 风控增强 + 动态参数 + 信号过滤
+
+**Theme**: 10个策略的原位优化，解决风控缺失、参数刚性、虚假信号问题
+
+---
+
+#### 1. ✅ auction_backtrader_strategy.py
+
+**优化点**:
+- `gap_max` (7.0%): 过滤力竭跳空缺口，防止追高
+- `max_pos_pct` (50%): 单笔最大仓位限制
+- 增强止损: ATR动态止损 + 跌破开盘价止损
+
+---
+
+#### 2. ✅ adx_backtrader_strategy.py
+
+**优化点**:
+- `trail_mult` (2.0): ATR 移动止损倍数
+- 止损只能上移，锁定趋势利润
+- 解决 ADX 信号滞后导致的利润回吐
+
+---
+
+#### 3. ✅ ema_backtrader_strategy.py
+
+**优化点**:
+- `slope_lookback` (5): EMA 斜率计算周期
+- 只在 EMA 上行趋势中做多
+- 过滤震荡市场的假突破信号
+
+---
+
+#### 4. ✅ ema_template.py
+
+**优化点**:
+- `entry_price`: 记录入场价格
+- `stop_pct` (5%): 硬止损百分比
+- 状态管理确保止损逻辑正确执行
+
+---
+
+#### 5. ✅ futures_backtrader_strategy.py (FuturesGridStrategy)
+
+**优化点**:
+- `atr_mult` (0.5): 动态网格间距 = ATR * mult
+- 替代固定百分比，适应不同波动环境
+- 避免高波动期网格过密
+
+---
+
+#### 6. ✅ kama_backtrader_strategy.py
+
+**优化点**:
+- `regime_period` (200): SMA200 长期趋势过滤
+- 只在牛市环境 (Close > SMA200) 做多
+- 避免熊市假反弹信号
+
+---
+
+#### 7. ✅ donchian_backtrader_strategy.py
+
+**优化点**:
+- `atr_period` (14): ATR 计算周期
+- `vol_lookback` (20): 波动率比较周期
+- 只在波动扩张时入场，过滤低波动假突破
+
+---
+
+#### 8. ✅ arbitrage_strategies.py
+
+**优化点**:
+- `z_stop` (4.0): 极端 Z-Score 强制止损
+- 防止趋势行情下价差持续发散
+- 跨品种和跨期套利都已增强
+
+---
+
+#### 9. ✅ bollinger_backtrader_strategy.py
+
+**优化点**:
+- `rsi_period` (14): RSI 计算周期
+- `rsi_oversold` (30): RSI 超卖阈值
+- 只在 RSI < 30 时触发买入，过滤假信号
+
+---
+
+#### 10. ✅ intraday_backtrader_strategy.py
+
+**优化点**:
+- `start_time` ('09:45'): 开盘后开始交易时间
+- `exit_time` ('14:50'): 收盘前强制平仓时间
+- `atr_thresh_mult` (1.0): ATR 动态阈值倍数
+- 避免开盘/尾盘剧烈波动期交易
+
+---
+
+### 📊 测试结果
+
+```
+104 passed, 8 skipped in 13.56s
+```
+
+---
+
+## [V3.0.0-beta] - 2025-12-03
+
+### 🚀 架构统一完成 - 日志 + Context + LiveGateway
+
+**Theme**: 完成 V3.0 架构，实盘准备就绪
+
+---
+
+#### 1. ✅ 结构化日志系统
+
+**新增**: `src/core/logger.py` (~200 lines)
+
+**功能**:
+- `configure_logging(level, format, json_file)`: 全局配置
+- `get_logger(name)`: 获取 structlog 或标准库 logger
+- `LogContext`: 临时绑定上下文变量
+
+**使用示例**:
+```python
+from src.core.logger import configure_logging, get_logger
+
+configure_logging(level="DEBUG", format="console")
+logger = get_logger(__name__)
+
+logger.info("order.submitted", symbol="600519.SH", quantity=100)
+```
+
+---
+
+#### 2. ✅ EventEngineContext 实现
+
+**新增**: `src/core/context.py` (~350 lines)
+
+**核心类**:
+1. **EventEngineContext**: 完整实现 StrategyContext 协议
+   - `history(symbol, length, field)`: 获取历史数据
+   - `buy(symbol, quantity, price)`: 买入下单
+   - `sell(symbol, quantity, price)`: 卖出下单
+   - `positions`: 当前持仓
+   - `account`: 账户信息
+
+2. **BacktestContext**: 轻量级只读上下文，用于快速验证
+
+**架构**:
+```
+BaseStrategy.ctx → EventEngineContext → PaperGatewayV3/LiveGateway
+```
+
+---
+
+#### 3. ✅ LiveGateway 桩代码
+
+**新增**: `src/core/live_gateway.py` (~450 lines)
+
+**类层次**:
+- `BaseLiveGateway`: 抽象基类，定义连接/断开/下单接口
+- `CTPGateway`: 中国期货 CTP 接口桩代码
+- `IBGateway`: Interactive Brokers 接口桩代码  
+- `XtQuantGateway`: 中国 A 股 XtQuant 接口桩代码
+
+**GatewayStatus 枚举**:
+- DISCONNECTED, CONNECTING, CONNECTED, ERROR
+
+---
+
+#### 4. ✅ PaperRunner V3
+
+**新增**: `src/core/paper_runner_v3.py` (~500 lines)
+
+**函数**:
+- `run_paper_v3(strategy, data_map, events)`: 推荐 API
+- `run_paper_legacy(template, data_map, events)`: 旧接口兼容
+- `run_paper_with_nav(strategy, data_map, events)`: 返回 NAV 序列
+
+**返回结果**:
+```python
+{
+    "account": {"cash": ..., "equity": ..., "positions": ...},
+    "nav": pd.Series,  # 每日净值
+    "trades": [...],   # 成交记录
+    "metrics": {       # 绩效指标
+        "total_return": 15.5,
+        "annual_return": 22.3,
+        "max_drawdown": -8.2,
+        "sharpe_ratio": 1.5,
+    }
+}
+```
+
+---
+
+#### 5. ✅ 统一策略示例
+
+**新增**: `src/strategies/unified_strategies.py` (~250 lines)
+
+**策略**:
+- `UnifiedEMAStrategy`: 双 EMA 交叉策略
+- `UnifiedMACDStrategy`: MACD 金叉死叉策略
+- `UnifiedBollingerStrategy`: 布林带突破策略
+
+**特点**:
+- 全部基于 BaseStrategy
+- 使用 `ctx.history()` 获取数据
+- 使用 `ctx.buy()` / `ctx.sell()` 下单
+- 可在回测和实盘中复用
+
+---
+
+#### 6. ✅ 模块导出更新
+
+**更新**: `src/core/__init__.py`
+
+新增导出:
+```python
+# V3.0.0-beta: Logging
+from .logger import configure_logging, get_logger, LogContext
+
+# V3.0.0-beta: Context
+from .context import EventEngineContext, BacktestContext
+
+# V3.0.0-beta: Live Gateways
+from .live_gateway import BaseLiveGateway, CTPGateway, IBGateway, XtQuantGateway
+
+# V3.0.0-beta: Paper Runner V3
+from .paper_runner_v3 import run_paper_v3, run_paper_with_nav
+```
+
+---
+
+## [V3.0.0-alpha] - 2025-12-03
+
+### 🏛️ 架构统一 - 策略统一层 + 接口重构
+
+**Theme**: 解决策略割裂，统一回测与实盘接口
+
+---
+
+#### 1. ✅ 策略统一层 (Strategy Unification)
+
+**新增**: `src/core/strategy_base.py` (667 lines)
+
+**核心类**:
+1. **BaseStrategy** (抽象基类):
+   - 统一的 `on_init`, `on_start`, `on_bar`, `on_stop` 生命周期
+   - 内置 `buy`, `sell`, `close_position` 交易方法
+   - `has_position`, `is_long`, `is_short` 辅助方法
+   - 参数管理 (`params` dict)
+
+2. **BacktraderStrategyAdapter**:
+   - 自动将 BaseStrategy 包装为 Backtrader 策略
+   - `wrap()` 静态方法生成 bt.Strategy 子类
+   - 内部使用 `_BacktraderContextAdapter` 提供 Context 接口
+
+3. **ExampleDualMAStrategy**:
+   - 双均线交叉策略示例
+   - 演示 BaseStrategy 接口用法
+
+**使用示例**:
+```python
+from src.core.strategy_base import BaseStrategy, BacktraderStrategyAdapter
+
+class MyStrategy(BaseStrategy):
+    params = {"period": 20}
+    
+    def on_init(self, ctx):
+        pass
+    
+    def on_bar(self, ctx, bar):
+        if buy_signal:
+            self.buy(ctx, bar.symbol, size=100)
+
+# 回测
+bt_cls = BacktraderStrategyAdapter.wrap(MyStrategy, period=20)
+cerebro.addstrategy(bt_cls)
+```
+
+---
+
+#### 2. ✅ 统一接口层 (Unified Interfaces)
+
+**新增**: `src/core/interfaces.py` (450+ lines)
+
+**数据类型**:
+- `BarData`: OHLCV 数据容器
+- `TickData`: Tick 级别数据
+- `PositionInfo`: 持仓信息
+- `AccountInfo`: 账户信息
+- `OrderInfo`: 订单信息
+- `TradeInfo`: 成交信息
+
+**枚举**:
+- `Side`: BUY/SELL
+- `OrderTypeEnum`: MARKET/LIMIT/STOP
+- `OrderStatusEnum`: PENDING/FILLED/CANCELLED...
+
+**Protocol**:
+- `StrategyContext`: 统一的策略执行上下文
+- `BaseStrategyProtocol`: 策略接口协议
+- `EventEngineProtocol`: 事件引擎协议
+- `HistoryGateway`: 历史数据网关
+- `TradeGateway`: 交易网关
+- `RiskManagerProtocol`: 风控接口
+
+---
+
+#### 3. ✅ PaperGateway V3 重构
+
+**新增**: `src/core/paper_gateway_v3.py` (400+ lines)
+
+**改进**:
+- 移除 V2 遗留代码 (next-bar-open matching)
+- 强制使用 MatchingEngine
+- 清晰的类型提示
+- 完整的订单/成交追踪
+- 统一的查询接口
+
+**移除的代码**:
+- `_send_order_v2()` 方法
+- `use_matching_engine` 参数 (始终为 True)
+- `match_on_open()` 方法 (使用 MatchingEngine 替代)
+
+---
+
+#### 4. ✅ 模块导出更新
+
+**更新**: `src/core/__init__.py`
+
+新增导出:
+- `BaseStrategy`, `BacktraderStrategyAdapter`, `ExampleDualMAStrategy`
+- `BarData`, `PositionInfo`, `AccountInfo`, `OrderInfo`, `TradeInfo`
+- `Side`, `OrderTypeEnum`, `OrderStatusEnum`
+- `StrategyContext`, `BaseStrategyProtocol`
+- `PaperGatewayV3` (新版本), `PaperGateway` (兼容)
+
+---
+
+#### 5. 📝 文档更新
+
+**更新**: `README.md`
+- 添加 V3.0 双引擎架构说明
+- 添加策略统一使用示例
+- 更新版本号和状态
+
+**更新**: `PROJECT_ROADMAP.md`
+- 添加 V3.0.0-alpha 版本记录
+- 更新 Phase 3 进度
+- 标记完成的任务
+
+---
+
 ## [V2.10.3.0] - 2025-10-26
 
 ### 🧹 项目清理 + 测试完善 + GUI全面升级

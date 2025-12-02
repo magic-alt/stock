@@ -1,6 +1,10 @@
 """
 Bollinger Bands均值回归策略 (Backtrader版本)
 当价格触及下轨时买入，触及上轨或中轨时卖出
+
+V3.0.0 优化:
+- 增加 RSI 超卖确认，过滤假突破
+- 只在 RSI < rsi_oversold 时才触发买入
 """
 import backtrader as bt
 from typing import Dict, Any
@@ -8,7 +12,13 @@ from typing import Dict, Any
 
 class BollingerStrategy(bt.Strategy):
     """
-    Bollinger band mean reversion with flexible entry/exit modes.
+    Bollinger band mean reversion with RSI confirmation.
+    
+    V3.0.0 优化:
+    - rsi_period: RSI 计算周期 (默认 14)
+    - rsi_oversold: RSI 超卖阈值 (默认 30)
+    - 只在价格触及下轨 AND RSI < rsi_oversold 时买入
+    - 避免正常回调被误判为超卖
     
     Entry modes:
     - 'pierce': Enter when price pierces lower band
@@ -24,6 +34,8 @@ class BollingerStrategy(bt.Strategy):
         ("entry_mode", "pierce"),
         ("below_pct", 0.0),
         ("exit_mode", "mid"),
+        ("rsi_period", 14),       # V3.0: RSI 周期
+        ("rsi_oversold", 30),     # V3.0: RSI 超卖阈值
         ("printlog", False),
     )
 
@@ -33,6 +45,8 @@ class BollingerStrategy(bt.Strategy):
             period=self.params.period,
             devfactor=self.params.devfactor,
         )
+        # V3.0: RSI 指标
+        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.rsi_period)
         self.order = None
 
     def log(self, txt: str, dt=None):
@@ -74,28 +88,32 @@ class BollingerStrategy(bt.Strategy):
         bot = self.bb.bot[0]
         mid = self.bb.mid[0]
         top = self.bb.top[0]
+        rsi = self.rsi[0]  # V3.0
 
         if not self.position:
+            # V3.0: RSI 超卖确认
+            rsi_oversold = rsi < self.params.rsi_oversold
+            
             # Entry logic
             if self.params.entry_mode == "pierce":
-                if close < bot:
-                    self.log(f"BUY CREATE (pierce lower), {close:.2f} < {bot:.2f}")
+                if close < bot and rsi_oversold:
+                    self.log(f"BUY CREATE (pierce lower + RSI {rsi:.1f}), {close:.2f} < {bot:.2f}")
                     self.order = self.buy()
             elif self.params.entry_mode == "close_below":
                 threshold = bot * (1.0 - self.params.below_pct / 100.0)
-                if close < threshold:
-                    self.log(f"BUY CREATE (close_below), {close:.2f} < {threshold:.2f}")
+                if close < threshold and rsi_oversold:
+                    self.log(f"BUY CREATE (close_below + RSI {rsi:.1f}), {close:.2f} < {threshold:.2f}")
                     self.order = self.buy()
         else:
             # Exit logic
             if self.params.exit_mode == "mid":
                 if close >= mid:
                     self.log(f"SELL CREATE (reached mid), {close:.2f} >= {mid:.2f}")
-                    self.order = self.sell()
+                    self.order = self.close()
             elif self.params.exit_mode == "upper":
                 if close >= top:
                     self.log(f"SELL CREATE (reached upper), {close:.2f} >= {top:.2f}")
-                    self.order = self.sell()
+                    self.order = self.close()
 
 
 def _coerce_bb(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -111,6 +129,11 @@ def _coerce_bb(params: Dict[str, Any]) -> Dict[str, Any]:
         out["entry_mode"] = str(out["entry_mode"])
     if "exit_mode" in out:
         out["exit_mode"] = str(out["exit_mode"])
+    # V3.0: RSI 参数
+    if "rsi_period" in out:
+        out["rsi_period"] = int(out["rsi_period"])
+    if "rsi_oversold" in out:
+        out["rsi_oversold"] = float(out["rsi_oversold"])
     # 增强版参数
     if "atr_period" in out:
         out["atr_period"] = int(out["atr_period"])
@@ -344,21 +367,24 @@ class Bollinger_EnhancedStrategy(bt.Strategy):
 # 策略配置
 STRATEGY_CONFIG = {
     'name': 'bollinger',
-    'description': 'Bollinger band mean reversion with flexible entry/exit modes',
+    'description': 'Bollinger band mean reversion with RSI confirmation',
     'strategy_class': BollingerStrategy,
-    'param_names': ['period', 'devfactor', 'entry_mode', 'below_pct', 'exit_mode'],
+    'param_names': ['period', 'devfactor', 'entry_mode', 'below_pct', 'exit_mode', 'rsi_period', 'rsi_oversold'],
     'defaults': {
         'period': 20,
         'devfactor': 2.0,
         'entry_mode': 'pierce',
         'below_pct': 0.0,
-        'exit_mode': 'mid'
+        'exit_mode': 'mid',
+        'rsi_period': 14,
+        'rsi_oversold': 30,
     },
     'grid_defaults': {
-        'period': list(range(10, 31, 2)),
+        'period': list(range(10, 31, 5)),
         'devfactor': [1.5, 2.0, 2.5],
         'entry_mode': ['pierce'],
-        'exit_mode': ['mid']
+        'exit_mode': ['mid'],
+        'rsi_oversold': [25, 30, 35],
     },
     'coercer': _coerce_bb,
     'multi_symbol': False,

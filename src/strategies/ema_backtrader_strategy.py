@@ -1,6 +1,10 @@
 """
 EMA均线交叉策略 (Backtrader版本)
 当价格向上突破EMA均线时买入，向下跌破时卖出
+
+V3.0.0 优化:
+- 增加 EMA 斜率判断，过滤震荡市场的假突破
+- 只在 EMA 上行趋势中做多
 """
 import backtrader as bt
 from typing import Dict, Any
@@ -8,21 +12,30 @@ from typing import Dict, Any
 
 class EMAStrategy(bt.Strategy):
     """
-    EMA crossover strategy: buy when price crosses above EMA, sell when it crosses below.
+    EMA crossover strategy with slope filter.
+    
+    Buy when price crosses above EMA AND EMA is trending up.
+    Sell when price crosses below EMA.
+    
+    V3.0.0 优化:
+    - slope_lookback: EMA 斜率计算周期
+    - 过滤震荡市场的假突破信号
     """
     params = (
         ("period", 20),
+        ("slope_lookback", 5),    # V3.0: EMA 斜率计算周期
         ("printlog", False),
     )
 
     def __init__(self):
         # Check if we have enough data for the indicator
         data_len = len(self.data)
-        if data_len < self.params.period:
+        min_bars = self.params.period + self.params.slope_lookback
+        if data_len < min_bars:
             raise ValueError(
-                f"EMA period ({self.params.period}) requires at least {self.params.period} "
-                f"bars of data, but only {data_len} bars available. "
-                f"Please use a shorter period or longer date range."
+                f"EMA period ({self.params.period}) + slope_lookback ({self.params.slope_lookback}) "
+                f"requires at least {min_bars} bars of data, but only {data_len} bars available. "
+                f"Please use shorter periods or longer date range."
             )
         
         self.ema = bt.indicators.ExponentialMovingAverage(
@@ -66,14 +79,23 @@ class EMAStrategy(bt.Strategy):
         if self.order:
             return
 
+        # V3.0: EMA 斜率判断
+        lb = self.params.slope_lookback
+        if len(self.ema) > lb:
+            slope = self.ema[0] - self.ema[-lb]
+            trending_up = slope > 0
+        else:
+            trending_up = False
+
         if not self.position:
-            if self.crossover > 0:
-                self.log(f"BUY CREATE, {self.data.close[0]:.2f}")
+            # V3.0: 只在 EMA 上行趋势中买入
+            if self.crossover > 0 and trending_up:
+                self.log(f"BUY CREATE (EMA trending up), {self.data.close[0]:.2f}")
                 self.order = self.buy()
         else:
             if self.crossover < 0:
                 self.log(f"SELL CREATE, {self.data.close[0]:.2f}")
-                self.order = self.sell()
+                self.order = self.close()
 
 
 def _coerce_ema(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -81,17 +103,22 @@ def _coerce_ema(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
     if "period" in out:
         out["period"] = int(out["period"])
+    if "slope_lookback" in out:
+        out["slope_lookback"] = int(out["slope_lookback"])
     return out
 
 
 # 策略配置
 STRATEGY_CONFIG = {
     'name': 'ema',
-    'description': 'EMA crossover strategy',
+    'description': 'EMA crossover strategy with slope filter',
     'strategy_class': EMAStrategy,
-    'param_names': ['period'],
-    'defaults': {'period': 20},
-    'grid_defaults': {'period': list(range(5, 121, 5))},
+    'param_names': ['period', 'slope_lookback'],
+    'defaults': {'period': 20, 'slope_lookback': 5},
+    'grid_defaults': {
+        'period': list(range(10, 61, 10)),
+        'slope_lookback': [3, 5, 8],
+    },
     'coercer': _coerce_ema,
     'multi_symbol': False,
 }

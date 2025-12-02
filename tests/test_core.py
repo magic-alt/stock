@@ -1,6 +1,6 @@
 """
 测试核心模块 (src/core/*)
-覆盖: objects, events, gateway, config, risk_manager, paper_gateway
+覆盖: objects, events, gateway, config, risk_manager, paper_gateway_v3
 """
 import pytest
 import tempfile
@@ -16,7 +16,7 @@ from src.core.objects import (
 from src.core.events import EventEngine, EventType
 from src.core.config import ConfigManager, GlobalConfig
 from src.core.risk_manager import create_moderate_risk_manager, RiskCheckResult
-from src.core.paper_gateway import PaperGateway
+from src.core.paper_gateway_v3 import PaperGateway
 
 
 class TestCoreObjects:

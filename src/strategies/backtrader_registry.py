@@ -34,6 +34,15 @@ from .multifactor_backtrader_strategy import (
     _coerce_multifactor, _coerce_index_enhancement, _coerce_industry_rotation
 )
 
+# V3.0.0: 优化策略（增加动态风控、趋势过滤、多指标确认）
+from .optimized_strategies import (
+    KAMAStrategy_Optimized, FuturesGrid_ATR_Optimized,
+    IntradayReversion_Optimized, BollingerRSI_Optimized, DonchianATR_Optimized,
+    _coerce_kama_optimized, _coerce_futures_grid_atr,
+    _coerce_intraday_optimized, _coerce_bollinger_rsi, _coerce_donchian_atr,
+    OPTIMIZED_STRATEGIES,
+)
+
 
 class StrategyModule:
     """策略模块配置容器"""
@@ -539,6 +548,90 @@ register_strategy(StrategyModule(
 ))
 
 
+# =============================================================================
+# V3.0.0 优化策略（增加动态风控、趋势过滤、多指标确认）
+# =============================================================================
+
+# KAMA 优化版：SMA200 趋势过滤 + ATR 移动止损
+register_strategy(StrategyModule(
+    name='kama_opt',
+    description='KAMA with SMA200 trend filter and ATR trailing stop',
+    strategy_cls=KAMAStrategy_Optimized,
+    param_names=['period', 'filter_period', 'atr_stop_mult', 'trail_atr_mult'],
+    defaults={'period': 10, 'filter_period': 200, 'atr_stop_mult': 2.0, 'trail_atr_mult': 1.5},
+    grid_defaults={
+        'period': [8, 10, 12, 15],
+        'filter_period': [100, 150, 200],
+        'atr_stop_mult': [1.5, 2.0, 2.5],
+    },
+    coercer=_coerce_kama_optimized,
+    multi_symbol=False,
+))
+
+# 期货网格优化版：ATR 动态间距 + 账户止损
+register_strategy(StrategyModule(
+    name='futures_grid_atr',
+    description='ATR dynamic grid with account-level stop loss',
+    strategy_cls=FuturesGrid_ATR_Optimized,
+    param_names=['grid_atr_mult', 'layers', 'max_pos', 'stop_loss_pct'],
+    defaults={'grid_atr_mult': 0.5, 'layers': 6, 'max_pos': 3, 'stop_loss_pct': 0.10},
+    grid_defaults={
+        'grid_atr_mult': [0.3, 0.5, 0.7, 1.0],
+        'layers': [4, 6, 8],
+        'max_pos': [2, 3, 4],
+    },
+    coercer=_coerce_futures_grid_atr,
+    multi_symbol=False,
+))
+
+# 日内回转优化版：时间过滤 + ATR 动态阈值
+register_strategy(StrategyModule(
+    name='intraday_opt',
+    description='Intraday reversion with time filter and ATR threshold',
+    strategy_cls=IntradayReversion_Optimized,
+    param_names=['entry_atr_mult', 'stop_atr_mult', 'max_hold_bars'],
+    defaults={'entry_atr_mult': 1.0, 'stop_atr_mult': 2.0, 'max_hold_bars': 30},
+    grid_defaults={
+        'entry_atr_mult': [0.8, 1.0, 1.2, 1.5],
+        'stop_atr_mult': [1.5, 2.0, 2.5],
+    },
+    coercer=_coerce_intraday_optimized,
+    multi_symbol=False,
+))
+
+# 布林带优化版：RSI 超卖确认 + 分批止盈
+register_strategy(StrategyModule(
+    name='bollinger_rsi',
+    description='Bollinger Bands with RSI confirmation filter',
+    strategy_cls=BollingerRSI_Optimized,
+    param_names=['period', 'devfactor', 'rsi_oversold', 'rsi_overbought'],
+    defaults={'period': 20, 'devfactor': 2.0, 'rsi_oversold': 30, 'rsi_overbought': 70},
+    grid_defaults={
+        'period': [15, 20, 25],
+        'devfactor': [1.8, 2.0, 2.2],
+        'rsi_oversold': [25, 30, 35],
+    },
+    coercer=_coerce_bollinger_rsi,
+    multi_symbol=False,
+))
+
+# 唐奇安通道优化版：ATR 波动率突破确认
+register_strategy(StrategyModule(
+    name='donchian_atr',
+    description='Donchian breakout with ATR volatility confirmation',
+    strategy_cls=DonchianATR_Optimized,
+    param_names=['upper_period', 'lower_period', 'atr_stop_mult'],
+    defaults={'upper_period': 20, 'lower_period': 10, 'atr_stop_mult': 2.0},
+    grid_defaults={
+        'upper_period': [15, 20, 25, 30],
+        'lower_period': [8, 10, 12],
+        'atr_stop_mult': [1.5, 2.0, 2.5],
+    },
+    coercer=_coerce_donchian_atr,
+    multi_symbol=False,
+))
+
+
 def list_backtrader_strategies() -> Dict[str, str]:
     """列出所有可用的Backtrader策略"""
     return {name: module.description for name, module in BACKTRADER_STRATEGY_REGISTRY.items()}
@@ -605,4 +698,11 @@ __all__ = [
     'MultiFactorSelectionStrategy',
     'IndexEnhancementStrategy',
     'IndustryRotationStrategy',
+    # V3.0.0 优化策略类
+    'KAMAStrategy_Optimized',
+    'FuturesGrid_ATR_Optimized',
+    'IntradayReversion_Optimized',
+    'BollingerRSI_Optimized',
+    'DonchianATR_Optimized',
+    'OPTIMIZED_STRATEGIES',
 ]

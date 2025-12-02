@@ -1,6 +1,10 @@
 """
 KAMA Strategy (Backtrader version)
 Kaufman Adaptive Moving Average - adapts to market volatility
+
+V3.0.0 优化:
+- 增加 SMA(200) 长期趋势过滤
+- 只在牛市环境 (Close > SMA200) 做多
 """
 import backtrader as bt
 
@@ -41,9 +45,12 @@ class KAMAIndicator(bt.Indicator):
 
 class KAMAStrategy(bt.Strategy):
     """
-    KAMA crossover strategy
-    - Buy when price crosses above KAMA
-    - Sell when price crosses below KAMA
+    KAMA crossover strategy with regime filter
+    
+    V3.0.0 优化:
+    - regime_period: 长期趋势 SMA 周期 (默认 200)
+    - 只在 Close > SMA(200) 牛市环境做多
+    - 避免熊市假反弹信号
     """
     params = (
         ('period', 10),
@@ -51,6 +58,7 @@ class KAMAStrategy(bt.Strategy):
         ('slow_ema', 30),
         ('atr_period', 14),
         ('atr_mult', 2.0),
+        ('regime_period', 200),  # V3.0: 趋势过滤周期
     )
 
     def __init__(self):
@@ -62,19 +70,24 @@ class KAMAStrategy(bt.Strategy):
         )
         self.crossover = bt.indicators.CrossOver(self.data.close, self.kama)
         self.atr = bt.indicators.ATR(self.data, period=self.p.atr_period)
+        self.sma_regime = bt.indicators.SMA(self.data.close, period=self.p.regime_period)  # V3.0
         self.order = None
 
     def next(self):
         if self.order:
             return
 
+        # V3.0: 牛市过滤器
+        bullish_regime = self.data.close[0] > self.sma_regime[0]
+
         if not self.position:
-            if self.crossover > 0:  # Price crosses above KAMA
+            # V3.0: 只在牛市环境做多
+            if self.crossover > 0 and bullish_regime:
                 size = self._calc_size()
                 self.order = self.buy(size=size)
         else:
             if self.crossover < 0:  # Price crosses below KAMA
-                self.order = self.sell(size=self.position.size)
+                self.order = self.close()
 
     def _calc_size(self):
         """Calculate position size based on ATR"""
@@ -104,4 +117,5 @@ def _coerce_kama(d: dict) -> dict:
         'slow_ema': int(d.get('slow_ema', 30)),
         'atr_period': int(d.get('atr_period', 14)),
         'atr_mult': float(d.get('atr_mult', 2.0)),
+        'regime_period': int(d.get('regime_period', 200)),
     }

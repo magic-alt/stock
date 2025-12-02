@@ -25,7 +25,7 @@ tests/
 - ✅ `src/core/events.py` - 事件引擎
 - ✅ `src/core/config.py` - 配置管理
 - ✅ `src/core/risk_manager.py` - 风险管理
-- ✅ `src/core/gateway.py` + `paper_gateway.py` - 交易网关
+- ✅ `src/core/gateway.py` + `paper_gateway_v3.py` - 交易网关
 
 ### test_data.py (3个测试类)
 - ✅ `src/data_sources/providers.py` - 数据提供商

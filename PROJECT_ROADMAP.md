@@ -1,9 +1,9 @@
 # 项目路线图 | Project Roadmap
 
-**项目**: 量化回测系统 (Quantitative Backtesting Platform)  
-**当前版本**: V2.10.2.0  
-**更新日期**: 2025-10-26  
-**状态**: 🟢 Active Development
+**项目**: 量化回测与实盘系统 (Unified Quant Platform)  
+**当前版本**: V3.0.0-beta  
+**更新日期**: 2025-12-03  
+**状态**: 🟢 Architecture Unification Complete
 
 ---
 
@@ -20,7 +20,57 @@
 
 ## 📅 版本历史
 
-### V2.10.2.0 (2025-10-26) ✅ 当前版本
+### V3.0.0-beta (2025-12-03) 🆕 当前版本
+**主题**: 架构统一完成 + 实盘准备
+
+**核心更新**:
+- ✅ **结构化日志**: 新增 `src/core/logger.py`，使用 structlog 替换所有 print
+- ✅ **EventEngineContext**: 新增 `src/core/context.py`，桥接策略与执行引擎
+- ✅ **LiveGateway 桩代码**: 新增 `src/core/live_gateway.py`，CTP/IB/XtQuant 接口
+- ✅ **统一策略示例**: 新增 `src/strategies/unified_strategies.py`，EMA/MACD/Bollinger
+- ✅ **PaperRunner V3**: 新增 `src/core/paper_runner_v3.py`，使用 Context 模式
+
+**新增文件**:
+```
+src/core/logger.py          # structlog 日志配置
+src/core/context.py         # EventEngineContext + BacktestContext
+src/core/live_gateway.py    # CTPGateway, IBGateway, XtQuantGateway 桩代码
+src/core/paper_runner_v3.py # run_paper_v3, run_paper_with_nav
+src/strategies/unified_strategies.py  # 统一策略示例
+```
+
+**架构图**:
+```
+                     BaseStrategy
+                          │
+        ┌─────────────────┼─────────────────┐
+        ▼                 ▼                 ▼
+BacktraderAdapter   EventEngineContext   BacktestContext
+        │                 │                 │
+        ▼                 ▼                 ▼
+   Backtrader       PaperGatewayV3      (Read-only)
+   (回测)            LiveGateway        (快速验证)
+                     (实盘)
+```
+
+### V3.0.0-alpha (2025-12-03)
+**主题**: 架构统一与实盘准备
+
+**核心更新**:
+- ✅ **统一接口层**: 新增 `src/core/interfaces.py`，集中定义所有 Protocol
+- ✅ **策略统一**: 新增 `src/core/strategy_base.py`，实现 "一次编写，到处运行"
+- ✅ **Gateway 清理**: `PaperGatewayV3` 移除 V2 遗留代码，强制使用 MatchingEngine
+- ✅ **类型安全**: 新增 `BarData`, `PositionInfo`, `AccountInfo` 等统一数据结构
+- ✅ **Backtrader 适配器**: `BacktraderStrategyAdapter` 自动包装 BaseStrategy
+
+**架构亮点**:
+```
+BaseStrategy (统一策略接口)
+    ├── BacktraderStrategyAdapter → Backtrader 回测
+    └── PaperRunner (Future) → EventEngine 实盘/模拟
+```
+
+### V2.10.2.0 (2025-10-26) ✅ 稳定版本
 **主题**: 企业级重构 + 报告系统 + CI/CD
 
 **核心更新**:
@@ -96,8 +146,13 @@
 | **文档** | 🟢 完善 | 95% | 完整文档 + 示例代码 |
 | **测试** | 🟢 完善 | 85% | 单元测试 + 集成测试 |
 | **CI/CD** | 🟢 就绪 | 100% | GitHub Actions全流程 |
+| **统一接口** | 🟢 完成 | 100% | V3.0 Protocol + 数据类型 |
+| **策略统一** | 🟢 完成 | 95% | BaseStrategy + Context + 适配器 |
+| **日志系统** | 🟢 新增 | 100% | structlog 结构化日志 |
+| **LiveGateway** | 🟡 桩代码 | 40% | CTP/IB/XtQuant 接口定义 |
 
 ### 技术债务
+- ✅ ~~PaperGateway V2/V3 混合代码~~ (已清理)
 - 🟡 GUI界面需要重构（考虑使用更现代的框架）
 - 🟡 测试覆盖率需要提升到90%+
 - 🟡 文档需要添加英文版本
@@ -107,10 +162,31 @@
 
 ## 🗺️ 开发路线图
 
-### Phase 3: 实盘交易集成 (规划中)
-**目标**: 将回测系统扩展到实盘交易
+### Phase 3: 实盘交易集成 (进行中 🟡)
+**目标**: 统一回测与实盘架构，准备实盘交易
 
-#### 3.1 交易接口层 🔴 未开始
+#### 3.1 策略统一层 ✅ 完成
+- [x] 定义 `BaseStrategy` 抽象基类
+- [x] 实现 `BacktraderStrategyAdapter` 适配器
+- [x] 创建 `StrategyContext` 统一接口
+- [x] 提供示例策略 `ExampleDualMAStrategy`
+- [x] 实现 `EventEngineContext` 适配器
+
+#### 3.2 网关标准化 ✅ 完成
+- [x] 创建 `src/core/interfaces.py` 统一接口定义
+- [x] 清理 `PaperGateway` V2 遗留代码
+- [x] 新增 `PaperGatewayV3` 纯 MatchingEngine 版本
+- [x] 实现 `LiveGateway` 接口桩代码
+- [x] 添加 `CTPGateway` / `IBGateway` / `XtQuantGateway` 桩实现
+
+#### 3.3 系统健壮性 ✅ 完成
+- [x] 引入 `structlog` 日志配置 (`src/core/logger.py`)
+- [x] 提供 `get_logger()` 和 `configure_logging()` API
+- [ ] 替换所有 `print` 为 logger (逐步进行)
+- [ ] 增加 `Heartbeat` (心跳) 事件
+- [ ] 实现进程监控和自动重启
+
+#### 3.4 交易接口层 🔴 未开始
 - [ ] 设计统一的交易接口 (`TradingGateway`)
 - [ ] 支持模拟交易（虚拟盘）
 - [ ] 支持实盘交易（通过经纪商API）

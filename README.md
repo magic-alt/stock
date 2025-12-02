@@ -7,7 +7,7 @@
 
 > **企业级量化交易回测平台** - 基于Backtrader，支持多数据源、15+策略、自动化流程、机器学习
 
-**版本**: V2.10.2.0 | **更新日期**: 2025-10-26 | **状态**: ✅ 生产就绪 (Production Ready)
+**版本**: V3.0.0-alpha | **更新日期**: 2025-12-03 | **状态**: 🟡 架构统一中 (Architecture Unification)
 
 ---
 
@@ -74,7 +74,25 @@ report/600519_macd_20251026_123456/
 
 ## 📊 核心特性
 
-### 🤖 V2.10.2.0 新特性 (最新)
+### 🆕 V3.0.0-alpha 新特性 (最新)
+
+#### 1. 策略统一架构 (Strategy Unification)
+- 🔄 **一次编写，到处运行**: 同一策略代码可用于回测和实盘
+- 🏛️ **BaseStrategy 基类**: 统一的 `on_init`, `on_bar`, `buy`, `sell` 接口
+- 🔌 **BacktraderAdapter**: 自动将 BaseStrategy 转换为 Backtrader 策略
+- 📊 **StrategyContext**: 统一的数据/订单/持仓访问接口
+
+#### 2. 统一接口层 (Unified Interfaces)
+- 📝 `src/core/interfaces.py`: 集中定义所有 Protocol
+- 📦 统一数据类型: `BarData`, `PositionInfo`, `AccountInfo`, `OrderInfo`
+- 🎯 类型安全: 完整的 Type Hints 支持
+
+#### 3. 网关重构 (Gateway Refactoring)
+- ✅ `PaperGatewayV3`: 移除 V2 遗留代码，强制使用 MatchingEngine
+- 🔧 清理技术债务: Gateway 职责更清晰
+- 🚀 为实盘 Gateway 做准备
+
+### 🤖 V2.10.2.0 特性
 
 #### 1. Markdown回测报告系统
 - 📝 自动生成完整的回测分析报告
@@ -225,7 +243,88 @@ python unified_backtest_framework.py auto \
 
 ## 📐 系统架构
 
-### V2.8.5 架构图
+### V3.0.0 双引擎架构 (最新)
+
+本项目采用 **双引擎架构**，旨在解决量化交易中的"回测-实盘"鸿沟：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    统一策略层 (V3.0 新增)                         │
+│                  src/core/strategy_base.py                       │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │              BaseStrategy (抽象基类)                      │   │
+│  │  • on_init()    初始化指标和状态                          │   │
+│  │  • on_bar()     处理每根K线 (核心逻辑)                    │   │
+│  │  • buy/sell()   统一下单接口                             │   │
+│  │  • 一次编写，到处运行                                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                            ↓                                     │
+│       ┌────────────────────┴────────────────────┐               │
+│       ↓                                          ↓               │
+│  ┌──────────────────────┐        ┌──────────────────────┐      │
+│  │ BacktraderAdapter    │        │ EventEngineContext   │      │
+│  │ (回测模式)            │        │ (实盘/模拟模式)       │      │
+│  │ • 向量化计算          │        │ • 事件驱动           │      │
+│  │ • 快速参数优化        │        │ • Tick级处理         │      │
+│  │ • 丰富指标库          │        │ • 订单生命周期       │      │
+│  └──────────────────────┘        └──────────────────────┘      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 🔄 策略统一 (Strategy Unification)
+
+用户只需编写一次策略，即可在回测和实盘中运行：
+
+```python
+from src.core.strategy_base import BaseStrategy, BarData
+
+class MyMAStrategy(BaseStrategy):
+    params = {"fast": 10, "slow": 30}
+    
+    def on_init(self, ctx):
+        self.fast_ma = []
+        self.slow_ma = []
+    
+    def on_bar(self, ctx, bar: BarData):
+        # 获取历史数据
+        hist = ctx.history(bar.symbol, ["close"], self.params["slow"])
+        fast_ma = hist["close"].tail(self.params["fast"]).mean()
+        slow_ma = hist["close"].mean()
+        
+        # 生成信号
+        pos = ctx.positions.get(bar.symbol)
+        if fast_ma > slow_ma and (pos is None or pos.is_flat):
+            self.buy(ctx, bar.symbol, size=100)
+        elif fast_ma < slow_ma and pos and pos.is_long:
+            self.sell(ctx, bar.symbol)
+```
+
+**回测时**:
+```python
+from src.core.strategy_base import BacktraderStrategyAdapter
+bt_strategy = BacktraderStrategyAdapter.wrap(MyMAStrategy, fast=10, slow=30)
+cerebro.addstrategy(bt_strategy)
+```
+
+**实盘时** (Future):
+```python
+from src.core.paper_runner_v3 import run_paper_v3
+result = run_paper_v3(MyMAStrategy(fast=10, slow=30), data_map, events)
+```
+
+#### 🏛️ 核心模块
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **统一接口** | `src/core/interfaces.py` | Protocol定义、数据类型 |
+| **策略基类** | `src/core/strategy_base.py` | BaseStrategy、适配器 |
+| **事件引擎** | `src/core/events.py` | EventEngine、事件类型 |
+| **网关接口** | `src/core/gateway.py` | TradeGateway、HistoryGateway |
+| **模拟网关** | `src/core/paper_gateway_v3.py` | MatchingEngine集成 |
+
+---
+
+### V2.8.5 架构图 (Legacy)
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
