@@ -43,6 +43,11 @@ from .optimized_strategies import (
     OPTIMIZED_STRATEGIES,
 )
 
+# V3.0.0: 趋势回调增强策略（机构级综合策略）
+from .trend_pullback_enhanced import (
+    TrendPullbackEnhanced, _coerce_trend_pullback, STRATEGY_CONFIG as TREND_PULLBACK_CONFIG
+)
+
 
 class StrategyModule:
     """策略模块配置容器"""
@@ -631,6 +636,18 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
+# V3.0.0: 趋势回调增强版（机构级综合策略）
+register_strategy(StrategyModule(
+    name='trend_pullback_enhanced',
+    description='Trend following with pullback entry, volatility sizing, and chandelier exit',
+    strategy_cls=TrendPullbackEnhanced,
+    param_names=TREND_PULLBACK_CONFIG['param_names'],
+    defaults=TREND_PULLBACK_CONFIG['defaults'],
+    grid_defaults=TREND_PULLBACK_CONFIG['grid_defaults'],
+    coercer=_coerce_trend_pullback,
+    multi_symbol=False,
+))
+
 
 def list_backtrader_strategies() -> Dict[str, str]:
     """列出所有可用的Backtrader策略"""
@@ -705,4 +722,6 @@ __all__ = [
     'BollingerRSI_Optimized',
     'DonchianATR_Optimized',
     'OPTIMIZED_STRATEGIES',
+    # V3.0.0 机构级综合策略
+    'TrendPullbackEnhanced',
 ]

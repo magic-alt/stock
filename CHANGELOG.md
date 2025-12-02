@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V3.0.0-beta.3] - 2025-12-03
+
+### 🚀 新增机构级综合策略 - TrendPullbackEnhanced
+
+**Theme**: 集成趋势+回调+风控的专业量化策略
+
+---
+
+#### 新增: `trend_pullback_enhanced.py`
+
+**核心特性**:
+
+1. **波动率定仓 (Volatility Sizing)**
+   - 公式: `Size = (Account * Risk%) / (ATR * SL_Mult)`
+   - 波动大 → 仓位自动减少
+   - 波动小 → 仓位自动增加
+   - 确保单笔亏损不超过账户权益 N%
+
+2. **双重趋势确认**
+   - `Close > EMA200` 且 `EMA200` 斜率向上
+   - 过滤均线走平的震荡市
+
+3. **吊灯止损 (Chandelier Exit)**
+   - `trail_stop = highest_high - ATR * trail_mult`
+   - 止损只升不降，锁定利润
+   - 从最高点回撤 2.5 ATR 离场
+
+4. **RSI 避免追高**
+   - `rsi < 70` 时才入场
+   - 超买状态等待回调
+
+**参数配置**:
+```python
+params = {
+    'ema_trend': 200,       # 长期趋势线
+    'ema_pullback': 20,     # 回调参考线
+    'macd_fast': 12,
+    'macd_slow': 26,
+    'macd_signal': 9,
+    'risk_pct': 0.02,       # 单笔风险 2%
+    'sl_atr_mult': 2.0,     # 初始止损倍数
+    'trail_atr_mult': 2.5,  # 移动止损倍数
+}
+```
+
+---
+
+### 📊 策略总数
+
+```
+Total strategies: 33 (新增 1 个)
+```
+
+---
+
 ## [V3.0.0-beta.2] - 2025-12-03
 
 ### 🔧 策略优化 - 风控增强 + 动态参数 + 信号过滤
