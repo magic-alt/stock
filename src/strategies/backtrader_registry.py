@@ -48,6 +48,24 @@ from .trend_pullback_enhanced import (
     TrendPullbackEnhanced, _coerce_trend_pullback, STRATEGY_CONFIG as TREND_PULLBACK_CONFIG
 )
 
+# V3.0.0-beta.4: 增强策略集合（专家级优化）
+from .enhanced_strategies import (
+    ZScoreEnhancedStrategy, RSITrendStrategy, KeltnerAdaptiveStrategy,
+    TripleMA_ADX_Strategy, MACDImpulseStrategy, SMATrendFollowingStrategy,
+    MultiFactorRobustStrategy,
+    _coerce_zscore_enhanced, _coerce_rsi_trend, _coerce_keltner_adaptive,
+    _coerce_triple_ma_adx, _coerce_macd_impulse, _coerce_sma_trend,
+    _coerce_multifactor_robust,
+    ENHANCED_STRATEGY_CONFIGS,
+)
+
+# V3.0.0-beta.4: ML 增强策略
+from .ml_enhanced_strategy import (
+    MLEnhancedStrategy, MLEnsembleStrategy,
+    _coerce_ml_enhanced,
+    ML_ENHANCED_CONFIG, ML_ENSEMBLE_CONFIG,
+)
+
 
 class StrategyModule:
     """策略模块配置容器"""
@@ -648,6 +666,94 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
+# =============================================================================
+# V3.0.0-beta.4: 增强策略集合 (专家级优化)
+# =============================================================================
+
+# Z-Score 均值回归增强版：RSI 共振 + ATR 止损
+register_strategy(StrategyModule(
+    name='zscore_enhanced',
+    description='Z-Score Mean Reversion with RSI Filter and ATR Stop',
+    strategy_cls=ZScoreEnhancedStrategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['zscore_enhanced']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['zscore_enhanced']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['zscore_enhanced']['grid_defaults'],
+    coercer=_coerce_zscore_enhanced,
+    multi_symbol=False,
+))
+
+# RSI 趋势顺势策略：钩头形态 + 趋势过滤
+register_strategy(StrategyModule(
+    name='rsi_trend',
+    description='RSI Pullback Strategy in Uptrend with Hook Pattern',
+    strategy_cls=RSITrendStrategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['rsi_trend']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['rsi_trend']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['rsi_trend']['grid_defaults'],
+    coercer=_coerce_rsi_trend,
+    multi_symbol=False,
+))
+
+# Keltner 自适应策略：波动率定仓 + 吊灯止损
+register_strategy(StrategyModule(
+    name='keltner_adaptive',
+    description='Keltner Breakout with Volatility Sizing and Chandelier Exit',
+    strategy_cls=KeltnerAdaptiveStrategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['keltner_adaptive']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['keltner_adaptive']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['keltner_adaptive']['grid_defaults'],
+    coercer=_coerce_keltner_adaptive,
+    multi_symbol=False,
+))
+
+# 三均线 ADX 过滤策略：趋势强度过滤
+register_strategy(StrategyModule(
+    name='triple_ma_adx',
+    description='Triple EMA with ADX Trend Strength Filter',
+    strategy_cls=TripleMA_ADX_Strategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['triple_ma_adx']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['triple_ma_adx']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['triple_ma_adx']['grid_defaults'],
+    coercer=_coerce_triple_ma_adx,
+    multi_symbol=False,
+))
+
+# MACD 脉冲策略：零轴偏离 + 动能确认
+register_strategy(StrategyModule(
+    name='macd_impulse',
+    description='MACD Zero-Line Bias Strategy with Momentum Filter',
+    strategy_cls=MACDImpulseStrategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['macd_impulse']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['macd_impulse']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['macd_impulse']['grid_defaults'],
+    coercer=_coerce_macd_impulse,
+    multi_symbol=False,
+))
+
+# SMA 趋势跟随策略：斜率确认
+register_strategy(StrategyModule(
+    name='sma_trend_following',
+    description='SMA Cross with Slope Confirmation',
+    strategy_cls=SMATrendFollowingStrategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['sma_trend_following']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['sma_trend_following']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['sma_trend_following']['grid_defaults'],
+    coercer=_coerce_sma_trend,
+    multi_symbol=False,
+))
+
+# 多因子稳健策略：大盘过滤 + 动量/波动率因子
+register_strategy(StrategyModule(
+    name='multifactor_robust',
+    description='Trend-Filtered Multi-Factor with Regime Filter',
+    strategy_cls=MultiFactorRobustStrategy,
+    param_names=ENHANCED_STRATEGY_CONFIGS['multifactor_robust']['param_names'],
+    defaults=ENHANCED_STRATEGY_CONFIGS['multifactor_robust']['defaults'],
+    grid_defaults=ENHANCED_STRATEGY_CONFIGS['multifactor_robust']['grid_defaults'],
+    coercer=_coerce_multifactor_robust,
+    multi_symbol=False,
+))
+
 
 def list_backtrader_strategies() -> Dict[str, str]:
     """列出所有可用的Backtrader策略"""
@@ -724,4 +830,18 @@ __all__ = [
     'OPTIMIZED_STRATEGIES',
     # V3.0.0 机构级综合策略
     'TrendPullbackEnhanced',
+    # V3.0.0-beta.4 增强策略集合
+    'ZScoreEnhancedStrategy',
+    'RSITrendStrategy',
+    'KeltnerAdaptiveStrategy',
+    'TripleMA_ADX_Strategy',
+    'MACDImpulseStrategy',
+    'SMATrendFollowingStrategy',
+    'MultiFactorRobustStrategy',
+    'ENHANCED_STRATEGY_CONFIGS',
+    # V3.0.0-beta.4 ML 增强策略
+    'MLEnhancedStrategy',
+    'MLEnsembleStrategy',
+    'ML_ENHANCED_CONFIG',
+    'ML_ENSEMBLE_CONFIG',
 ]

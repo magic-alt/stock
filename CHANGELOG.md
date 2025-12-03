@@ -2,6 +2,190 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V3.0.0-beta.4] - 2025-12-03
+
+### 🔬 专家级策略优化 - Enhanced Strategies Collection
+
+**Theme**: 8个经典策略的深度优化，解决风控、市场状态过滤、资金管理三大痛点
+
+---
+
+#### 新增文件
+
+1. **`enhanced_strategies.py`** - 7个增强版Backtrader策略
+2. **`ml_enhanced_strategy.py`** - ML特征工程优化策略
+
+---
+
+#### 增强策略详情
+
+##### 1. Z-Score 均值回归增强版 (`zscore_enhanced`)
+
+**痛点**: 纯Z-Score在暴跌趋势中"接飞刀"
+
+**优化**:
+- RSI共振过滤: Z-Score低位 + RSI<30 双重验证
+- ATR止损风控: 防止回归失败导致深套
+- 保守出场: 回归到均值即平仓
+
+```python
+# 买入条件
+if z_score < -2.0 and rsi < 30:  # 双重验证
+    buy()
+# 止损
+if close < entry_price - atr * 2.0:
+    close()
+```
+
+---
+
+##### 2. RSI 趋势顺势策略 (`rsi_trend`)
+
+**痛点**: RSI<30在强下跌中死得很惨，RSI>70在牛市过早下车
+
+**优化**:
+- 趋势过滤: 仅在SMA200之上做多
+- RSI钩头形态: 等RSI下穿30后重新上穿30才入场
+- 避免左侧抄底
+
+```python
+# 钩头入场
+rsi_cross_up = (rsi[-1] < 30) and (rsi[0] >= 30)
+if is_uptrend and rsi_cross_up:
+    buy()
+```
+
+---
+
+##### 3. Keltner 自适应通道策略 (`keltner_adaptive`)
+
+**痛点**: 固定百分比入场缺乏灵活性
+
+**优化**:
+- 波动率定仓: `Size = (Cash * 2%) / (ATR * 3)`
+- 吊灯止损: 让利润奔跑
+- 突破上轨买入（趋势跟随）
+
+```python
+# 动态仓位计算
+risk_money = broker.get_value() * 0.02
+size = int(risk_money / (atr * trail_mult))
+```
+
+---
+
+##### 4. 三均线 ADX 过滤策略 (`triple_ma_adx`)
+
+**痛点**: 均线策略是震荡市的"绞肉机"
+
+**优化**:
+- ADX指标过滤: 只在ADX>25时认为有足够趋势
+- 防止震荡市频繁止损
+- 均线排列破坏立即离场
+
+```python
+if bull_align and adx > 25:  # 趋势强度足够
+    buy()
+```
+
+---
+
+##### 5. MACD 脉冲策略 (`macd_impulse`)
+
+**痛点**: MACD金叉在下跌中继非常常见
+
+**优化**:
+- 零轴过滤: MACD必须>-0.5，避免深水区接飞刀
+- 动能过滤: 柱状图必须是扩张的
+- 零轴上方金叉更可靠
+
+```python
+if cross_up and macd > -0.5 and hist > prev_hist:
+    buy()
+```
+
+---
+
+##### 6. SMA 趋势跟随策略 (`sma_trend_following`)
+
+**痛点**: 均线交叉滞后严重
+
+**优化**:
+- 均线斜率检查: 快线必须向上
+- 跌破慢线提前止损（比死叉更早）
+
+```python
+if crossover and sma_fast[0] > sma_fast[-1]:
+    buy()
+if close < sma_slow:  # 提前止损
+    close()
+```
+
+---
+
+##### 7. 多因子稳健策略 (`multifactor_robust`)
+
+**痛点**: 固定权重难以验证有效性
+
+**优化**:
+- 大盘趋势过滤: 熊市停止开仓
+- 动量+低波动组合
+- 动量转负离场
+
+```python
+if close < ma200:  # 熊市
+    close()
+    return
+if mom > 0 and score > 0:
+    buy()
+```
+
+---
+
+##### 8. ML 增强策略 (`ml_enhanced`)
+
+**痛点**: slope/diff绝对值随股价高低剧烈变化，模型难以泛化
+
+**优化**:
+- 特征归一化: 所有价格相关特征转为相对值
+- 对数收益率: 分布更正态
+- 置信度阈值: prob>0.6才交易，提高胜率
+
+```python
+# 特征工程示例
+out['ret1'] = np.log(close / close.shift(1))  # 对数收益
+out['dist_ma20'] = (close - ma20) / ma20      # 百分比距离
+out['vol_ratio'] = std_20 / std_60            # 波动率比率
+```
+
+---
+
+### 📊 策略总数
+
+```
+Total strategies: 40 (新增 7 个)
+```
+
+| 类别 | 新增策略 | 描述 |
+|------|---------|------|
+| 均值回归 | zscore_enhanced | Z-Score + RSI共振 + ATR止损 |
+| RSI | rsi_trend | RSI钩头 + 趋势过滤 |
+| 通道 | keltner_adaptive | 波动率定仓 + 吊灯止损 |
+| 均线 | triple_ma_adx | 三均线 + ADX强度过滤 |
+| MACD | macd_impulse | 零轴偏离 + 动能确认 |
+| 均线 | sma_trend_following | 斜率确认 + 提前止损 |
+| 多因子 | multifactor_robust | 大盘过滤 + 动量/波动率 |
+
+---
+
+### ✅ 测试结果
+
+```
+104 passed, 8 skipped, 5 warnings in 12.84s
+```
+
+---
+
 ## [V3.0.0-beta.3] - 2025-12-03
 
 ### 🚀 新增机构级综合策略 - TrendPullbackEnhanced
