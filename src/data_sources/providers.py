@@ -304,7 +304,9 @@ class AkshareProvider(DataProvider):
         for symbol in symbols:
             try:
                 # Check database for existing data
+                logger.info(f"Loading {symbol} from database...")
                 existing_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
+                logger.info(f"Existing data loaded: {existing_df is not None}")
                 
                 # Check for missing ranges
                 missing_ranges = self.db.get_missing_ranges(
@@ -338,7 +340,9 @@ class AkshareProvider(DataProvider):
                     logger.warning(f"✗ {symbol}: No data available")
                     
             except Exception as e:
+                import traceback
                 logger.error(f"✗ {symbol}: Error loading data: {e}")
+                logger.debug(traceback.format_exc())
                 continue
 
         return result

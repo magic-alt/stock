@@ -382,7 +382,7 @@ def generate_backtest_report(
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(report_lines))
         
-        print(f"  ✓ 回测报告已保存: backtest_report.md")
+        print(f"  [OK] 回测报告已保存: backtest_report.md")
         
         # 同时保存关键数据为JSON格式
         summary_data = {
@@ -398,7 +398,7 @@ def generate_backtest_report(
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(summary_data, f, indent=2, ensure_ascii=False, default=float)
         
-        print(f"  ✓ 数据摘要已保存: backtest_summary.json")
+        print(f"  [OK] 数据摘要已保存: backtest_summary.json")
         
     except Exception as e:
         print(f"[警告] 生成回测报告失败: {e}")
@@ -769,12 +769,12 @@ def plot_backtest_with_indicators(
                 
                 # 保存PNG格式
                 fig_to_save.savefig(out_file_png, dpi=300, bbox_inches='tight')
-                print(f"  ✓ PNG图表已保存")
+                print(f"  [OK] PNG图表已保存")
                 
                 # 保存原生matplotlib格式（pickle）
                 with open(out_file_pkl, 'wb') as f:
                     pickle.dump(fig_to_save, f)
-                print(f"  ✓ 原生格式已保存（可用pickle加载）")
+                print(f"  [OK] 原生格式已保存（可用pickle加载）")
                 
                 # 生成Markdown回测报告
                 if metrics:

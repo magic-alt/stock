@@ -76,6 +76,14 @@ class SQLiteDataManager:
                 )
             """)
             
+            # Migration: Add 'name' column if it doesn't exist (for existing databases)
+            try:
+                cursor.execute("SELECT name FROM metadata LIMIT 1")
+            except sqlite3.OperationalError:
+                # Column doesn't exist, add it
+                cursor.execute("ALTER TABLE metadata ADD COLUMN name TEXT")
+                logger.info("Migrated database: Added 'name' column to metadata table")
+            
             # Create index for faster lookups
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_metadata_symbol 
@@ -280,34 +288,44 @@ class SQLiteDataManager:
         """
         table_name = self._normalize_table_name(symbol, 'stock')
         
-        # Check if table exists
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT name FROM sqlite_master 
-                WHERE type='table' AND name=?
-            """, (table_name,))
-            if not cursor.fetchone():
+        # Use a single connection for both checking and querying
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                # Check if table exists
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name=?
+                """, (table_name,))
+                if not cursor.fetchone():
+                    return None
+                
+                # Query data from the table
+                query = f"""
+                    SELECT date, open, high, low, close, volume
+                    FROM {table_name}
+                    WHERE adj_type = ? AND date >= ? AND date <= ?
+                    ORDER BY date
+                """
+                
+                df = pd.read_sql_query(query, conn, params=(adj_type, start, end))
+            
+            if df.empty:
                 return None
-        
-        query = f"""
-            SELECT date, open, high, low, close, volume
-            FROM {table_name}
-            WHERE adj_type = ? AND date >= ? AND date <= ?
-            ORDER BY date
-        """
-        
-        with sqlite3.connect(self.db_path) as conn:
-            df = pd.read_sql_query(query, conn, params=(adj_type, start, end))
-        
-        if df.empty:
+            
+            # Set index
+            df['date'] = pd.to_datetime(df['date'])
+            df.set_index('date', inplace=True)
+            
+            return df
+            
+        except Exception as e:
+            # Log the error but don't raise - return None to indicate no data
+            import logging
+            logging.getLogger(__name__).debug(
+                f"Error loading data for {symbol}: {e}"
+            )
             return None
-        
-        # Set index
-        df['date'] = pd.to_datetime(df['date'])
-        df.set_index('date', inplace=True)
-        
-        return df
     
     # -----------------------------------------------------------------------
     # Index Data Operations
