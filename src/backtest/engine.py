@@ -44,6 +44,11 @@ from .strategy_modules import (
 from src.core.events import EventEngine, Event, EventType
 from src.core.gateway import BacktestGateway, HistoryGateway
 
+# V3.1.0: Import logger
+from src.core.logger import get_logger
+
+logger = get_logger("backtest.engine")
+
 
 # --- Custom KDJ Indicator for Plotting ---
 class KDJ(bt.Indicator):
@@ -331,7 +336,7 @@ class BacktestEngine:
                 module.add_strategy(cerebro, params)
                 # 恢复原始策略类
                 module.strategy_cls = temp_strategy_cls
-                print("[DEBUG] 已为策略添加绘图指标")
+                logger.debug("Added plot indicators to strategy")
             else:
                 module.add_strategy(cerebro, params)
                 
@@ -754,7 +759,7 @@ class BacktestEngine:
                 pareto_df = pareto_front(result_df)
                 pareto_path = os.path.join(analysis_dir, f"{strategy}_pareto.csv")
                 pareto_df.to_csv(pareto_path, index=False)
-                print(f"✅ Pareto frontier saved: {pareto_path} ({len(pareto_df)} points)")
+                logger.info("Pareto frontier saved", path=pareto_path, points=len(pareto_df))
             
             # Generate parameter heatmaps for each parameter combination
             if len(keys) >= 2 and not result_df.empty:
@@ -769,10 +774,9 @@ class BacktestEngine:
                     
                     # Save heatmaps using analysis.py
                     save_heatmap(strategy_module, result_df, strategy_dir)
-                    print(f"✅ Heatmaps saved in: {strategy_dir}")
+                    logger.info("Heatmaps saved", directory=strategy_dir)
         except Exception as e:
-            # Use print instead of logger (logger not always available)
-            print(f"⚠️  Failed to generate analysis outputs: {e}")
+            logger.warning("Failed to generate analysis outputs", error=str(e))
         
         return result_df
 
@@ -804,9 +808,9 @@ class BacktestEngine:
         os.makedirs(out_dir, exist_ok=True)
         start_ts = time.perf_counter()
         data_map = self._load_data(symbols, start, end, adj=adj)
-        print(f"📊 Loaded data for {len(data_map)} symbols: {list(data_map.keys())}")
+        logger.info("Data loaded", symbols=len(data_map), symbol_list=list(data_map.keys()))
         if not data_map:
-            print("❌ Error: No data loaded. Cannot proceed with auto pipeline.")
+            logger.error("No data loaded. Cannot proceed with auto pipeline.")
             return
         bench_nav = self._load_benchmark(benchmark, start, end)
         all_rows: List[pd.DataFrame] = []
@@ -814,7 +818,7 @@ class BacktestEngine:
         for name in strategies:
             module = STRATEGY_REGISTRY.get(name)
             if not module:
-                print(f"⚠️  Unknown strategy in auto pipeline: {name}, skipping")
+                logger.warning("Unknown strategy in auto pipeline, skipping", strategy=name)
                 continue
             
             # Use hot grid or default
@@ -876,23 +880,26 @@ class BacktestEngine:
         # Statistics
         if "trades" in ordered.columns:
             zero_trade_ratio = float((ordered["trades"].fillna(0) <= 0).mean())
-            print(f"Zero-trade ratio in grid: {zero_trade_ratio:.1%}")
+            logger.info("Zero-trade ratio", ratio=f"{zero_trade_ratio:.1%}")
         top_overall = ordered.head(min(top_n, len(ordered)))
 
-        # Print summary
-        print(f"\nSymbols: {', '.join(symbols)} | Benchmark: {benchmark}")
-        print(f"Date range: {start} -> {end} | Strategies evaluated: {len(strategies)}")
-        print(f"Parameter evaluations: {len(ordered)} | Elapsed: {elapsed:.1f}s")
-        print(f"Workers used: {workers}")
-        if hot_only:
-            print("Grid mode: HOT-ONLY (narrow ranges around empirically good zones)")
+        # Print summary using logger
+        logger.info("Auto pipeline completed",
+                   symbols=', '.join(symbols),
+                   benchmark=benchmark,
+                   date_range=f"{start} -> {end}",
+                   strategies_count=len(strategies),
+                   evaluations=len(ordered),
+                   elapsed=f"{elapsed:.1f}s",
+                   workers=workers,
+                   hot_only=hot_only)
         if use_benchmark_regime:
-            print(f"Regime filter: BENCHMARK EMA200 (scope={regime_scope})")
+            logger.info("Regime filter enabled", scope=regime_scope)
         
         self._print_metrics_legend()
         self._print_top_configs(top_overall)
         self._print_best_per_strategy(ordered)
-        print(f"Reports written to {out_dir}\n")
+        logger.info("Reports written", directory=out_dir)
 
     @staticmethod
     def _hot_grid(module) -> Dict[str, Sequence[Any]]:

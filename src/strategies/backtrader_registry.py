@@ -755,17 +755,175 @@ register_strategy(StrategyModule(
 ))
 
 
-def list_backtrader_strategies() -> Dict[str, str]:
-    """列出所有可用的Backtrader策略"""
-    return {name: module.description for name, module in BACKTRADER_STRATEGY_REGISTRY.items()}
+# ============================================================================
+# V3.1.0: 策略别名映射系统 (Strategy Alias Mapping)
+# ============================================================================
+# 提供标准化的策略命名，同时保持向后兼容
+# 命名规范:
+#   - 基础策略: indicator_name (小写, 下划线分隔)
+#   - 增强版本: indicator_enhanced (统一使用 _enhanced 后缀)
+#   - 优化版本: indicator_optimized (统一使用 _optimized 后缀)
+#   - 组合策略: indicator1_indicator2 (按重要性排序)
+# ============================================================================
+
+STRATEGY_ALIASES: Dict[str, str] = {
+    # === 标准化别名 -> 实际注册名 ===
+    
+    # EMA 系列
+    'ema_crossover': 'ema',
+    
+    # MACD 系列 (统一 enhanced 后缀)
+    'macd_basic': 'macd',
+    'macd_enhanced': 'macd_e',           # 标准化: macd_enhanced -> macd_e
+    'macd_regime': 'macd_r',             # 标准化: macd_regime -> macd_r
+    'macd_zero_cross': 'macd_zero',
+    'macd_histogram': 'macd_hist',
+    
+    # Bollinger 系列 (统一 enhanced 后缀)
+    'bollinger_basic': 'bollinger',
+    'bollinger_enhanced': 'boll_e',      # 标准化: bollinger_enhanced -> boll_e
+    'bollinger_rsi_combo': 'bollinger_rsi',
+    
+    # RSI 系列
+    'rsi_basic': 'rsi',
+    'rsi_ma': 'rsi_ma_filter',
+    'rsi_div': 'rsi_divergence',
+    'rsi_trend_filter': 'rsi_trend',
+    
+    # Keltner 系列
+    'keltner_basic': 'keltner',
+    'keltner_enhanced': 'keltner_adaptive',  # 自适应版本
+    
+    # ZScore 系列
+    'zscore_basic': 'zscore',
+    'zscore_enhanced': 'zscore_enhanced',
+    
+    # Donchian 系列
+    'donchian_basic': 'donchian',
+    'donchian_enhanced': 'donchian_atr',
+    
+    # MA 系列
+    'sma_basic': 'sma_cross',
+    'sma_enhanced': 'sma_trend_following',
+    'triple_ma_basic': 'triple_ma',
+    'triple_ma_enhanced': 'triple_ma_adx',
+    
+    # ADX 系列
+    'adx_basic': 'adx_trend',
+    
+    # KAMA 系列
+    'kama_basic': 'kama',
+    'kama_enhanced': 'kama_opt',          # 标准化: kama_enhanced -> kama_opt
+    
+    # 期货策略
+    'futures_ma': 'futures_ma_cross',
+    'futures_grid_basic': 'futures_grid',
+    'futures_grid_enhanced': 'futures_grid_atr',
+    'futures_mm': 'futures_market_making',
+    'turtle': 'turtle_futures',
+    
+    # 日内策略
+    'intraday_basic': 'intraday_reversion',
+    'intraday_enhanced': 'intraday_opt',
+    
+    # 多因子策略
+    'multifactor_basic': 'multifactor_selection',
+    'multifactor_enhanced': 'multifactor_robust',
+    'index_enhance': 'index_enhancement',
+    'industry_rotate': 'industry_rotation',
+    
+    # 特殊策略
+    'auction': 'auction_open',
+    
+    # 机构级策略
+    'trend_pullback': 'trend_pullback_enhanced',
+    
+    # ML策略 (需要先注册)
+    'ml_basic': 'ml_enhanced',
+    'ml_ensemble_strategy': 'ml_ensemble',
+}
+
+# 反向映射: 实际名 -> 标准化别名列表
+STRATEGY_CANONICAL_NAMES: Dict[str, str] = {
+    # 推荐使用的标准化名称
+    'macd_e': 'macd_enhanced',
+    'boll_e': 'bollinger_enhanced', 
+    'macd_r': 'macd_regime',
+    'kama_opt': 'kama_optimized',
+    'intraday_opt': 'intraday_optimized',
+}
+
+
+def resolve_strategy_name(name: str) -> str:
+    """
+    解析策略名称，支持别名
+    
+    Args:
+        name: 策略名称或别名
+        
+    Returns:
+        实际注册的策略名称
+    """
+    # 先检查是否是别名
+    if name in STRATEGY_ALIASES:
+        return STRATEGY_ALIASES[name]
+    # 直接返回原名（假设是实际注册名）
+    return name
+
+
+def get_canonical_name(name: str) -> str:
+    """
+    获取策略的标准化名称
+    
+    Args:
+        name: 策略名称（可能是缩写）
+        
+    Returns:
+        标准化的策略名称
+    """
+    if name in STRATEGY_CANONICAL_NAMES:
+        return STRATEGY_CANONICAL_NAMES[name]
+    return name
+
+
+def list_strategy_aliases() -> Dict[str, str]:
+    """列出所有策略别名映射"""
+    return STRATEGY_ALIASES.copy()
+
+
+def list_backtrader_strategies(include_aliases: bool = False) -> Dict[str, str]:
+    """
+    列出所有可用的Backtrader策略
+    
+    Args:
+        include_aliases: 是否包含别名
+        
+    Returns:
+        策略名称到描述的映射
+    """
+    result = {name: module.description for name, module in BACKTRADER_STRATEGY_REGISTRY.items()}
+    
+    if include_aliases:
+        for alias, actual in STRATEGY_ALIASES.items():
+            if actual in BACKTRADER_STRATEGY_REGISTRY:
+                result[alias] = f"[Alias] {BACKTRADER_STRATEGY_REGISTRY[actual].description}"
+    
+    return result
 
 
 def get_backtrader_strategy(name: str) -> StrategyModule:
-    """获取指定名称的策略模块"""
-    if name not in BACKTRADER_STRATEGY_REGISTRY:
-        available = ', '.join(BACKTRADER_STRATEGY_REGISTRY.keys())
+    """
+    获取指定名称的策略模块
+    
+    支持使用别名访问策略
+    """
+    # 解析别名
+    resolved_name = resolve_strategy_name(name)
+    
+    if resolved_name not in BACKTRADER_STRATEGY_REGISTRY:
+        available = ', '.join(sorted(BACKTRADER_STRATEGY_REGISTRY.keys()))
         raise ValueError(f"Strategy '{name}' not found. Available: {available}")
-    return BACKTRADER_STRATEGY_REGISTRY[name]
+    return BACKTRADER_STRATEGY_REGISTRY[resolved_name]
 
 
 def create_backtrader_strategy(name: str, **params) -> Type[bt.Strategy]:
@@ -789,10 +947,15 @@ def create_backtrader_strategy(name: str, **params) -> Type[bt.Strategy]:
 __all__ = [
     'StrategyModule',
     'BACKTRADER_STRATEGY_REGISTRY',
+    'STRATEGY_ALIASES',
+    'STRATEGY_CANONICAL_NAMES',
     'register_strategy',
     'list_backtrader_strategies',
+    'list_strategy_aliases',
     'get_backtrader_strategy',
     'create_backtrader_strategy',
+    'resolve_strategy_name',
+    'get_canonical_name',
     # 基础策略类
     'EMAStrategy',
     'MACDStrategy',

@@ -2,6 +2,269 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V3.1.0-alpha.3] - 2025-12-10
+
+### 🚀 Phase 3 交易基础设施 - Trading Infrastructure
+
+**Theme**: 完成交易接口层、风险管理系统、实时数据流三大核心模块
+
+---
+
+#### 新增模块
+
+##### 1. 统一交易网关 (`src/core/trading_gateway.py`)
+
+**功能特性**:
+- 统一交易接口 `TradingGateway`，支持 Paper/Live 模式切换
+- `PaperTradingAdapter` 模拟交易适配器（完整实现）
+- `LiveTradingAdapter` 实盘交易适配器（桩代码，支持 CTP/IB/Futu）
+- 工厂方法: `create_paper()`, `create_live()`
+- 订单类型: 市价单/限价单，支持 `update_price()` 即时撮合
+
+**使用方式**:
+```python
+from src.core.trading_gateway import TradingGateway
+
+# 创建模拟交易网关
+gateway = TradingGateway.create_paper(initial_cash=1_000_000.0)
+gateway.connect()
+gateway.update_price("600519.SH", 1800.0)
+
+# 买入
+order_id = gateway.buy("600519.SH", 100, price=1800.0)
+positions = gateway.get_positions()
+account = gateway.get_account()
+```
+
+---
+
+##### 2. 订单管理系统 (`src/core/order_manager.py`)
+
+**功能特性**:
+- `OrderManager` - 完整的订单生命周期管理
+- `ManagedOrder` - 订单对象，包含状态机
+- `OrderEvent` - 订单事件发布/订阅
+- 订单状态: Created → Submitted → PartialFilled → Filled / Cancelled / Rejected
+- 支持订单索引: 按ID、按股票代码、按状态
+
+**使用方式**:
+```python
+from src.core.order_manager import OrderManager
+from src.core.interfaces import Side
+
+order_manager = OrderManager()
+order = order_manager.create_order("600519.SH", Side.BUY, 100, 1800.0)
+order_manager.submit_order(order.order_id, gateway)
+order_manager.on_order_fill(order.order_id, 100, 1800.0)
+```
+
+---
+
+##### 3. 增强型风险管理 (`src/core/risk_manager_v2.py`)
+
+**功能特性**:
+- `RiskManagerV2` - 多层次风控系统
+- `RiskConfig` - 风控配置，支持预设 (conservative/moderate/aggressive)
+- `RiskCheckResult` - 风控检查结果
+- `PositionStop` - 止损/止盈自动触发
+- `DailyRiskStats` - 每日风控统计
+
+**风险检查项**:
+| 检查项 | 默认值 | 说明 |
+|--------|--------|------|
+| max_order_value | 100,000 | 单笔订单最大金额 |
+| max_order_pct | 10% | 单笔订单占账户比例 |
+| max_position_pct | 20% | 单只股票最大持仓 |
+| max_drawdown | 15% | 最大回撤限制 |
+| max_daily_loss | 5% | 日亏损限制 |
+
+**使用方式**:
+```python
+from src.core.risk_manager_v2 import RiskManagerV2, RiskConfig
+
+config = RiskConfig.create_conservative_config()
+rm = RiskManagerV2(config)
+
+result = rm.check_order(
+    symbol="600519.SH",
+    side=Side.BUY,
+    quantity=100,
+    price=1800.0,
+    account=account,
+    positions=positions
+)
+
+if result.passed:
+    # 执行订单
+    ...
+else:
+    print(f"风控拒绝: {result.messages}")
+```
+
+---
+
+##### 4. 实时数据流 (`src/core/realtime_data.py`)
+
+**功能特性**:
+- `RealtimeDataManager` - 实时数据管理器
+- `RealtimeQuote` - 实时行情数据结构
+- `BarBuilder` - 分钟K线合成
+- `SignalGenerator` - 实时信号生成
+- `SimulationDataProvider` - 模拟数据源（用于测试）
+
+**信号类型**:
+- `SignalType.BUY` / `SignalType.SELL` / `SignalType.HOLD`
+- 内置规则: MA交叉、价格突破
+- 自定义规则: `SignalRule(name, condition_fn, signal_type)`
+
+**使用方式**:
+```python
+from src.core.realtime_data import RealtimeDataManager, SimulationDataProvider
+
+provider = SimulationDataProvider()
+manager = RealtimeDataManager(provider)
+
+# 订阅行情
+manager.subscribe(["600519.SH", "000001.SZ"])
+
+# 注册回调
+manager.on_tick = lambda quote: print(f"{quote.symbol}: {quote.last_price}")
+manager.on_bar = lambda bar: print(f"Bar: {bar}")
+
+# 启动数据流
+manager.start()
+```
+
+---
+
+#### 测试覆盖
+
+**新增测试文件**: `tests/test_trading_infrastructure.py`
+
+| 测试类 | 测试数 | 覆盖内容 |
+|--------|--------|----------|
+| TestTradingGatewayModule | 12 | 网关创建、连接、买卖、撤单 |
+| TestOrderManagerModule | 12 | 订单创建、提交、成交、查询 |
+| TestRiskManagerV2Module | 12 | 风控配置、订单检查、限额 |
+| TestRealtimeDataModule | 10 | 行情订阅、K线合成、信号生成 |
+| TestIntegration | 3 | 模块集成测试 |
+| TestErrorHandling | 5 | 异常处理测试 |
+
+**测试结果**: 54 passed, 0 failed ✅
+
+---
+
+#### Logger 兼容性改进
+
+**问题**: 当 `structlog` 未安装时，使用 kwargs 调用标准 logger 会报错
+
+**解决方案**: 新增 `StructlogCompatibleLogger` 包装类
+
+```python
+class StructlogCompatibleLogger:
+    """标准库logger的包装类，支持structlog风格的kwargs"""
+    
+    def info(self, msg, **kwargs):
+        if kwargs:
+            extra = " | ".join(f"{k}={v}" for k, v in kwargs.items())
+            self._logger.info(f"{msg} | {extra}")
+        else:
+            self._logger.info(msg)
+```
+
+---
+
+## [V3.1.0-alpha.2] - 2025-12-10
+
+### 🏗️ P1 代码质量优化 - Commercial-Grade Standards
+
+**Theme**: 日志标准化、配置集中化、策略命名规范化
+
+---
+
+#### 代码质量改进
+
+##### 1. 日志系统标准化 (`print` → `logger`)
+
+**改进内容**:
+- `src/backtest/engine.py`: 替换 10+ 处 print 为 structlog logger
+- `src/pipeline/handlers.py`: 替换 10+ 处 print 为 logger.warning/info
+- `src/core/config.py`: 替换 print 为 logger.info
+
+**使用方式**:
+```python
+from src.core.logger import get_logger
+logger = get_logger(__name__)
+
+logger.info("Backtest completed", total_return=0.15, sharpe=1.2)
+logger.warning("Parameter out of range", param="period", value=-5)
+```
+
+---
+
+##### 2. 配置集中化 (`src/core/defaults.py`)
+
+**新增文件**: `src/core/defaults.py` (176行)
+
+**配置模块**:
+| 模块 | 说明 | 示例参数 |
+|------|------|----------|
+| `BACKTEST_DEFAULTS` | 回测默认参数 | initial_cash=1M, commission=0.0003 |
+| `DATA_DEFAULTS` | 数据源配置 | provider='akshare', adj='hfq' |
+| `RISK_DEFAULTS` | 风控参数 | max_position_pct=0.2, max_drawdown=0.15 |
+| `EXECUTION_DEFAULTS` | 执行参数 | order_timeout_sec=30 |
+| `STRATEGY_DEFAULTS` | 策略默认参数 | EMA/MACD/Bollinger/RSI等 |
+| `STRATEGY_PARAM_GRIDS` | 参数优化网格 | 每个策略的搜索范围 |
+| `LOGGING_DEFAULTS` | 日志配置 | level='INFO', format='json' |
+
+**使用方式**:
+```python
+from src.core.defaults import BACKTEST_DEFAULTS, STRATEGY_DEFAULTS
+
+initial_cash = BACKTEST_DEFAULTS['initial_cash']  # 1,000,000
+ema_period = STRATEGY_DEFAULTS['ema']['period']    # 20
+```
+
+---
+
+##### 3. 策略命名规范化 (Alias Mapping System)
+
+**新增功能**: 策略别名映射系统
+
+**命名规范**:
+- 基础策略: `indicator_name` (小写, 下划线分隔)
+- 增强版本: `indicator_enhanced` (统一 `_enhanced` 后缀)
+- 优化版本: `indicator_optimized` (统一 `_optimized` 后缀)
+- 组合策略: `indicator1_indicator2` (按重要性排序)
+
+**别名映射示例**:
+```python
+STRATEGY_ALIASES = {
+    'macd_enhanced': 'macd_e',        # 标准化别名
+    'bollinger_enhanced': 'boll_e',
+    'kama_optimized': 'kama_opt',
+    # ...
+}
+
+# 使用别名访问策略
+strategy = get_backtrader_strategy('macd_enhanced')  # 自动解析为 'macd_e'
+```
+
+**新增函数**:
+- `resolve_strategy_name(name)`: 解析策略别名
+- `get_canonical_name(name)`: 获取标准化名称
+- `list_strategy_aliases()`: 列出所有别名
+
+---
+
+#### 测试验证
+
+- ✅ 110 tests passed
+- ✅ 8 tests skipped (需要实盘环境)
+- ✅ 0 errors
+
+---
+
 ## [V3.0.0-beta.4] - 2025-12-03
 
 ### 🔬 专家级策略优化 - Enhanced Strategies Collection

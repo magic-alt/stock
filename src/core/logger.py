@@ -162,6 +162,45 @@ def _configure_stdlib(log_level: int, log_file: Optional[str]) -> None:
     )
 
 
+class StructlogCompatibleLogger:
+    """
+    Wrapper for standard logging.Logger that supports structlog-style kwargs.
+    
+    This enables code like:
+        logger.info("Order submitted", order_id="O001", symbol="600519.SH")
+    
+    Which becomes:
+        logger.info("Order submitted | order_id=O001 symbol=600519.SH")
+    """
+    
+    def __init__(self, logger: logging.Logger):
+        self._logger = logger
+    
+    def _format_message(self, msg: str, **kwargs) -> str:
+        if kwargs:
+            extra = " | " + " ".join(f"{k}={v}" for k, v in kwargs.items())
+            return msg + extra
+        return msg
+    
+    def debug(self, msg: str, **kwargs):
+        self._logger.debug(self._format_message(msg, **kwargs))
+    
+    def info(self, msg: str, **kwargs):
+        self._logger.info(self._format_message(msg, **kwargs))
+    
+    def warning(self, msg: str, **kwargs):
+        self._logger.warning(self._format_message(msg, **kwargs))
+    
+    def error(self, msg: str, **kwargs):
+        self._logger.error(self._format_message(msg, **kwargs))
+    
+    def critical(self, msg: str, **kwargs):
+        self._logger.critical(self._format_message(msg, **kwargs))
+    
+    def exception(self, msg: str, **kwargs):
+        self._logger.exception(self._format_message(msg, **kwargs))
+
+
 def get_logger(name: str = "quant"):
     """
     Get a logger instance.
@@ -170,7 +209,7 @@ def get_logger(name: str = "quant"):
         name: Logger name (e.g., "strategy", "gateway", "engine")
     
     Returns:
-        Logger instance (structlog.BoundLogger or logging.Logger)
+        Logger instance (structlog.BoundLogger or StructlogCompatibleLogger)
     
     Example:
         >>> logger = get_logger("strategy")
@@ -179,7 +218,7 @@ def get_logger(name: str = "quant"):
     if STRUCTLOG_AVAILABLE:
         return structlog.get_logger(name)
     else:
-        return logging.getLogger(name)
+        return StructlogCompatibleLogger(logging.getLogger(name))
 
 
 # Module-level logger for convenience

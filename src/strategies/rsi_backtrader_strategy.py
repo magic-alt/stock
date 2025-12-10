@@ -1,6 +1,12 @@
 """
 RSI超买超卖策略 (Backtrader版本)
 当RSI低于下限时买入，高于上限时卖出
+
+V3.1.0 优化:
+- 增加趋势过滤 (SMA200)，只在牛市中做反转
+- 增加 ATR 止损保护
+- 动态仓位管理
+- 修复 sell() 为 close()
 """
 import backtrader as bt
 from typing import Dict, Any
@@ -8,12 +14,23 @@ from typing import Dict, Any
 
 class RSIStrategy(bt.Strategy):
     """
-    RSI threshold strategy: buy when RSI is oversold, sell when overbought.
+    RSI threshold strategy with trend filter and risk management.
+    
+    V3.1.0 优化:
+    - 趋势过滤: 只在价格高于长期均线时入场
+    - ATR 止损保护
+    - 动态仓位管理
     """
     params = (
         ("period", 14),
         ("upper", 70.0),
         ("lower", 30.0),
+        # V3.1 新增参数
+        ("use_trend_filter", True),
+        ("trend_ma", 50),           # 趋势均线 (使用50更灵活)
+        ("atr_period", 14),
+        ("stop_mult", 2.0),
+        ("risk_pct", 0.02),
         ("printlog", False),
     )
 
@@ -22,7 +39,17 @@ class RSIStrategy(bt.Strategy):
             self.data.close,
             period=self.params.period,
         )
+        # V3.1: 趋势过滤均线
+        if self.params.use_trend_filter:
+            self.trend_ma = bt.indicators.SMA(
+                self.data.close, period=self.params.trend_ma
+            )
+        # V3.1: ATR 止损
+        self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period)
+        
         self.order = None
+        self.entry_price = None
+        self.stop_price = None
 
     def log(self, txt: str, dt=None):
         """Logging helper."""
@@ -36,8 +63,11 @@ class RSIStrategy(bt.Strategy):
 
         if order.status in [order.Completed]:
             if order.isbuy():
+                self.entry_price = order.executed.price
+                self.stop_price = self.entry_price - self.atr[0] * self.params.stop_mult
                 self.log(
                     f"BUY EXECUTED, Price: {order.executed.price:.2f}, "
+                    f"Stop: {self.stop_price:.2f}, "
                     f"Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}"
                 )
             elif order.issell():
@@ -45,6 +75,8 @@ class RSIStrategy(bt.Strategy):
                     f"SELL EXECUTED, Price: {order.executed.price:.2f}, "
                     f"Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}"
                 )
+                self.entry_price = None
+                self.stop_price = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log("Order Canceled/Margin/Rejected")
 
@@ -55,20 +87,43 @@ class RSIStrategy(bt.Strategy):
             return
         self.log(f"TRADE PROFIT, GROSS: {trade.pnl:.2f}, NET: {trade.pnlcomm:.2f}")
 
+    def _calc_size(self):
+        """V3.1: ATR 动态仓位"""
+        if self.atr[0] <= 0:
+            return None
+        risk = self.broker.getvalue() * self.params.risk_pct
+        risk_per_share = self.atr[0] * self.params.stop_mult
+        size = int(risk / risk_per_share)
+        return max(100, (size // 100) * 100)
+
     def next(self):
         if self.order:
             return
 
+        # V3.1: 止损检查
+        if self.position and self.stop_price:
+            if self.data.close[0] < self.stop_price:
+                self.log(f"STOP LOSS at {self.data.close[0]:.2f} < {self.stop_price:.2f}")
+                self.order = self.close()
+                return
+
         rsi_val = self.rsi[0]
 
         if not self.position:
-            if rsi_val < self.params.lower:
-                self.log(f"BUY CREATE (RSI oversold), RSI={rsi_val:.2f}, {self.data.close[0]:.2f}")
-                self.order = self.buy()
+            # V3.1: 趋势过滤
+            trend_ok = True
+            if self.params.use_trend_filter:
+                trend_ok = self.data.close[0] > self.trend_ma[0]
+            
+            if rsi_val < self.params.lower and trend_ok:
+                size = self._calc_size()
+                self.log(f"BUY CREATE (RSI oversold + uptrend), RSI={rsi_val:.2f}, {self.data.close[0]:.2f}")
+                self.order = self.buy(size=size)
         else:
             if rsi_val > self.params.upper:
-                self.log(f"SELL CREATE (RSI overbought), RSI={rsi_val:.2f}, {self.data.close[0]:.2f}")
-                self.order = self.sell()
+                # V3.1: Use close() instead of sell() to avoid accidental short position
+                self.log(f"CLOSE POSITION (RSI overbought), RSI={rsi_val:.2f}, {self.data.close[0]:.2f}")
+                self.order = self.close()
 
 
 class RSIMaFilterStrategy(bt.Strategy):

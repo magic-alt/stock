@@ -13,6 +13,11 @@ import pandas as pd
 
 from src.core.events import Event, EventType, Handler
 
+# V3.1.0: Import logger
+from src.core.logger import get_logger
+
+logger = get_logger("pipeline.handlers")
+
 
 # Optional dependencies
 try:
@@ -228,14 +233,14 @@ class ProgressTrackingCollector(PipelineEventCollector):
             count = self._progress[strategy]
             metrics = event.data.get("metrics", {})
             sharpe = metrics.get("sharpe", 0.0)
-            print(f"[{strategy}] Run #{count}: Sharpe={sharpe:.3f}")
+            logger.debug("Strategy run completed", strategy=strategy, run=count, sharpe=f"{sharpe:.3f}")
     
     def on_pipeline_stage(self, event: Event) -> None:
         """Print stage transitions."""
         if self.verbose:
             stage = event.data.get("stage", "")
             strategy = event.data.get("strategy", "")
-            print(f"[Pipeline] {strategy}: {stage}")
+            logger.info("Pipeline stage", strategy=strategy, stage=stage)
         
         # Call parent to persist results
         super().on_pipeline_stage(event)
@@ -301,7 +306,7 @@ class ProgressBarHandler:
         self._counts: Dict[str, int] = {}  # strategy -> completed count
         
         if not TQDM_AVAILABLE and not disable:
-            print("Warning: tqdm not installed. Progress bar disabled. Install: pip install tqdm")
+            logger.warning("tqdm not installed, progress bar disabled. Install: pip install tqdm")
     
     def on_pipeline_stage(self, event: Event) -> None:
         """
@@ -472,11 +477,11 @@ class TelegramNotifier:
         
         # Check configuration
         if not self.disable and (not self.bot_token or not self.chat_id):
-            print("Warning: Telegram notifier disabled. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables.")
+            logger.warning("Telegram notifier disabled. Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID environment variables.")
             self.disable = True
         
         if not REQUESTS_AVAILABLE and not disable:
-            print("Warning: requests not installed. Telegram notifier disabled. Install: pip install requests")
+            logger.warning("requests not installed. Telegram notifier disabled. Install: pip install requests")
             self.disable = True
     
     def _send_message(self, text: str) -> bool:
@@ -502,7 +507,7 @@ class TelegramNotifier:
             response = requests.post(url, json=payload, timeout=10)
             return response.status_code == 200
         except Exception as e:
-            print(f"Telegram notification failed: {e}")
+            logger.error("Telegram notification failed", error=str(e))
             return False
     
     def on_pipeline_stage(self, event: Event) -> None:
@@ -644,7 +649,7 @@ class EmailNotifier:
             self.smtp_host, self.smtp_port, self.username, 
             self.password, self.from_addr, self.to_addr
         ]):
-            print("Warning: Email notifier disabled. Set EMAIL_* environment variables.")
+            logger.warning("Email notifier disabled. Set EMAIL_* environment variables.")
             self.disable = True
     
     def _send_email(self, subject: str, body_html: str) -> bool:
@@ -679,7 +684,7 @@ class EmailNotifier:
             
             return True
         except Exception as e:
-            print(f"Email notification failed: {e}")
+            logger.error("Email notification failed", error=str(e))
             return False
     
     def on_pipeline_stage(self, event: Event) -> None:

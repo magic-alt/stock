@@ -1,9 +1,9 @@
 # 项目路线图 | Project Roadmap
 
 **项目**: 量化回测与实盘系统 (Unified Quant Platform)  
-**当前版本**: V3.0.0-beta  
-**更新日期**: 2025-12-03  
-**状态**: 🟢 Architecture Unification Complete
+**当前版本**: V3.1.0-alpha.3  
+**更新日期**: 2025-12-10  
+**状态**: 🟢 商业级架构升级中
 
 ---
 
@@ -11,6 +11,7 @@
 
 - [版本历史](#版本历史)
 - [当前状态](#当前状态)
+- [架构升级计划](#架构升级计划)
 - [开发路线图](#开发路线图)
 - [已完成功能](#已完成功能)
 - [进行中任务](#进行中任务)
@@ -18,40 +19,50 @@
 
 ---
 
+## 🎯 商业级系统升级目标
+
+### 核心目标
+构建一个**生产就绪的自动化量化交易系统**，具备：
+- 🏢 **企业级架构**: 清晰的模块边界、统一的接口规范
+- 🔒 **风控系统**: 多层次风险管理（账户级/策略级/订单级）
+- ⚡ **高性能**: 低延迟执行、高并发回测
+- 🔄 **回测-实盘统一**: 一次编写策略，无缝切换环境
+- 📊 **专业分析**: 机构级绩效归因、风险分析
+
+### 关键技术挑战
+1. **策略接口统一**: Backtrader 策略 vs 事件驱动策略
+2. **数据流标准化**: 历史回测 vs 实时行情
+3. **执行层抽象**: 模拟撮合 vs 真实 API
+4. **状态管理**: 持仓、订单、账户的一致性
+
+---
+
 ## 📅 版本历史
 
-### V3.0.0-beta (2025-12-03) 🆕 当前版本
-**主题**: 架构统一完成 + 实盘准备
+### V3.1.0-alpha (2025-12-09) 🆕 当前版本
+**主题**: 商业级架构升级 + 代码清理
 
-**核心更新**:
-- ✅ **结构化日志**: 新增 `src/core/logger.py`，使用 structlog 替换所有 print
-- ✅ **EventEngineContext**: 新增 `src/core/context.py`，桥接策略与执行引擎
-- ✅ **LiveGateway 桩代码**: 新增 `src/core/live_gateway.py`，CTP/IB/XtQuant 接口
-- ✅ **统一策略示例**: 新增 `src/strategies/unified_strategies.py`，EMA/MACD/Bollinger
-- ✅ **PaperRunner V3**: 新增 `src/core/paper_runner_v3.py`，使用 Context 模式
+**本次更新**:
+- 🔍 **深度代码审查**: 识别冗余模块和技术债务
+- 🧹 **代码清理**: 删除废弃的 template 模块
+- 📐 **架构规划**: 制定商业级系统升级路线
 
-**新增文件**:
+**架构问题识别**:
 ```
-src/core/logger.py          # structlog 日志配置
-src/core/context.py         # EventEngineContext + BacktestContext
-src/core/live_gateway.py    # CTPGateway, IBGateway, XtQuantGateway 桩代码
-src/core/paper_runner_v3.py # run_paper_v3, run_paper_with_nav
-src/strategies/unified_strategies.py  # 统一策略示例
+❌ 发现问题:
+1. strategy/ 与 strategies/ 目录功能重叠
+2. 3 套策略基类 (base.py, strategy_base.py, template.py)
+3. 33+ 处 print 语句未使用 logger
+4. 策略文件命名不规范 (*_template.py)
+5. 部分硬编码配置值
 ```
 
-**架构图**:
-```
-                     BaseStrategy
-                          │
-        ┌─────────────────┼─────────────────┐
-        ▼                 ▼                 ▼
-BacktraderAdapter   EventEngineContext   BacktestContext
-        │                 │                 │
-        ▼                 ▼                 ▼
-   Backtrader       PaperGatewayV3      (Read-only)
-   (回测)            LiveGateway        (快速验证)
-                     (实盘)
-```
+**清理计划**:
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| `src/strategy/` | ✅ 已删除 | 与 `core/strategy_base.py` 重复 |
+| `ema_template.py` | ✅ 已删除 | 与 `ema_backtrader_strategy.py` 重复 |
+| `macd_template.py` | ✅ 已删除 | 与 `macd_backtrader_strategy.py` 重复 |
 
 ### V3.0.0-alpha (2025-12-03)
 **主题**: 架构统一与实盘准备
@@ -144,19 +155,195 @@ BaseStrategy (统一策略接口)
 | **可视化** | 🟢 稳定 | 90% | 7种指标图表 + Markdown报告 |
 | **GUI界面** | 🟡 完善中 | 80% | tkinter界面，功能完整 |
 | **文档** | 🟢 完善 | 95% | 完整文档 + 示例代码 |
-| **测试** | 🟢 完善 | 85% | 单元测试 + 集成测试 |
+| **测试** | 🟢 完善 | 90% | 单元测试 + 集成测试 (164 tests) |
 | **CI/CD** | 🟢 就绪 | 100% | GitHub Actions全流程 |
 | **统一接口** | 🟢 完成 | 100% | V3.0 Protocol + 数据类型 |
 | **策略统一** | 🟢 完成 | 95% | BaseStrategy + Context + 适配器 |
 | **日志系统** | 🟢 新增 | 100% | structlog 结构化日志 |
-| **LiveGateway** | 🟡 桩代码 | 40% | CTP/IB/XtQuant 接口定义 |
+| **TradingGateway** | 🟢 新增 | 90% | 统一交易接口 + Paper/Live |
+| **OrderManager** | 🟢 新增 | 90% | 订单管理系统 |
+| **RiskManagerV2** | 🟢 新增 | 90% | 多层风控系统 |
+| **RealtimeData** | 🟢 新增 | 85% | 实时数据流 + 信号生成 |
+| **LiveGateway** | 🟡 桩代码 | 50% | CTP/IB/Futu 接口定义 |
 
-### 技术债务
+### 技术债务 (已更新 2025-12-10)
 - ✅ ~~PaperGateway V2/V3 混合代码~~ (已清理)
+- ✅ ~~strategy/ 重复目录~~ (已删除 2025-12-09)
+- ✅ ~~template 策略文件~~ (已删除 2025-12-09)
+- ✅ ~~print 语句需要替换为 logger~~ (已完成 2025-12-10)
+- ✅ ~~硬编码配置值需要参数化~~ (已完成 2025-12-10)
 - 🟡 GUI界面需要重构（考虑使用更现代的框架）
 - 🟡 测试覆盖率需要提升到90%+
 - 🟡 文档需要添加英文版本
 - 🟡 ML策略需要更多实盘验证
+
+---
+
+## 🏗️ 架构升级计划 (V3.1.0 重点)
+
+### 一、当前架构分析
+
+#### 1.1 目录结构问题
+```
+已清理后的结构 (2025-12-10):
+src/
+├── strategies/         # ✅ 主要策略目录 (已清理)
+│   ├── base.py         # ✅ Backtrader 策略基类
+│   └── *_backtrader_strategy.py  # ✅ 所有策略实现
+└── core/
+    ├── strategy_base.py # ✅ 统一策略基类 (BaseStrategy)
+    └── interfaces.py    # ✅ Protocol 定义
+
+已删除:
+├── src/strategy/       # ❌ 已删除 (冗余目录)
+├── ema_template.py     # ❌ 已删除 (使用废弃template)
+└── macd_template.py    # ❌ 已删除 (使用废弃template)
+```
+
+#### 1.2 策略基类层次问题
+```
+已清理后 (2025-12-10):
+src/core/strategy_base.py (BaseStrategy) - 唯一的统一基类
+    ├── Backtrader 环境 → BacktraderStrategyAdapter
+    └── EventEngine 环境 → EventEngineContext
+
+辅助基类:
+└── src/strategies/base.py  # Backtrader 专用基类 (向后兼容)
+```
+
+### 二、升级实施计划
+
+#### Phase 3.5: 代码清理与架构统一 (1周)
+
+**Step 1: 删除废弃模块** ✅ 已完成 (2025-12-09)
+```
+删除列表:
+✓ src/strategy/__init__.py
+✓ src/strategy/template.py
+✓ src/strategies/ema_template.py  
+✓ src/strategies/macd_template.py
+
+更新依赖:
+✓ src/core/paper_runner_v3.py → 使用 core/strategy_base.py
+✓ tests/test_strategy.py → 使用 core/strategy_base.py
+```
+
+**Step 2: 日志系统完善** ✅ 已完成 (2025-12-10)
+```
+替换 print 为 logger:
+✓ src/backtest/engine.py (10+ 处)
+✓ src/pipeline/handlers.py (10+ 处)
+✓ src/core/config.py (1处)
+
+新增日志模块:
+✓ src/core/logger.py (structlog 结构化日志)
+```
+
+**Step 3: 策略命名规范化** ✅ 已完成 (2025-12-10)
+```
+实现方案: 策略别名映射系统
+✓ 添加 STRATEGY_ALIASES 映射表
+✓ 添加 STRATEGY_CANONICAL_NAMES 标准化名称
+✓ 实现 resolve_strategy_name() 别名解析
+✓ 实现 get_canonical_name() 标准化命名
+✓ 更新 get_backtrader_strategy() 支持别名
+
+命名规范:
+- 基础策略: indicator_name (小写, 下划线分隔)
+- 增强版本: indicator_enhanced (统一 _enhanced 后缀)
+- 优化版本: indicator_optimized (统一 _optimized 后缀)
+- 组合策略: indicator1_indicator2 (按重要性排序)
+```
+
+**Step 4: 配置参数化** ✅ 已完成 (2025-12-10)
+```
+新增集中配置模块 src/core/defaults.py:
+✓ BACKTEST_DEFAULTS - 回测默认参数
+✓ DATA_DEFAULTS - 数据源默认配置
+✓ RISK_DEFAULTS - 风控默认参数
+✓ EXECUTION_DEFAULTS - 执行默认参数
+✓ STRATEGY_DEFAULTS - 策略默认参数
+✓ STRATEGY_PARAM_GRIDS - 策略参数优化网格
+✓ LOGGING_DEFAULTS - 日志默认配置
+```
+
+### 三、商业级架构目标
+
+#### 3.1 分层架构设计
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Presentation Layer                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │  CLI/GUI    │  │  REST API   │  │  WebSocket  │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+├─────────────────────────────────────────────────────────┤
+│                    Application Layer                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │ StrategyMgr │  │  RiskMgr    │  │  OrderMgr   │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+├─────────────────────────────────────────────────────────┤
+│                     Domain Layer                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │ BaseStrategy│  │  Position   │  │   Order     │     │
+│  │   Context   │  │  Portfolio  │  │   Trade     │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+├─────────────────────────────────────────────────────────┤
+│                  Infrastructure Layer                    │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │ DataSource  │  │  Gateway    │  │  Database   │     │
+│  │   Portal    │  │ (CTP/IB)    │  │  (SQLite)   │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### 3.2 核心接口标准化
+```python
+# 目标: 所有模块通过接口通信
+from src.core.interfaces import (
+    IDataProvider,      # 数据提供者接口
+    IStrategy,          # 策略接口
+    IGateway,           # 交易网关接口
+    IRiskManager,       # 风控接口
+    IOrderManager,      # 订单管理接口
+)
+```
+
+#### 3.3 事件驱动架构
+```
+事件类型:
+├── MarketEvent     # 行情事件 (Bar/Tick)
+├── SignalEvent     # 信号事件 (买入/卖出)
+├── OrderEvent      # 订单事件 (创建/取消/修改)
+├── FillEvent       # 成交事件
+├── PositionEvent   # 持仓变更事件
+├── RiskEvent       # 风控事件 (预警/强平)
+└── HeartbeatEvent  # 心跳事件 (系统健康)
+```
+
+### 四、下一阶段重点任务
+
+#### 优先级 P0 (本周) ✅ 已完成
+| 任务 | 状态 | 负责 | 完成日期 |
+|------|------|------|----------|
+| 删除 src/strategy/ 目录 | ✅ | - | 2025-12-09 |
+| 删除 template 策略文件 | ✅ | - | 2025-12-09 |
+| 更新依赖导入 | ✅ | - | 2025-12-09 |
+| 运行测试验证 | ✅ | - | 2025-12-10 (110 passed) |
+
+#### 优先级 P1 (下周) ✅ 已完成
+| 任务 | 状态 | 负责 | 完成日期 |
+|------|------|------|----------|
+| 替换所有 print 为 logger | ✅ | - | 2025-12-10 |
+| 配置参数化 | ✅ | - | 2025-12-10 |
+| 策略命名规范化 | ✅ | - | 2025-12-10 |
+
+#### 优先级 P2 (月底) ✅ 已完成
+| 任务 | 状态 | 负责 | 完成日期 |
+|------|------|------|----------|
+| 完善 TradingGateway | ✅ | - | 2025-12-10 |
+| 多层次风控系统 | ✅ | - | 2025-12-10 |
+| 订单管理系统 | ✅ | - | 2025-12-10 |
+| 实时数据流 | ✅ | - | 2025-12-10 |
 
 ---
 
@@ -186,29 +373,52 @@ BaseStrategy (统一策略接口)
 - [ ] 增加 `Heartbeat` (心跳) 事件
 - [ ] 实现进程监控和自动重启
 
-#### 3.4 交易接口层 🔴 未开始
-- [ ] 设计统一的交易接口 (`TradingGateway`)
-- [ ] 支持模拟交易（虚拟盘）
-- [ ] 支持实盘交易（通过经纪商API）
-- [ ] 订单管理系统 (Order Management System)
+#### 3.4 交易接口层 ✅ 完成 (2025-12-10)
+- [x] 设计统一的交易接口 (`TradingGateway`)
+- [x] 支持模拟交易（虚拟盘） - `PaperTradingAdapter`
+- [x] 支持实盘交易接口 - `LiveTradingAdapter` (桩代码)
+- [x] 订单管理系统 (`OrderManager`) - 完整生命周期管理
 
-**支持的经纪商**:
-- [ ] 东方财富API
-- [ ] 富途API (FutuOpenD)
+**新增模块**:
+- `src/core/trading_gateway.py` - 统一交易网关
+- `src/core/order_manager.py` - 订单管理系统
+
+**支持的经纪商** (接口定义完成):
+- [x] 东方财富API (桩代码)
+- [x] 富途API (FutuOpenD) (桩代码)
 - [ ] 雪球API
-- [ ] Interactive Brokers (IBKR)
+- [x] Interactive Brokers (IBKR) (桩代码)
 
-#### 3.2 风险管理系统 🔴 未开始
-- [ ] 仓位管理 (Position Sizing)
-- [ ] 风险限额 (Risk Limits)
-- [ ] 实时风控监控
-- [ ] 自动止损/止盈
+#### 3.2 风险管理系统 ✅ 完成 (2025-12-10)
+- [x] 仓位管理 (Position Sizing) - 多级仓位限制
+- [x] 风险限额 (Risk Limits) - 账户/策略/订单级
+- [x] 实时风控监控 - `RiskManagerV2.check_order()`
+- [x] 自动止损/止盈 - `PositionStop` 自动触发
 
-#### 3.3 实时数据流 🔴 未开始
-- [ ] WebSocket实时行情
-- [ ] 分钟级K线数据
-- [ ] Tick级数据支持
-- [ ] 实时信号生成
+**新增模块**:
+- `src/core/risk_manager_v2.py` - 增强型风险管理系统
+
+**风险检查项**:
+- 单笔订单金额限制 (max_order_value)
+- 单笔订单占比限制 (max_order_pct)
+- 单持仓占比限制 (max_position_pct)
+- 最大回撤限制 (max_drawdown)
+- 日亏损限制 (max_daily_loss)
+- 账户级/策略级风控
+
+#### 3.3 实时数据流 ✅ 完成 (2025-12-10)
+- [x] WebSocket实时行情 - `WebSocketDataProvider`
+- [x] 分钟级K线数据 - `BarBuilder` 分钟K线合成
+- [x] Tick级数据支持 - `RealtimeQuote` / `on_tick()`
+- [x] 实时信号生成 - `SignalGenerator` / `SignalRule`
+
+**新增模块**:
+- `src/core/realtime_data.py` - 实时数据流管理
+
+**信号类型**:
+- MA交叉 (`create_ma_cross_rule`)
+- 价格突破 (`create_price_breakout_rule`)
+- 自定义信号规则
 
 ---
 

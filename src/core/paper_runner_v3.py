@@ -47,13 +47,10 @@ from src.core.paper_gateway_v3 import PaperGateway as PaperGatewayV3
 from src.core.events import EventEngine
 from src.core.logger import get_logger
 
-# Legacy imports for backward compatibility
-try:
-    from src.strategy.template import StrategyTemplate
-    HAS_LEGACY_TEMPLATE = True
-except ImportError:
-    StrategyTemplate = None  # type: ignore
-    HAS_LEGACY_TEMPLATE = False
+# Legacy template support removed in V3.1.0
+# The StrategyTemplate is deprecated - use BaseStrategy instead
+HAS_LEGACY_TEMPLATE = False
+StrategyTemplate = None  # type: ignore
 
 logger = get_logger(__name__)
 

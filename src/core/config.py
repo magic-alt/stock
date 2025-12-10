@@ -373,4 +373,4 @@ def create_example_config(path: str = "config_example.yaml") -> None:
     with open(path, "w", encoding="utf-8") as f:
         f.write(EXAMPLE_CONFIG_YAML)
     
-    print(f"Created example configuration: {path}")
+    logger.info("Created example configuration", path=path)

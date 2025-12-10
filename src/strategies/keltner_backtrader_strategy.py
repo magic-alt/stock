@@ -1,6 +1,11 @@
 """
 Keltner Channel均值回归策略 (Backtrader版本)
 使用EMA中轨和ATR带宽进行均值回归交易
+
+V3.1.0 优化:
+- 增加 RSI 超卖确认，过滤假突破
+- 增加 ATR 止损，防止趋势市大幅亏损
+- 修复 sell() 为 close() 防止意外做空
 """
 import backtrader as bt
 from typing import Dict, Any
@@ -8,7 +13,12 @@ from typing import Dict, Any
 
 class KeltnerStrategy(bt.Strategy):
     """
-    Keltner Channel mean reversion (EMA mid + ATR bands).
+    Keltner Channel mean reversion with RSI confirmation.
+    
+    V3.1.0 优化:
+    - RSI 超卖确认入场
+    - ATR 止损保护
+    - 动态仓位管理
     
     Entry modes:
     - 'pierce': Enter when price pierces lower band
@@ -25,6 +35,12 @@ class KeltnerStrategy(bt.Strategy):
         ("entry_mode", "pierce"),
         ("below_pct", 0.0),
         ("exit_mode", "mid"),
+        # V3.1 新增参数
+        ("use_rsi_confirm", True),  # RSI 确认
+        ("rsi_period", 14),
+        ("rsi_oversold", 30),
+        ("stop_mult", 2.0),         # 止损 ATR 乘数
+        ("risk_pct", 0.02),         # 单笔风险
         ("printlog", False),
     )
 
@@ -33,7 +49,16 @@ class KeltnerStrategy(bt.Strategy):
             self.data.close, period=self.params.ema_period
         )
         self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period)
+        
+        # V3.1: RSI 确认
+        if self.params.use_rsi_confirm:
+            self.rsi = bt.indicators.RSI(
+                self.data.close, period=self.params.rsi_period
+            )
+        
         self.order = None
+        self.entry_price = None
+        self.stop_price = None
 
     def log(self, txt: str, dt=None):
         """Logging helper."""
@@ -47,8 +72,11 @@ class KeltnerStrategy(bt.Strategy):
 
         if order.status in [order.Completed]:
             if order.isbuy():
+                self.entry_price = order.executed.price
+                self.stop_price = self.entry_price - self.atr[0] * self.params.stop_mult
                 self.log(
                     f"BUY EXECUTED, Price: {order.executed.price:.2f}, "
+                    f"Stop: {self.stop_price:.2f}, "
                     f"Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}"
                 )
             elif order.issell():
@@ -56,6 +84,8 @@ class KeltnerStrategy(bt.Strategy):
                     f"SELL EXECUTED, Price: {order.executed.price:.2f}, "
                     f"Cost: {order.executed.value:.2f}, Comm: {order.executed.comm:.2f}"
                 )
+                self.entry_price = None
+                self.stop_price = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.log("Order Canceled/Margin/Rejected")
 
@@ -66,9 +96,25 @@ class KeltnerStrategy(bt.Strategy):
             return
         self.log(f"TRADE PROFIT, GROSS: {trade.pnl:.2f}, NET: {trade.pnlcomm:.2f}")
 
+    def _calc_size(self):
+        """V3.1: ATR 动态仓位"""
+        if self.atr[0] <= 0:
+            return None
+        risk = self.broker.getvalue() * self.params.risk_pct
+        risk_per_share = self.atr[0] * self.params.stop_mult
+        size = int(risk / risk_per_share)
+        return max(100, (size // 100) * 100)
+
     def next(self):
         if self.order:
             return
+
+        # V3.1: 止损检查
+        if self.position and self.stop_price:
+            if self.data.close[0] < self.stop_price:
+                self.log(f"STOP LOSS at {self.data.close[0]:.2f} < {self.stop_price:.2f}")
+                self.order = self.close()
+                return
 
         close = self.data.close[0]
         mid = self.ema[0]
@@ -78,26 +124,33 @@ class KeltnerStrategy(bt.Strategy):
         upper = mid + self.params.kc_mult * atr_val
 
         if not self.position:
+            # V3.1: RSI 确认
+            rsi_ok = True
+            if self.params.use_rsi_confirm:
+                rsi_ok = self.rsi[0] < self.params.rsi_oversold
+            
             # Entry logic
             if self.params.entry_mode == "pierce":
-                if close < lower:
-                    self.log(f"BUY CREATE (pierce KC lower), {close:.2f} < {lower:.2f}")
-                    self.order = self.buy()
+                if close < lower and rsi_ok:
+                    size = self._calc_size()
+                    self.log(f"BUY CREATE (pierce KC lower + RSI), {close:.2f} < {lower:.2f}")
+                    self.order = self.buy(size=size)
             elif self.params.entry_mode == "close_below":
                 threshold = lower * (1.0 - self.params.below_pct / 100.0)
-                if close < threshold:
-                    self.log(f"BUY CREATE (close_below KC), {close:.2f} < {threshold:.2f}")
-                    self.order = self.buy()
+                if close < threshold and rsi_ok:
+                    size = self._calc_size()
+                    self.log(f"BUY CREATE (close_below KC + RSI), {close:.2f} < {threshold:.2f}")
+                    self.order = self.buy(size=size)
         else:
-            # Exit logic
+            # Exit logic - use close() instead of sell() to avoid short position
             if self.params.exit_mode == "mid":
                 if close >= mid:
-                    self.log(f"SELL CREATE (reached KC mid), {close:.2f} >= {mid:.2f}")
-                    self.order = self.sell()
+                    self.log(f"CLOSE POSITION (reached KC mid), {close:.2f} >= {mid:.2f}")
+                    self.order = self.close()
             elif self.params.exit_mode == "upper":
                 if close >= upper:
-                    self.log(f"SELL CREATE (reached KC upper), {close:.2f} >= {upper:.2f}")
-                    self.order = self.sell()
+                    self.log(f"CLOSE POSITION (reached KC upper), {close:.2f} >= {upper:.2f}")
+                    self.order = self.close()
 
 
 def _coerce_keltner(params: Dict[str, Any]) -> Dict[str, Any]:
