@@ -20,6 +20,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 import subprocess
+from dataclasses import dataclass, field
+from typing import List, Optional, Sequence
+from queue import Queue, Empty
 
 # 设置 matplotlib 使用非 GUI 后端
 import matplotlib
@@ -32,6 +35,238 @@ if project_root not in sys.path:
 
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.data_sources.providers import PROVIDER_NAMES
+
+# 与 CLI 保持一致的默认缓存目录
+CACHE_DEFAULT = "./cache"
+
+
+# ============================================================
+# 命令构建器 (CLI 特性与 GUI 解耦，便于测试与维护)
+# ============================================================
+
+@dataclass
+class RunConfig:
+    strategy: str
+    symbols: Sequence[str]
+    start: str
+    end: str
+    source: str
+    benchmark: Optional[str] = None
+    benchmark_source: Optional[str] = None
+    params_json: Optional[str] = None
+    cash: str = "200000"
+    commission: str = "0.0001"
+    slippage: str = "0.0005"
+    adj: Optional[str] = None
+    out_dir: Optional[str] = None
+    cache_dir: str = CACHE_DEFAULT
+    plot: bool = False
+    fee_config: Optional[str] = None
+    fee_params: Optional[str] = None
+
+
+@dataclass
+class GridConfig:
+    strategy: str
+    symbols: Sequence[str]
+    start: str
+    end: str
+    source: str
+    benchmark: Optional[str] = None
+    benchmark_source: Optional[str] = None
+    grid_json: Optional[str] = None
+    cash: str = "200000"
+    commission: str = "0.0001"
+    slippage: str = "0.0005"
+    adj: Optional[str] = None
+    cache_dir: str = CACHE_DEFAULT
+    out_csv: Optional[str] = None
+    workers: str = "1"
+    fee_config: Optional[str] = None
+    fee_params: Optional[str] = None
+
+
+@dataclass
+class AutoConfig:
+    symbols: Sequence[str]
+    start: str
+    end: str
+    source: str
+    benchmark: str = "000300.SH"
+    benchmark_source: Optional[str] = None
+    strategies: Optional[Sequence[str]] = None
+    top_n: str = "5"
+    min_trades: str = "1"
+    cash: str = "200000"
+    commission: str = "0.0001"
+    slippage: str = "0.001"
+    adj: Optional[str] = None
+    cache_dir: str = CACHE_DEFAULT
+    out_dir: str = "./reports_auto"
+    workers: str = "1"
+    hot_only: bool = False
+    use_benchmark_regime: bool = False
+    regime_scope: str = "trend"
+
+
+def _ensure_valid_json(text: Optional[str], label: str) -> Optional[str]:
+    """Validate JSON string (if provided) and return trimmed text."""
+    if not text:
+        return None
+    stripped = text.strip()
+    if not stripped:
+        return None
+    try:
+        json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{label} JSON 格式错误: {exc}") from exc
+    return stripped
+
+
+class CommandBuilder:
+    """Build CLI commands compatible with unified_backtest_framework."""
+
+    @staticmethod
+    def build_run(config: RunConfig) -> List[str]:
+        params_json = _ensure_valid_json(config.params_json, "策略参数") if config.params_json else None
+        fee_params = _ensure_valid_json(config.fee_params, "手续费参数") if config.fee_params else None
+
+        cmd = [
+            sys.executable,
+            "unified_backtest_framework.py",
+            "run",
+            "--strategy",
+            config.strategy,
+            "--symbols",
+            *config.symbols,
+            "--start",
+            config.start,
+            "--end",
+            config.end,
+            "--source",
+            config.source,
+            "--cash",
+            config.cash,
+            "--commission",
+            config.commission,
+            "--slippage",
+            config.slippage,
+            "--cache_dir",
+            config.cache_dir,
+        ]
+
+        if config.benchmark:
+            cmd.extend(["--benchmark", config.benchmark])
+        if config.benchmark_source:
+            cmd.extend(["--benchmark_source", config.benchmark_source])
+        if config.adj:
+            cmd.extend(["--adj", config.adj])
+        if params_json:
+            cmd.extend(["--params", params_json])
+        if config.out_dir:
+            cmd.extend(["--out_dir", config.out_dir])
+        if config.plot:
+            cmd.append("--plot")
+        if config.fee_config:
+            cmd.extend(["--fee-config", config.fee_config])
+        if fee_params:
+            cmd.extend(["--fee-params", fee_params])
+        return cmd
+
+    @staticmethod
+    def build_grid(config: GridConfig) -> List[str]:
+        grid_json = _ensure_valid_json(config.grid_json, "参数网格") if config.grid_json else None
+        fee_params = _ensure_valid_json(config.fee_params, "手续费参数") if config.fee_params else None
+
+        cmd = [
+            sys.executable,
+            "unified_backtest_framework.py",
+            "grid",
+            "--strategy",
+            config.strategy,
+            "--symbols",
+            *config.symbols,
+            "--start",
+            config.start,
+            "--end",
+            config.end,
+            "--source",
+            config.source,
+            "--cash",
+            config.cash,
+            "--commission",
+            config.commission,
+            "--slippage",
+            config.slippage,
+            "--cache_dir",
+            config.cache_dir,
+            "--workers",
+            config.workers,
+        ]
+
+        if config.benchmark:
+            cmd.extend(["--benchmark", config.benchmark])
+        if config.benchmark_source:
+            cmd.extend(["--benchmark_source", config.benchmark_source])
+        if config.adj:
+            cmd.extend(["--adj", config.adj])
+        if grid_json:
+            cmd.extend(["--grid", grid_json])
+        if config.out_csv:
+            cmd.extend(["--out_csv", config.out_csv])
+        if config.fee_config:
+            cmd.extend(["--fee-config", config.fee_config])
+        if fee_params:
+            cmd.extend(["--fee-params", fee_params])
+        return cmd
+
+    @staticmethod
+    def build_auto(config: AutoConfig) -> List[str]:
+        cmd = [
+            sys.executable,
+            "unified_backtest_framework.py",
+            "auto",
+            "--symbols",
+            *config.symbols,
+            "--start",
+            config.start,
+            "--end",
+            config.end,
+            "--source",
+            config.source,
+            "--benchmark",
+            config.benchmark,
+            "--cash",
+            config.cash,
+            "--commission",
+            config.commission,
+            "--slippage",
+            config.slippage,
+            "--cache_dir",
+            config.cache_dir,
+            "--workers",
+            config.workers,
+            "--top_n",
+            config.top_n,
+            "--min_trades",
+            config.min_trades,
+            "--out_dir",
+            config.out_dir,
+            "--regime_scope",
+            config.regime_scope,
+        ]
+
+        if config.benchmark_source:
+            cmd.extend(["--benchmark_source", config.benchmark_source])
+        if config.strategies:
+            cmd.extend(["--strategies", *config.strategies])
+        if config.adj:
+            cmd.extend(["--adj", config.adj])
+        if config.hot_only:
+            cmd.append("--hot_only")
+        if config.use_benchmark_regime:
+            cmd.append("--use_benchmark_regime")
+        return cmd
 
 
 class BacktestGUI:
@@ -67,12 +302,16 @@ class BacktestGUI:
         # 状态变量
         self.running = False
         self.process = None
+        self.log_queue: "Queue[str]" = Queue()
         
         # 样式配置
         self.setup_styles()
         
         # 创建主界面
         self.create_widgets()
+
+        # 启动日志轮询，确保后台线程安全更新UI
+        self.root.after(80, self._poll_log_queue)
         
         # 加载默认配置
         self.load_default_config()
@@ -233,6 +472,30 @@ class BacktestGUI:
             width=8
         ).pack(side=tk.LEFT, padx=5)
         row += 1
+
+        # 数据源与缓存
+        ttk.Label(scrollable_frame, text="基准数据源 / 缓存:", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        benchmark_source_frame = ttk.Frame(scrollable_frame)
+        benchmark_source_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        ttk.Label(benchmark_source_frame, text="基准源(可选):").pack(side=tk.LEFT)
+        self.run_benchmark_source_var = tk.StringVar(value="")
+        ttk.Combobox(
+            benchmark_source_frame,
+            textvariable=self.run_benchmark_source_var,
+            values=[""] + sorted(PROVIDER_NAMES),
+            state="readonly",
+            width=16
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(benchmark_source_frame, text="缓存目录:").pack(side=tk.LEFT)
+        self.run_cache_dir_var = tk.StringVar(value=CACHE_DEFAULT)
+        ttk.Entry(benchmark_source_frame, textvariable=self.run_cache_dir_var, width=24).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        row += 1
         
         # 基准配置
         ttk.Label(scrollable_frame, text="基准指数 (可选):", style='Section.TLabel').grid(
@@ -277,6 +540,23 @@ class BacktestGUI:
         self.run_params_text = tk.Text(scrollable_frame, height=4, width=40)
         self.run_params_text.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         self.run_params_text.insert('1.0', '{\n  "fast": 12,\n  "slow": 26\n}')
+        row += 1
+
+        # 手续费插件
+        ttk.Label(scrollable_frame, text="手续费插件 (fee-config，可选):", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        fee_frame = ttk.Frame(scrollable_frame)
+        fee_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        self.run_fee_config_var = tk.StringVar(value="")
+        ttk.Entry(fee_frame, textvariable=self.run_fee_config_var, width=18).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(fee_frame, text="fee-params (JSON):").pack(side=tk.LEFT)
+        self.run_fee_params_var = tk.StringVar(value="")
+        ttk.Entry(fee_frame, textvariable=self.run_fee_params_var, width=30).pack(side=tk.LEFT, padx=5)
         row += 1
         
         # 输出配置
@@ -405,6 +685,66 @@ class BacktestGUI:
             width=40
         ).grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         row += 1
+
+        # 基准数据源与缓存
+        ttk.Label(scrollable_frame, text="基准数据源 / 缓存目录:", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        benchmark_source_frame = ttk.Frame(scrollable_frame)
+        benchmark_source_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        ttk.Label(benchmark_source_frame, text="基准源(可选):").pack(side=tk.LEFT)
+        self.grid_benchmark_source_var = tk.StringVar(value="")
+        ttk.Combobox(
+            benchmark_source_frame,
+            textvariable=self.grid_benchmark_source_var,
+            values=[""] + sorted(PROVIDER_NAMES),
+            state="readonly",
+            width=16
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(benchmark_source_frame, text="缓存目录:").pack(side=tk.LEFT)
+        self.grid_cache_dir_var = tk.StringVar(value=CACHE_DEFAULT)
+        ttk.Entry(benchmark_source_frame, textvariable=self.grid_cache_dir_var, width=26).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        row += 1
+
+        # 回测参数
+        ttk.Label(scrollable_frame, text="回测参数:", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        backtest_frame = ttk.Frame(scrollable_frame)
+        backtest_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        ttk.Label(backtest_frame, text="初始资金:").grid(row=0, column=0, sticky=tk.W)
+        self.grid_cash_var = tk.StringVar(value="200000")
+        ttk.Entry(backtest_frame, textvariable=self.grid_cash_var, width=14).grid(row=0, column=1, padx=5)
+
+        ttk.Label(backtest_frame, text="佣金率:").grid(row=0, column=2, sticky=tk.W)
+        self.grid_commission_var = tk.StringVar(value="0.0001")
+        ttk.Entry(backtest_frame, textvariable=self.grid_commission_var, width=14).grid(row=0, column=3, padx=5)
+
+        ttk.Label(backtest_frame, text="滑点:").grid(row=1, column=0, sticky=tk.W)
+        self.grid_slippage_var = tk.StringVar(value="0.0005")
+        ttk.Entry(backtest_frame, textvariable=self.grid_slippage_var, width=14).grid(row=1, column=1, padx=5)
+
+        ttk.Label(backtest_frame, text="复权:").grid(row=1, column=2, sticky=tk.W)
+        self.grid_adj_var = tk.StringVar(value="")
+        ttk.Combobox(
+            backtest_frame,
+            textvariable=self.grid_adj_var,
+            values=["", "qfq", "hfq", "noadj"],
+            state="readonly",
+            width=12
+        ).grid(row=1, column=3, padx=5)
+
+        ttk.Label(backtest_frame, text="基准(可选):").grid(row=2, column=0, sticky=tk.W)
+        self.grid_benchmark_var = tk.StringVar(value="")
+        ttk.Entry(backtest_frame, textvariable=self.grid_benchmark_var, width=20).grid(row=2, column=1, columnspan=3, padx=5, sticky=(tk.W, tk.E))
+        row += 1
         
         # 并行workers
         ttk.Label(scrollable_frame, text="并行Workers:", style='Section.TLabel').grid(
@@ -416,6 +756,23 @@ class BacktestGUI:
         ttk.Spinbox(scrollable_frame, from_=1, to=16, textvariable=self.grid_workers_var, width=38).grid(
             row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5
         )
+        row += 1
+
+        # 手续费插件
+        ttk.Label(scrollable_frame, text="手续费插件 (可选):", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        fee_frame = ttk.Frame(scrollable_frame)
+        fee_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        self.grid_fee_config_var = tk.StringVar(value="")
+        ttk.Entry(fee_frame, textvariable=self.grid_fee_config_var, width=20).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(fee_frame, text="fee-params (JSON):").pack(side=tk.LEFT)
+        self.grid_fee_params_var = tk.StringVar(value="")
+        ttk.Entry(fee_frame, textvariable=self.grid_fee_params_var, width=28).pack(side=tk.LEFT, padx=5)
         row += 1
         
         # 输出CSV
@@ -537,6 +894,82 @@ class BacktestGUI:
         self.auto_end_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
         ttk.Entry(date_frame, textvariable=self.auto_end_var, width=12).pack(side=tk.LEFT, padx=5)
         row += 1
+
+        # 数据源与复权
+        ttk.Label(scrollable_frame, text="数据源 / 复权:", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        source_frame = ttk.Frame(scrollable_frame)
+        source_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        ttk.Label(source_frame, text="数据源:").pack(side=tk.LEFT)
+        self.auto_source_var = tk.StringVar(value="akshare")
+        ttk.Combobox(
+            source_frame,
+            textvariable=self.auto_source_var,
+            values=sorted(PROVIDER_NAMES),
+            state="readonly",
+            width=14
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(source_frame, text="复权:").pack(side=tk.LEFT)
+        self.auto_adj_var = tk.StringVar(value="")
+        ttk.Combobox(
+            source_frame,
+            textvariable=self.auto_adj_var,
+            values=["", "qfq", "hfq", "noadj"],
+            state="readonly",
+            width=10
+        ).pack(side=tk.LEFT, padx=5)
+        row += 1
+
+        # 数据源/缓存
+        ttk.Label(scrollable_frame, text="基准数据源 / 缓存目录:", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        benchmark_source_frame = ttk.Frame(scrollable_frame)
+        benchmark_source_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        ttk.Label(benchmark_source_frame, text="基准源(可选):").pack(side=tk.LEFT)
+        self.auto_benchmark_source_var = tk.StringVar(value="")
+        ttk.Combobox(
+            benchmark_source_frame,
+            textvariable=self.auto_benchmark_source_var,
+            values=[""] + sorted(PROVIDER_NAMES),
+            state="readonly",
+            width=16
+        ).pack(side=tk.LEFT, padx=5)
+
+        ttk.Label(benchmark_source_frame, text="缓存目录:").pack(side=tk.LEFT)
+        self.auto_cache_dir_var = tk.StringVar(value=CACHE_DEFAULT)
+        ttk.Entry(benchmark_source_frame, textvariable=self.auto_cache_dir_var, width=26).pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        row += 1
+
+        # 回测参数
+        ttk.Label(scrollable_frame, text="回测参数:", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        params_frame = ttk.Frame(scrollable_frame)
+        params_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
+
+        ttk.Label(params_frame, text="初始资金:").grid(row=0, column=0, sticky=tk.W)
+        self.auto_cash_var = tk.StringVar(value="200000")
+        ttk.Entry(params_frame, textvariable=self.auto_cash_var, width=12).grid(row=0, column=1, padx=5)
+
+        ttk.Label(params_frame, text="佣金率:").grid(row=0, column=2, sticky=tk.W)
+        self.auto_commission_var = tk.StringVar(value="0.0001")
+        ttk.Entry(params_frame, textvariable=self.auto_commission_var, width=12).grid(row=0, column=3, padx=5)
+
+        ttk.Label(params_frame, text="滑点:").grid(row=1, column=0, sticky=tk.W)
+        self.auto_slippage_var = tk.StringVar(value="0.001")
+        ttk.Entry(params_frame, textvariable=self.auto_slippage_var, width=12).grid(row=1, column=1, padx=5)
+        row += 1
         
         # 优化参数
         ttk.Label(scrollable_frame, text="优化参数:", style='Section.TLabel').grid(
@@ -580,6 +1013,21 @@ class BacktestGUI:
             text="使用基准市场态势过滤 (牛市过滤)",
             variable=self.auto_use_regime_var
         ).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=2)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="市场态势范围 (regime_scope):").grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        self.auto_regime_scope_var = tk.StringVar(value="trend")
+        ttk.Combobox(
+            scrollable_frame,
+            textvariable=self.auto_regime_scope_var,
+            values=["trend", "all", "none"],
+            state="readonly",
+            width=20
+        ).grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
         row += 1
         
         # 基准指数
@@ -812,9 +1260,18 @@ class BacktestGUI:
     def log_output(self, message):
         """输出日志"""
         timestamp = datetime.now().strftime("%H:%M:%S")
-        self.output_text.insert('end', f"[{timestamp}] {message}\n")
+        self.log_queue.put(f"[{timestamp}] {message}")
+
+    def _poll_log_queue(self):
+        """定时从队列刷新日志，避免跨线程直接操作Tk组件"""
+        try:
+            while True:
+                msg = self.log_queue.get_nowait()
+                self.output_text.insert('end', msg + "\n")
+        except Empty:
+            pass
         self.output_text.see('end')
-        self.root.update()
+        self.root.after(80, self._poll_log_queue)
     
     def clear_output(self):
         """清空输出"""
@@ -928,55 +1385,30 @@ class BacktestGUI:
     def run_command_run(self):
         """执行 RUN 命令"""
         try:
-            # 构建命令
-            cmd = [sys.executable, "unified_backtest_framework.py", "run"]
-            
-            # 策略
-            cmd.extend(["--strategy", self.run_strategy_var.get()])
-            
-            # 股票代码
             symbols = self.run_symbols_text.get('1.0', 'end').strip().split()
-            cmd.extend(["--symbols"] + symbols)
-            
-            # 日期
-            cmd.extend(["--start", self.run_start_var.get()])
-            cmd.extend(["--end", self.run_end_var.get()])
-            
-            # 数据源
-            cmd.extend(["--source", self.run_source_var.get()])
-            
-            # 复权
-            if self.run_adj_var.get():
-                cmd.extend(["--adj", self.run_adj_var.get()])
-            
-            # 基准
-            if self.run_benchmark_var.get():
-                cmd.extend(["--benchmark", self.run_benchmark_var.get()])
-            
-            # 回测参数
-            cmd.extend(["--cash", self.run_cash_var.get()])
-            cmd.extend(["--commission", self.run_commission_var.get()])
-            cmd.extend(["--slippage", self.run_slippage_var.get()])
-            
-            # 策略参数
-            params_text = self.run_params_text.get('1.0', 'end').strip()
-            if params_text:
-                try:
-                    json.loads(params_text)  # 验证JSON
-                    cmd.extend(["--params", params_text])
-                except json.JSONDecodeError:
-                    messagebox.showerror("错误", "策略参数JSON格式错误")
-                    return
-            
-            # 图表
-            if self.run_plot_var.get():
-                cmd.append("--plot")
-            
-            # 输出目录
-            if self.run_out_dir_var.get():
-                cmd.extend(["--out_dir", self.run_out_dir_var.get()])
-            
-            # 运行命令
+            if not symbols:
+                messagebox.showwarning("警告", "请输入至少一个股票代码")
+                return
+            run_cfg = RunConfig(
+                strategy=self.run_strategy_var.get(),
+                symbols=symbols,
+                start=self.run_start_var.get(),
+                end=self.run_end_var.get(),
+                source=self.run_source_var.get(),
+                benchmark=self.run_benchmark_var.get() or None,
+                benchmark_source=self.run_benchmark_source_var.get() or None,
+                params_json=self.run_params_text.get('1.0', 'end'),
+                cash=self.run_cash_var.get(),
+                commission=self.run_commission_var.get(),
+                slippage=self.run_slippage_var.get(),
+                adj=self.run_adj_var.get() or None,
+                out_dir=self.run_out_dir_var.get() or None,
+                cache_dir=self.run_cache_dir_var.get(),
+                plot=self.run_plot_var.get(),
+                fee_config=self.run_fee_config_var.get() or None,
+                fee_params=self.run_fee_params_var.get() or None,
+            )
+            cmd = CommandBuilder.build_run(run_cfg)
             self.execute_command(cmd)
             
         except Exception as e:
@@ -985,41 +1417,31 @@ class BacktestGUI:
     def run_command_grid(self):
         """执行 GRID 命令"""
         try:
-            # 构建命令
-            cmd = [sys.executable, "unified_backtest_framework.py", "grid"]
-            
-            # 策略
-            cmd.extend(["--strategy", self.grid_strategy_var.get()])
-            
-            # 股票代码
             symbols = self.grid_symbols_text.get('1.0', 'end').strip().split()
-            cmd.extend(["--symbols"] + symbols)
-            
-            # 日期
-            cmd.extend(["--start", self.grid_start_var.get()])
-            cmd.extend(["--end", self.grid_end_var.get()])
-            
-            # 数据源
-            cmd.extend(["--source", self.grid_source_var.get()])
-            
-            # 参数网格
-            grid_text = self.grid_params_text.get('1.0', 'end').strip()
-            if grid_text:
-                try:
-                    json.loads(grid_text)  # 验证JSON
-                    cmd.extend(["--grid", grid_text])
-                except json.JSONDecodeError:
-                    messagebox.showerror("错误", "参数网格JSON格式错误")
-                    return
-            
-            # Workers
-            cmd.extend(["--workers", self.grid_workers_var.get()])
-            
-            # 输出CSV
-            if self.grid_out_csv_var.get():
-                cmd.extend(["--out_csv", self.grid_out_csv_var.get()])
-            
-            # 运行命令
+            if not symbols:
+                messagebox.showwarning("警告", "请输入至少一个股票代码")
+                return
+
+            grid_cfg = GridConfig(
+                strategy=self.grid_strategy_var.get(),
+                symbols=symbols,
+                start=self.grid_start_var.get(),
+                end=self.grid_end_var.get(),
+                source=self.grid_source_var.get(),
+                benchmark=self.grid_benchmark_var.get() or None,
+                benchmark_source=self.grid_benchmark_source_var.get() or None,
+                grid_json=self.grid_params_text.get('1.0', 'end'),
+                cash=self.grid_cash_var.get(),
+                commission=self.grid_commission_var.get(),
+                slippage=self.grid_slippage_var.get(),
+                adj=self.grid_adj_var.get() or None,
+                cache_dir=self.grid_cache_dir_var.get(),
+                out_csv=self.grid_out_csv_var.get() or None,
+                workers=self.grid_workers_var.get(),
+                fee_config=self.grid_fee_config_var.get() or None,
+                fee_params=self.grid_fee_params_var.get() or None,
+            )
+            cmd = CommandBuilder.build_grid(grid_cfg)
             self.execute_command(cmd)
             
         except Exception as e:
@@ -1028,47 +1450,37 @@ class BacktestGUI:
     def run_command_auto(self):
         """执行 AUTO 命令"""
         try:
-            # 构建命令
-            cmd = [sys.executable, "unified_backtest_framework.py", "auto"]
-            
-            # 股票代码
             symbols = self.auto_symbols_text.get('1.0', 'end').strip().split()
-            cmd.extend(["--symbols"] + symbols)
-            
-            # 策略列表
-            selected_indices = self.auto_strategies_listbox.curselection()
-            if not selected_indices:
-                messagebox.showwarning("警告", "请至少选择一个策略")
+            if not symbols:
+                messagebox.showwarning("警告", "请输入至少一个股票代码")
                 return
-            
-            strategies = [self.auto_strategies_listbox.get(i) for i in selected_indices]
-            cmd.extend(["--strategies"] + strategies)
-            
-            # 日期
-            cmd.extend(["--start", self.auto_start_var.get()])
-            cmd.extend(["--end", self.auto_end_var.get()])
-            
-            # 优化参数
-            cmd.extend(["--top_n", self.auto_top_n_var.get()])
-            cmd.extend(["--min_trades", self.auto_min_trades_var.get()])
-            cmd.extend(["--workers", self.auto_workers_var.get()])
-            
-            # 基准
-            if self.auto_benchmark_var.get():
-                cmd.extend(["--benchmark", self.auto_benchmark_var.get()])
-            
-            # 高级选项
-            if self.auto_hot_only_var.get():
-                cmd.append("--hot_only")
-            
-            if self.auto_use_regime_var.get():
-                cmd.append("--use_benchmark_regime")
-            
-            # 输出目录
-            if self.auto_out_dir_var.get():
-                cmd.extend(["--out_dir", self.auto_out_dir_var.get()])
-            
-            # 运行命令
+
+            selected_indices = self.auto_strategies_listbox.curselection()
+            strategies = [self.auto_strategies_listbox.get(i) for i in selected_indices] if selected_indices else None
+
+            auto_cfg = AutoConfig(
+                symbols=symbols,
+                start=self.auto_start_var.get(),
+                end=self.auto_end_var.get(),
+                source=self.auto_source_var.get(),
+                benchmark=self.auto_benchmark_var.get(),
+                benchmark_source=self.auto_benchmark_source_var.get() or None,
+                strategies=strategies,
+                top_n=self.auto_top_n_var.get(),
+                min_trades=self.auto_min_trades_var.get(),
+                cash=self.auto_cash_var.get(),
+                commission=self.auto_commission_var.get(),
+                slippage=self.auto_slippage_var.get(),
+                adj=self.auto_adj_var.get() or None,
+                cache_dir=self.auto_cache_dir_var.get(),
+                out_dir=self.auto_out_dir_var.get(),
+                workers=self.auto_workers_var.get(),
+                hot_only=self.auto_hot_only_var.get(),
+                use_benchmark_regime=self.auto_use_regime_var.get(),
+                regime_scope=self.auto_regime_scope_var.get(),
+            )
+
+            cmd = CommandBuilder.build_auto(auto_cfg)
             self.execute_command(cmd)
             
         except Exception as e:
@@ -1093,16 +1505,14 @@ class BacktestGUI:
     def _run_subprocess(self, cmd):
         """运行子进程"""
         try:
-            # 切换到项目根目录
-            os.chdir(project_root)
-            
             # 运行命令
             self.process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 universal_newlines=True,
-                bufsize=1
+                bufsize=1,
+                cwd=project_root,
             )
             
             # 读取输出
@@ -1136,6 +1546,7 @@ class BacktestGUI:
             self.process.terminate()
             self.log_output("\n⚠️ 用户中止任务")
             self.running = False
+            self.process = None
             self._reset_buttons()
     
     def start_download(self):

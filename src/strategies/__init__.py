@@ -47,6 +47,12 @@ from .backtrader_registry import (
 # 这些策略继承 BaseStrategy，需要单独的回测引擎或多数据源支持
 try:
     from .ml_strategies import MLWalkForwardStrategy
+    from .ml_strategies import (
+        DeepSequenceStrategy,
+        ReinforcementLearningSignalStrategy,
+        FeatureSelectionStrategy,
+        EnsembleVotingStrategy,
+    )
     from .arbitrage_strategies import (
         AlphaHedgeStrategy, CrossCommodityArbStrategy, CalendarSpreadArbStrategy
     )
@@ -103,6 +109,10 @@ __all__ = [
 if SPECIAL_STRATEGIES_AVAILABLE:
     __all__.extend([
         'MLWalkForwardStrategy',
+        'DeepSequenceStrategy',
+        'ReinforcementLearningSignalStrategy',
+        'FeatureSelectionStrategy',
+        'EnsembleVotingStrategy',
         'AlphaHedgeStrategy',
         'CrossCommodityArbStrategy',
         'CalendarSpreadArbStrategy',

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V3.1.0-alpha.4] - 2025-12-12
+
+### ⚡ Machine Learning Enhancements
+- Added deep sequence strategies (LSTM/Transformer-lite), reinforcement learning signal strategy, feature selection, and ensemble voting (`src/strategies/ml_strategies.py`).
+- Exported new ML strategies for downstream use and registration (`src/strategies/__init__.py`).
+
+### 🛠️ Tooling & GUI
+- Backtest GUI now mirrors all CLI options, adds fee plugins, benchmark sources, and async-safe logging (`scripts/backtest_gui.py`).
+- Added command-builder unit tests to guard CLI parity (`tests/test_backtest_gui_builders.py`).
+
+### 🧹 Core Cleanup
+- Removed legacy `risk_manager.py`/`live_gateway.py` stubs and pruned outdated tests/exports.
+
 ## [V3.1.0-alpha.3] - 2025-12-10
 
 ### 🚀 Phase 3 交易基础设施 - Trading Infrastructure

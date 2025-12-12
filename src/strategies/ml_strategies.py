@@ -12,6 +12,7 @@ from __future__ import annotations
 import warnings
 import numpy as np
 import pandas as pd
+from typing import List, Optional, Sequence
 
 try:
     # 兼容旧工程：若项目内有 BaseStrategy，可继续继承；否则降级为 object
@@ -258,3 +259,229 @@ class MLWalkForwardStrategy(BaseStrategy):
         df_out['Position'] = df_out['Signal'].diff().fillna(0)
         df_out['ML_Prob'] = probs
         return df_out
+
+
+# ---------------------------------------------------------------------------
+# 深度学习 / 强化学习 / 特征选择 / 模型集成
+# 设计原则：无外部依赖时使用轻量退化实现；如有 torch/sklearn 则自动利用
+# ---------------------------------------------------------------------------
+
+def _sigmoid(x: float) -> float:
+    return float(1 / (1 + np.exp(-x)))
+
+
+def _basic_features(df: pd.DataFrame) -> pd.DataFrame:
+    """复用已有特征工程，确保列兼容性。"""
+    try:
+        return MLWalkForwardStrategy._ta(df.copy())
+    except Exception:
+        return pd.DataFrame(index=df.index)
+
+
+class DeepSequenceStrategy(BaseStrategy):
+    """
+    序列建模策略 (LSTM/Transformer 简化版)
+    
+    - 默认使用轻量化数值近似，避免在缺少 torch 时失败
+    - 若 TORCH_OK，则使用 1 层 LSTM/Transformer 编码得到分数
+    """
+
+    def __init__(
+        self,
+        arch: str = "lstm",
+        lookback: int = 30,
+        threshold: float = 0.55,
+    ) -> None:
+        super().__init__(name=f"DL-{arch.upper()}")
+        self.arch = arch.lower()
+        self.lookback = int(lookback)
+        self.threshold = float(threshold)
+
+    def _torch_score(self, X: np.ndarray) -> Optional[np.ndarray]:
+        if not TORCH_OK:
+            return None
+        try:
+            import torch  # type: ignore
+            import torch.nn as nn  # type: ignore
+
+            seq = torch.tensor(X, dtype=torch.float32).unsqueeze(0)  # [1, T, F]
+            if self.arch == "transformer":
+                encoder_layer = nn.TransformerEncoderLayer(
+                    d_model=seq.shape[-1], nhead=1, dim_feedforward=max(8, seq.shape[-1] * 2)
+                )
+                encoder = nn.TransformerEncoder(encoder_layer, num_layers=1)
+                encoded = encoder(seq)
+                pooled = encoded.mean(dim=1)
+            else:
+                lstm = nn.LSTM(
+                    input_size=seq.shape[-1],
+                    hidden_size=max(4, seq.shape[-1]),
+                    num_layers=1,
+                    batch_first=True,
+                )
+                out, _ = lstm(seq)
+                pooled = out[:, -1, :]
+
+            head = nn.Linear(pooled.shape[-1], 1)
+            with torch.no_grad():
+                logit = head(pooled).squeeze().item()
+            return np.array([logit], dtype=float)
+        except Exception:
+            return None
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        feats = _basic_features(df)
+        if feats.empty:
+            return pd.DataFrame(index=df.index, data={"signal": 0, "prob": 0.0})
+
+        # 使用 rolling 方式计算分数
+        momentum = feats.filter(like="ret").mean(axis=1)
+        vol = feats.filter(like="vol").mean(axis=1).fillna(0)
+        score = momentum.rolling(self.lookback, min_periods=max(5, self.lookback // 3)).mean() - vol
+        score = score.fillna(0)
+
+        # 若可用 torch，则用序列模型对最近窗口编码
+        if TORCH_OK and len(feats) >= self.lookback:
+            window = feats.tail(self.lookback).to_numpy(dtype=float)
+            torch_score = self._torch_score(window)
+            if torch_score is not None:
+                score.iloc[-1] = torch_score[-1]
+
+        prob = score.apply(_sigmoid)
+        signal = prob.apply(lambda p: 1 if p >= self.threshold else (-1 if p <= (1 - self.threshold) else 0))
+        return pd.DataFrame(
+            {"signal": signal.fillna(0).astype(int), "prob": prob.astype(float), "score": score.astype(float)}
+        )
+
+
+class ReinforcementLearningSignalStrategy(BaseStrategy):
+    """
+    简化强化学习信号策略 (epsilon-greedy/Q-value 近似)
+    
+    - 使用收益和波动率构造离散状态
+    - Q 值在单次遍历中迭代更新，输出最后一步动作
+    """
+
+    def __init__(self, epsilon: float = 0.1, lookback: int = 20) -> None:
+        super().__init__(name="RL-Signal")
+        self.epsilon = float(epsilon)
+        self.lookback = int(lookback)
+
+    def _discretize_state(self, ret: float, vol: float) -> tuple:
+        return (int(np.sign(ret)), int(vol > 0.02))
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return pd.DataFrame(index=df.index, data={"signal": 0, "prob": 0.0})
+
+        close = df["收盘"] if "收盘" in df else df.get("close", pd.Series(index=df.index, dtype=float))
+        ret = close.pct_change().fillna(0)
+        vol = ret.rolling(10, min_periods=5).std().fillna(0)
+
+        q_table = {}
+        actions = []
+        probs = []
+
+        for i in range(len(df)):
+            r = ret.iloc[: i + 1].tail(self.lookback).mean()
+            v = vol.iloc[: i + 1].tail(self.lookback).mean()
+            state = self._discretize_state(float(r), float(v))
+            if state not in q_table:
+                q_table[state] = {a: 0.0 for a in (-1, 0, 1)}
+
+            # epsilon-greedy
+            if np.random.rand() < self.epsilon:
+                action = np.random.choice([-1, 0, 1])
+            else:
+                action = max(q_table[state], key=q_table[state].get)
+
+            # 简化 reward：当日收益
+            reward = ret.iloc[i]
+            q_table[state][action] = q_table[state][action] + 0.1 * (reward - q_table[state][action])
+
+            prob_long = _sigmoid(q_table[state][1] - q_table[state][-1])
+            actions.append(action)
+            probs.append(prob_long)
+
+        return pd.DataFrame(index=df.index, data={"signal": actions, "prob": probs})
+
+
+class FeatureSelectionStrategy(BaseStrategy):
+    """
+    自动特征选择策略
+    
+    - 使用皮尔逊相关或 sklearn 互信息评估特征重要性
+    - 选择 top_k 特征构造线性评分，生成多空信号
+    """
+
+    def __init__(self, top_k: int = 8, horizon: int = 1) -> None:
+        super().__init__(name="Feature-Selector")
+        self.top_k = int(top_k)
+        self.h = int(horizon)
+        self.selected_features: List[str] = []
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        feats = _basic_features(df)
+        if feats.empty:
+            return pd.DataFrame(index=df.index, data={"signal": 0, "score": 0.0})
+
+        # 标签：未来收益
+        close = df["收盘"] if "收盘" in df else df.get("close", pd.Series(index=df.index))
+        target = close.pct_change(self.h).shift(-self.h).reindex(feats.index).fillna(0)
+
+        scores = {}
+        for col in feats.columns:
+            series = feats[col].fillna(0)
+            if series.std() == 0:
+                continue
+            corr = series.corr(target)
+            scores[col] = abs(corr)
+
+        ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+        self.selected_features = [k for k, _ in ranked[: self.top_k]]
+
+        if self.selected_features:
+            weights = np.ones(len(self.selected_features)) / len(self.selected_features)
+            score_series = (feats[self.selected_features] @ weights).fillna(0)
+        else:
+            score_series = pd.Series(0, index=feats.index)
+
+        signal = score_series.apply(lambda s: 1 if s > 0 else (-1 if s < 0 else 0))
+        return pd.DataFrame(index=df.index, data={"signal": signal, "score": score_series})
+
+
+class EnsembleVotingStrategy(BaseStrategy):
+    """
+    模型集成策略：对多个子策略信号/概率做投票或均值融合
+    """
+
+    def __init__(self, strategies: Sequence[BaseStrategy], vote: str = "majority") -> None:
+        super().__init__(name="Ensemble-Vote")
+        self.strategies = list(strategies)
+        self.vote = vote
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        if not self.strategies:
+            return pd.DataFrame(index=df.index, data={"signal": 0, "prob": 0.0})
+
+        signals = []
+        probs = []
+        for strat in self.strategies:
+            res = strat.generate_signals(df)
+            sig = res["signal"] if "signal" in res else pd.Series(0, index=df.index)
+            prob = res["prob"] if "prob" in res else pd.Series(0.5, index=df.index)
+            signals.append(sig.reindex(df.index).fillna(0))
+            probs.append(prob.reindex(df.index).fillna(0.5))
+
+        signal_df = pd.concat(signals, axis=1)
+        prob_df = pd.concat(probs, axis=1)
+
+        if self.vote == "prob_mean":
+            mean_prob = prob_df.mean(axis=1)
+            out_signal = mean_prob.apply(lambda p: 1 if p > 0.55 else (-1 if p < 0.45 else 0))
+        else:
+            summed = signal_df.sum(axis=1)
+            out_signal = summed.apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+            mean_prob = prob_df.mean(axis=1)
+
+        return pd.DataFrame(index=df.index, data={"signal": out_signal, "prob": mean_prob})
