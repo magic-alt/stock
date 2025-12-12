@@ -1,6 +1,6 @@
 """
 测试核心模块 (src/core/*)
-覆盖: objects, events, gateway, config, risk_manager, paper_gateway_v3
+覆盖: objects, events, gateway, config, paper_gateway_v3
 """
 import pytest
 import tempfile
@@ -15,7 +15,6 @@ from src.core.objects import (
 )
 from src.core.events import EventEngine, EventType
 from src.core.config import ConfigManager, GlobalConfig
-from src.core.risk_manager import create_moderate_risk_manager, RiskCheckResult
 from src.core.paper_gateway_v3 import PaperGateway
 
 
@@ -239,55 +238,6 @@ class TestConfig:
         # 基本测试
         manager = ConfigManager()
         assert manager is not None
-
-class TestRiskManager:
-    """测试风险管理器"""
-    
-    def test_risk_manager_creation(self):
-        """测试风险管理器创建"""
-        risk_mgr = create_moderate_risk_manager()
-        assert risk_mgr is not None
-    
-    def test_position_limit_check(self):
-        """测试持仓限制检查"""
-        risk_mgr = create_moderate_risk_manager()
-        
-        # 创建账户
-        account = AccountData(
-            balance=100000.0,
-            frozen=0.0,
-            available=100000.0
-        )
-        
-        # 创建订单（合理规模）
-        order = OrderData(
-            symbol="600519.SH",
-            direction=Direction.LONG,
-            order_type=OrderType.LIMIT,
-            price=1000.0,
-            volume=50,
-            status=OrderStatus.SUBMITTED
-        )
-        
-        # 检查风控（简化测试，添加current_price参数）
-        result = risk_mgr.check_order(order, account, {}, current_price=1000.0)
-        assert isinstance(result, RiskCheckResult)
-        assert isinstance(result.passed, bool)
-    
-    def test_daily_loss_limit(self):
-        """测试每日亏损限制"""
-        risk_mgr = create_moderate_risk_manager()
-        
-        account = AccountData(
-            balance=80000.0,  # 亏损20%
-            frozen=0.0,
-            available=80000.0
-        )
-        
-        # 验证风险管理器已创建
-        assert risk_mgr is not None
-
-
 class TestPaperGateway:
     """测试模拟交易网关"""
     

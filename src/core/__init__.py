@@ -8,10 +8,9 @@ Provides:
 - Unified data types (BarData, PositionInfo, AccountInfo)
 - Structured logging (configure_logging, get_logger)
 - EventEngineContext (strategy-gateway bridge)
-- Live gateway stubs (CTPGateway, IBGateway, XtQuantGateway)
 
 V3.0.0: Added unified interfaces and strategy base class.
-V3.0.0-beta: Added logging, context, live gateways, paper_runner_v3.
+V3.0.0-beta: Added logging, context, paper_runner_v3.
 """
 
 from .events import Event, EventEngine, EventType, Handler
@@ -58,15 +57,6 @@ from .logger import configure_logging, get_logger, LogContext
 # V3.0.0-beta: EventEngineContext (strategy-gateway bridge)
 from .context import EventEngineContext, BacktestContext
 
-# V3.0.0-beta: Live gateway stubs
-from .live_gateway import (
-    BaseLiveGateway,
-    CTPGateway,
-    IBGateway,
-    XtQuantGateway,
-    GatewayStatus,
-)
-
 # V3.0.0-beta: Paper runner V3
 from .paper_runner_v3 import (
     run_paper_v3,
@@ -91,13 +81,6 @@ __all__ = [
     "PaperGateway",      # V2 compatible (legacy)
     "PaperGatewayV3",    # V3.0 clean version
     "LiveGateway",
-    
-    # Live Gateways (V3.0.0-beta)
-    "BaseLiveGateway",
-    "CTPGateway",
-    "IBGateway",
-    "XtQuantGateway",
-    "GatewayStatus",
     
     # Unified Data Types
     "BarData",

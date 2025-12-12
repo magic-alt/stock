@@ -6,7 +6,7 @@
 
 ```
 tests/
-├── test_core.py                    # 核心模块 (objects, events, gateway, config, risk_manager)
+├── test_core.py                    # 核心模块 (objects, events, gateway, config, paper_gateway_v3)
 ├── test_data.py                    # 数据模块 (providers, db_manager, data_portal)
 ├── test_backtest.py                # 回测模块 (engine, analysis, plotting, strategy_modules)
 ├── test_simulation.py              # 模拟交易 (order, order_book, slippage, matching_engine)
@@ -20,11 +20,10 @@ tests/
 
 ## 📊 测试覆盖范围
 
-### test_core.py (6个测试类)
+### test_core.py (4个测试类)
 - ✅ `src/core/objects.py` - 核心数据对象
 - ✅ `src/core/events.py` - 事件引擎
 - ✅ `src/core/config.py` - 配置管理
-- ✅ `src/core/risk_manager.py` - 风险管理
 - ✅ `src/core/gateway.py` + `paper_gateway_v3.py` - 交易网关
 
 ### test_data.py (3个测试类)
