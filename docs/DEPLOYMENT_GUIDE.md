@@ -100,7 +100,7 @@ python scripts/start_production.py
 # 模拟交易模式
 python scripts/start_production.py --mode paper
 
-# 实盘交易模式（需要确认）
+# 实盘交易模式（已实现，需显式确认）
 CONFIRM_LIVE_TRADING=1 python scripts/start_production.py --mode live
 ```
 

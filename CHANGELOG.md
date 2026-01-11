@@ -2,6 +2,100 @@
 
 All notable changes to this project will be documented in this file.
 
+## [V3.2.0] - 2026-01-11
+
+### 🎯 Phase 2 部分完成: 实盘交易API
+
+**Theme**: A股实盘交易网关实现（XtQuant/XTP/Hundsun UFT）
+
+---
+
+#### 🏦 实盘交易网关模块 (`src/gateways/`)
+
+**新增三个主流A股实盘交易网关**:
+
+| 网关 | 类名 | 适用场景 |
+|------|------|----------|
+| **XtQuant/QMT** | `XtQuantGateway` | 个人投资者首选 |
+| **中泰XTP** | `XtpGateway` | 机构/量化客户 |
+| **恒生UFT** | `HundsunUftGateway` | 机构通用柜台 |
+
+**模块结构**:
+```
+src/gateways/
+├── __init__.py              # 模块入口 + 网关工厂
+├── base_live_gateway.py     # 抽象基类 (~900行)
+├── mappers.py               # 代码/订单字段映射
+├── xtquant_gateway.py       # XtQuant/QMT 实现 (~600行)
+├── xtp_gateway.py           # 中泰XTP 实现 (~650行)
+└── hundsun_uft_gateway.py   # 恒生UFT 实现 (~700行)
+```
+
+---
+
+#### 🔌 基础网关功能 (`BaseLiveGateway`)
+
+**连接管理**:
+- 自动重连 (指数退避)
+- 心跳监控
+- 状态恢复 (断线后同步订单/持仓/资金)
+
+**订单管理**:
+- 统一订单状态机 (8种状态)
+- client_order_id ↔ broker_order_id 双向映射
+- 成交去重 (trade_id)
+- 限流控制 (max_orders_per_second)
+
+**查询接口**:
+- `query_account()` - 账户信息
+- `query_positions()` - 持仓信息
+- `query_orders()` - 订单查询
+
+---
+
+#### 🔧 代码映射器 (`SymbolMapper` / `OrderMapper`)
+
+**标的代码转换**:
+```python
+# 内部格式: 600519.SH
+code, exchange = SymbolMapper.to_xtp("600519.SH")
+# code="600519", exchange=XTPExchange.SH
+
+symbol = SymbolMapper.from_uft("600519", "1")
+# symbol="600519.SH"
+```
+
+**订单字段映射**:
+- 订单类型 (market/limit/FAK/FOK)
+- 买卖方向 (buy/sell)
+- 订单状态 (8种状态码)
+
+---
+
+#### 📄 文档
+
+**新增**:
+- `docs/LIVE_TRADING_API.md` - 完整实盘交易API文档 (~700行)
+  - API参考
+  - 配置示例
+  - 联调指南
+  - 事件类型
+
+---
+
+#### ⚠️ 桩模式支持
+
+当SDK不可用时，网关自动进入桩模式用于开发测试:
+```python
+gateway = XtQuantGateway(config, event_queue)
+# 警告: xtp_gateway_stub_mode, "XTP SDK not available"
+
+gateway.connect()  # 返回 True
+order_id = gateway.send_order(...)  # 模拟订单
+```
+
+---
+
 ## [V3.1.0] - 2026-01-11
 
 ### 🎯 Phase 1 完成: 本地部署稳定化

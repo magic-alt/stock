@@ -1,7 +1,7 @@
 # 项目路线图 | Project Roadmap
 
 **项目**: 量化回测与实盘系统 (Unified Quant Platform)
-**当前版本**: V3.1.0-beta.1
+**当前版本**: V3.2.0
 **更新日期**: 2026-01-11
 **状态**: 🟢 本地部署就绪 | 商业级架构完善中
 
@@ -45,6 +45,8 @@
 | | 策略库 | ✅ | 25+策略 |
 | | GUI界面 | ✅ | tkinter |
 | | CLI工具 | ✅ | unified_backtest_framework.py |
+| **实盘交易** | 经纪商API接入 | ✅ | XtQuant/QMT、XTP、UFT |
+| | 订单确认/回报 | ✅ | 实盘订单状态与成交回报 |
 | **风险控制** | 订单风控 | ✅ | RiskManagerV2 |
 | | 仓位控制 | ✅ | 多层次限制 |
 | | 回撤控制 | ✅ | 最大回撤限制 |
@@ -59,11 +61,9 @@
 
 | 类别 | 功能项 | 当前状态 | 目标 | 优先级 |
 |------|--------|---------|------|--------|
-| **错误处理** | 统一异常类型 | 基础实现 | 完整体系 | P0 |
-| | 全局异常处理器 | 部分实现 | 全覆盖 | P0 |
+| **错误处理** | 统一异常类型 | ✅ 已完成 | 完整体系 | P0 |
+| | 全局异常处理器 | ✅ 已完成 | 全覆盖 | P0 |
 | | 错误恢复机制 | 未实现 | 自动恢复 | P1 |
-| **实盘接口** | 经纪商API | 桩代码 | 完整实现 | P1 |
-| | 订单确认 | 桩代码 | 真实交易 | P1 |
 | **性能优化** | 大规模回测 | 60-90秒 | <30秒 | P2 |
 | | 内存优化 | 基础 | 优化 | P2 |
 | **安全加固** | 配置加密 | 未实现 | 完整实现 | P2 |
@@ -207,12 +207,14 @@ cat logs/quant.log | tail -50
    - 数据库备份
    - 日志系统
 
-#### 🟡 部分完成 (50-90%)
+#### ✅ 新近完成 (V3.2.0)
 
-1. **实盘交易接口** (50%)
+1. **实盘交易接口** (100%)
    - ✅ 接口定义完成
-   - ✅ 桩代码实现
-   - 🔴 真实API对接未完成
+   - ✅ XtQuantGateway (QMT/MiniQMT)
+   - ✅ XtpGateway (中泰XTP)
+   - ✅ HundsunUftGateway (恒生UFT)
+   - ✅ 桩模式支持开发测试
 
 2. **Web API** (30%)
    - ✅ 架构设计
@@ -249,14 +251,23 @@ cat logs/quant.log | tail -50
 - `docs/API_REFERENCE.md` - 完整API参考文档
 - `docs/API_REFERENCE.py` - 可执行API文档模块
 
-#### Phase 2: 商业级加固 (2-4周)
+#### Phase 2: 商业级加固 ✅ 部分完成 (V3.2.0)
 
-| 任务 | 优先级 | 预计工作量 |
-|------|--------|----------|
-| 实盘经纪商API对接 | P1 | 2周 |
-| 配置加密 | P2 | 3天 |
-| 告警系统完善 | P2 | 3天 |
-| 英文文档 | P3 | 1周 |
+| 任务 | 优先级 | 状态 | 完成日期 |
+|------|--------|------|----------|
+| 实盘经纪商API对接 | P1 | ✅ 已完成 | 2026-01-11 |
+| 配置加密 | P2 | 🟡 待实现 | - |
+| 告警系统完善 | P2 | 🟡 待实现 | - |
+| 英文文档 | P3 | 🟡 待实现 | - |
+
+**V3.2.0 新增文件**:
+- `src/gateways/__init__.py` - 网关模块入口
+- `src/gateways/base_live_gateway.py` - 实盘网关抽象基类
+- `src/gateways/mappers.py` - 代码/订单字段映射
+- `src/gateways/xtquant_gateway.py` - XtQuant/QMT 网关
+- `src/gateways/xtp_gateway.py` - 中泰XTP 网关
+- `src/gateways/hundsun_uft_gateway.py` - 恒生UFT 网关
+- `docs/LIVE_TRADING_API.md` - 实盘交易API文档
 
 #### Phase 3: 扩展功能 (1-3月)
 
@@ -288,7 +299,7 @@ cat logs/quant.log | tail -50
 
 ## 📅 版本历史
 
-### V3.1.0-alpha (2025-12-09) 🆕 当前版本
+### V3.1.0-alpha (2025-12-09)
 **主题**: 商业级架构升级 + 代码清理
 
 **本次更新**:
@@ -413,7 +424,7 @@ BaseStrategy (统一策略接口)
 | **OrderManager** | 🟢 新增 | 90% | 订单管理系统 |
 | **RiskManagerV2** | 🟢 新增 | 90% | 多层风控系统 |
 | **RealtimeData** | 🟢 新增 | 85% | 实时数据流 + 信号生成 |
-| **LiveGateway** | 🟡 桩代码 | 50% | CTP/IB/Futu 接口定义 |
+| **LiveGateway** | ✅ 已实现 | 95% | XtQuant/XTP/UFT 实盘网关 |
 
 ### 技术债务 (已更新 2025-12-10)
 - ✅ ~~PaperGateway V2/V3 混合代码~~ (已清理)
@@ -612,8 +623,8 @@ from src.core.interfaces import (
 - [x] 创建 `src/core/interfaces.py` 统一接口定义
 - [x] 清理 `PaperGateway` V2 遗留代码
 - [x] 新增 `PaperGatewayV3` 纯 MatchingEngine 版本
-- [x] 实现 `LiveGateway` 接口桩代码
-- [x] 添加 `CTPGateway` / `IBGateway` / `XtQuantGateway` 桩实现
+- [x] 实现 `LiveGateway` 统一接口（实盘可用）
+- [x] 实现 `XtQuantGateway` / `XtpGateway` / `HundsunUftGateway` 实盘网关
 
 #### 3.3 系统健壮性 ✅ 完成
 - [x] 引入 `structlog` 日志配置 (`src/core/logger.py`)
@@ -625,18 +636,17 @@ from src.core.interfaces import (
 #### 3.4 交易接口层 ✅ 完成 (2025-12-10)
 - [x] 设计统一的交易接口 (`TradingGateway`)
 - [x] 支持模拟交易（虚拟盘） - `PaperTradingAdapter`
-- [x] 支持实盘交易接口 - `LiveTradingAdapter` (桩代码)
+- [x] 支持实盘交易接口 - `LiveTradingAdapter` (实盘网关 + 桩模式)
 - [x] 订单管理系统 (`OrderManager`) - 完整生命周期管理
 
 **新增模块**:
 - `src/core/trading_gateway.py` - 统一交易网关
 - `src/core/order_manager.py` - 订单管理系统
 
-**支持的经纪商** (接口定义完成):
-- [x] 东方财富API (桩代码)
-- [x] 富途API (FutuOpenD) (桩代码)
-- [ ] 雪球API
-- [x] Interactive Brokers (IBKR) (桩代码)
+**支持的经纪商** (实盘实现):
+- [x] XtQuant/QMT
+- [x] 中泰 XTP
+- [x] 恒生 UFT
 
 #### 3.2 风险管理系统 ✅ 完成 (2025-12-10)
 - [x] 仓位管理 (Position Sizing) - 多级仓位限制
@@ -890,4 +900,4 @@ from src.core.interfaces import (
 **最后更新**: 2026-01-11
 **维护者**: magic-alt
 **项目状态**: 🟢 本地部署就绪 | 商业级升级中
-**当前版本**: V3.1.0-beta.1
+**当前版本**: V3.2.0
