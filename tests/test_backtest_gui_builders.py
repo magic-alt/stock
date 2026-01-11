@@ -4,6 +4,7 @@ import pytest
 
 from scripts.backtest_gui import (
     AutoConfig,
+    ComboConfig,
     CommandBuilder,
     GridConfig,
     RunConfig,
@@ -83,3 +84,26 @@ def test_auto_command_builder_flags_scope_and_benchmark_source():
     assert cmd[cmd.index("--benchmark_source") + 1] == "akshare"
     # strategies are appended correctly
     assert cmd[cmd.index("--strategies") + 1 : cmd.index("--strategies") + 3] == ["ema", "macd"]
+
+
+def test_combo_command_builder_handles_allow_short_and_output(tmp_path):
+    nav1 = tmp_path / "a.csv"
+    nav2 = tmp_path / "b.csv"
+    nav1.write_text("nav\n1\n1.01\n")
+    nav2.write_text("nav\n1\n0.99\n")
+
+    cfg = ComboConfig(
+        navs=[str(nav1), str(nav2)],
+        objective="return",
+        step="0.5",
+        allow_short=True,
+        max_weight="1.0",
+        risk_free="0.0",
+        out=str(tmp_path / "combo.csv"),
+    )
+
+    cmd = CommandBuilder.build_combo(cfg)
+    assert "combo" in cmd
+    assert "--allow_short" in cmd
+    assert cmd[cmd.index("--objective") + 1] == "return"
+    assert cmd[cmd.index("--out") + 1].endswith("combo.csv")

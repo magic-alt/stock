@@ -5,9 +5,9 @@
 [![CI Status](https://github.com/magic-alt/stock/workflows/CI/badge.svg)](https://github.com/magic-alt/stock/actions)
 [![Code Coverage](https://codecov.io/gh/magic-alt/stock/branch/main/graph/badge.svg)](https://codecov.io/gh/magic-alt/stock)
 
-> **企业级量化交易回测平台** - 基于Backtrader，支持多数据源、15+策略、自动化流程、机器学习
+> **企业级量化交易回测平台** - 基于Backtrader，支持多数据源、25+策略、自动化流程、机器学习、本地部署
 
-**版本**: V3.0.0-alpha | **更新日期**: 2025-12-03 | **状态**: 🟡 架构统一中 (Architecture Unification)
+**版本**: V3.1.0-beta.1 | **更新日期**: 2026-01-11 | **状态**: 🟢 本地部署就绪 | 商业级架构完善中
 
 ---
 
@@ -68,6 +68,16 @@ report/600519_macd_20251026_123456/
 ├── backtest_result.pkl      # 🔧 原生matplotlib格式
 ├── backtest_report.md       # 📝 详细分析报告
 └── backtest_summary.json    # 📋 JSON数据摘要
+```
+
+### 组合优化 + ML 策略示例
+
+```bash
+# 组合优化：传入多个回测NAV，搜索最佳权重（Sharpe 优先）
+python unified_backtest_framework.py combo --navs report/ema_nav.csv report/macd_nav.csv --objective sharpe --step 0.2 --out combo_nav.csv
+
+# 查看内置 ML 策略示例
+python examples/ml_strategy_gallery.py
 ```
 
 ---
@@ -999,43 +1009,45 @@ export TUSHARE_TOKEN="your_token_here"
 
 ## 🗺️ 发展路线图
 
-### ✅ Phase 1 (V2.4.0) - 完成
+### ✅ Phase 1-2 (V2.4.0 - V2.5.1) - 完成
 
 - [x] 数据源模块化 (AKShare, YFinance, TuShare)
-- [x] 策略模块化 (8+ 策略)
+- [x] 策略模块化 (15+ 策略)
 - [x] 回测引擎基础架构
-- [x] 单策略回测
-- [x] 网格搜索优化
-
-### ✅ Phase 2 (V2.5.0) - 完成
-
 - [x] 分析模块 (Pareto 优化)
-- [x] 绘图模块 (7种指标可视化)
 - [x] Auto Pipeline (自动化流程)
-- [x] Risk Parity 策略
-- [x] 代码精简 (90% 减少)
 
-### ✅ Phase 2.1 (V2.5.1) - 完成
+### ✅ Phase 3 (V3.0.0 - V3.1.0) - 完成
 
-- [x] StopIteration 错误修复
-- [x] AKShare 符号格式修复
-- [x] 时区不匹配修复
-- [x] 完整测试验证 (10×8)
+- [x] 统一策略架构 (BaseStrategy)
+- [x] 事件驱动引擎 (EventEngine)
+- [x] 交易基础设施 (Gateway/OrderManager/RiskManager)
+- [x] ML策略集成 (XGBoost/RF/DL/RL)
+- [x] 组合优化器 (Sharpe/Return/Volatility)
+- [x] 179个测试用例，覆盖率>95%
 
-### 🔄 Phase 3 (进行中)
+### ✅ Phase 3.1 (V3.1.0-beta.1) - 本地部署就绪
 
-- [ ] 单元测试覆盖 (pytest)
-- [ ] CI/CD 流程 (GitHub Actions)
-- [ ] 性能分析与优化
-- [ ] 文档完善 (API docs)
+- [x] 配置管理系统 (YAML + 环境变量)
+- [x] 健康检查脚本
+- [x] 数据库备份工具
+- [x] 生产环境启动脚本
+- [x] 系统监控模块
+- [x] 完整部署文档
+
+### 🔄 Phase 3.2 (进行中) - 商业级加固
+
+- [ ] 完善错误处理机制
+- [ ] 实盘经纪商API对接
+- [ ] REST API实现
+- [ ] 性能优化
 
 ### 📋 Phase 4 (计划)
 
-- [ ] Web UI (Streamlit/Dash)
-- [ ] 实时监控功能
-- [ ] 自动交易接口
-- [ ] 机器学习策略
-- [ ] 因子分析系统
+- [ ] Web前端 (React/Vue)
+- [ ] Docker容器化
+- [ ] 微服务架构
+- [ ] 分布式回测
 
 ---
 
@@ -1076,8 +1088,9 @@ pytest --cov=src --cov-report=html
 
 ---
 
-**企业级量化回测平台 - V2.5.1 生产就绪** 🚀
+**企业级量化回测平台 - V3.1.0-beta.1 本地部署就绪** 🚀
 
-**最后更新**: 2025-01-XX  
-**维护团队**: Quantitative Trading Team  
+**最后更新**: 2026-01-11
+**维护团队**: Quantitative Trading Team
 **许可证**: MIT
+**状态**: 🟢 本地部署就绪 | 商业级架构完善中

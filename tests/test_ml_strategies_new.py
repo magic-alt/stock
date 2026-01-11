@@ -6,6 +6,7 @@ from src.strategies.ml_strategies import (
     ReinforcementLearningSignalStrategy,
     FeatureSelectionStrategy,
     EnsembleVotingStrategy,
+    RegimeAdaptiveMLStrategy,
 )
 
 
@@ -55,3 +56,13 @@ def test_feature_selection_and_ensemble():
     assert not res.empty
     assert "prob" in res
     assert res["signal"].isin([-1, 0, 1]).any()
+
+
+def test_regime_adaptive_filters_high_vol():
+    df = _dummy_df()
+    strat = RegimeAdaptiveMLStrategy(regime_window=10, prob_floor=0.4, prob_cap=0.6)
+    res = strat.generate_signals(df)
+    assert {"signal", "prob", "regime_vol"} <= set(res.columns)
+    # 在震荡期，概率被压回 0.5，信号为0
+    noisy_idx = res["regime_vol"].idxmax()
+    assert res.loc[noisy_idx, "prob"] == 0.5

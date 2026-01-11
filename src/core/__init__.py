@@ -66,6 +66,52 @@ from .paper_runner_v3 import (
     SimpleMovingAverageStrategy,
 )
 
+# V3.1.0: Unified exception handling
+from .exceptions import (
+    QuantBaseError,
+    ConfigurationError,
+    DataError,
+    DataProviderError,
+    DataNotFoundError,
+    DataValidationError,
+    StrategyError,
+    StrategyNotFoundError,
+    StrategyExecutionError,
+    OrderError,
+    OrderValidationError,
+    InsufficientFundsError,
+    GatewayError,
+    RiskError,
+    RiskLimitExceeded,
+    BacktestError,
+)
+
+# V3.1.0: Global exception handler
+from .error_handler import (
+    ErrorHandler,
+    handle_errors,
+    handle_errors_async,
+    RetryPolicy,
+    safe_call,
+    suppress_errors,
+)
+
+# V3.1.0: Performance optimization
+from .performance import (
+    TTLCache,
+    cached,
+    profile,
+    profile_block,
+    get_profile_summary,
+    batch_process,
+    parallel_map,
+    MemoryManager,
+    memory_guard,
+    optimize_dataframe,
+    timed,
+    RateLimiter,
+)
+
 __all__ = [
     # Events
     "Event",
@@ -118,4 +164,44 @@ __all__ = [
     
     # Risk
     "RiskManagerProtocol",
+    
+    # V3.1.0: Exceptions
+    "QuantBaseError",
+    "ConfigurationError",
+    "DataError",
+    "DataProviderError",
+    "DataNotFoundError",
+    "DataValidationError",
+    "StrategyError",
+    "StrategyNotFoundError",
+    "StrategyExecutionError",
+    "OrderError",
+    "OrderValidationError",
+    "InsufficientFundsError",
+    "GatewayError",
+    "RiskError",
+    "RiskLimitExceeded",
+    "BacktestError",
+    
+    # V3.1.0: Error Handler
+    "ErrorHandler",
+    "handle_errors",
+    "handle_errors_async",
+    "RetryPolicy",
+    "safe_call",
+    "suppress_errors",
+    
+    # V3.1.0: Performance
+    "TTLCache",
+    "cached",
+    "profile",
+    "profile_block",
+    "get_profile_summary",
+    "batch_process",
+    "parallel_map",
+    "MemoryManager",
+    "memory_guard",
+    "optimize_dataframe",
+    "timed",
+    "RateLimiter",
 ]

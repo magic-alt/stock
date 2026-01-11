@@ -38,13 +38,15 @@ from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING, Callable
 import pandas as pd
 from datetime import datetime
 from abc import ABC
+import time
+from threading import Event as ThreadEvent, Thread
 
 # V3 imports
 from src.core.interfaces import BarData, Side, OrderTypeEnum
 from src.core.strategy_base import BaseStrategy
 from src.core.context import EventEngineContext
 from src.core.paper_gateway_v3 import PaperGateway as PaperGatewayV3
-from src.core.events import EventEngine
+from src.core.events import EventEngine, Event, EventType
 from src.core.logger import get_logger
 
 # Legacy template support removed in V3.1.0
@@ -68,6 +70,8 @@ def run_paper_v3(
     initial_cash: float = 200_000.0,
     commission_rate: float = 0.0003,
     on_bar_callback: Optional[Callable[[str, BarData], None]] = None,
+    heartbeat_interval: Optional[float] = None,
+    stop_event: Optional[ThreadEvent] = None,
 ) -> Dict[str, Any]:
     """
     V3 Paper trading runner using BaseStrategy and EventEngineContext.
@@ -89,6 +93,10 @@ def run_paper_v3(
         - nav: pd.Series of daily equity
         - trades: List of filled orders
         - metrics: Basic performance metrics
+    
+    Heartbeat:
+        If heartbeat_interval is provided, emit EventType.HEARTBEAT every interval seconds.
+        A stop_event can be supplied by an external monitor to request a controlled stop.
         
     Example:
         >>> from src.strategies.unified_strategies import UnifiedEMAStrategy
@@ -108,6 +116,9 @@ def run_paper_v3(
     if not isinstance(strategy, BaseStrategy):
         raise TypeError(f"strategy must be BaseStrategy, got {type(strategy)}")
     
+    # Ensure event engine is running for heartbeat/handlers
+    events.start()
+
     # Create V3 gateway
     gateway = PaperGatewayV3(
         events=events,
@@ -142,10 +153,21 @@ def run_paper_v3(
     # Build timeline from all data
     all_dates = sorted(set().union(*[set(df.index) for df in data_map.values()]))
     
+    last_heartbeat = time.time()
+    
     # Simulation loop
     account = {"equity": initial_cash}
     
     for dt in all_dates:
+        if stop_event and stop_event.is_set():
+            raise RuntimeError("paper runner stopped by monitor")
+        
+        if heartbeat_interval:
+            now = time.time()
+            if now - last_heartbeat >= heartbeat_interval:
+                events.put(Event(EventType.HEARTBEAT, {"ts": now, "source": "paper_runner_v3"}))
+                last_heartbeat = now
+        
         ctx._current_dt = dt  # Update context's current time
         
         # Phase 1: Match pending orders at open price
@@ -202,6 +224,8 @@ def run_paper_v3(
         events.unregister("order.filled", on_fill)
     except Exception:
         pass
+    
+    events.stop()
     
     return {
         "account": gateway.query_account(),
@@ -422,6 +446,95 @@ def run_paper_with_nav(
         "nav": nav_series,
         "trades": trades,
     }
+
+
+# =============================================================================
+# Monitoring helpers
+# =============================================================================
+
+def run_paper_with_monitor(
+    strategy: Union[BaseStrategy, Callable[[], BaseStrategy]],
+    data_map: Dict[str, pd.DataFrame],
+    events: EventEngine,
+    *,
+    slippage: float = 0.0,
+    initial_cash: float = 200_000.0,
+    commission_rate: float = 0.0003,
+    on_bar_callback: Optional[Callable[[str, BarData], None]] = None,
+    heartbeat_interval: float = 5.0,
+    heartbeat_timeout: float = 30.0,
+    check_interval: float = 5.0,
+    max_restarts: int = 1,
+) -> Dict[str, Any]:
+    """
+    Run paper trading with heartbeat monitoring and automatic restart.
+    
+    If the runner stalls (no heartbeat within heartbeat_timeout) or raises,
+    it will restart up to max_restarts times.
+    """
+    attempts = 0
+    result: Dict[str, Any] = {}
+
+    def build_strategy() -> BaseStrategy:
+        if isinstance(strategy, BaseStrategy):
+            return strategy
+        return strategy()  # type: ignore
+
+    while attempts <= max_restarts:
+        stop_event = ThreadEvent()
+        monitor_stop = ThreadEvent()
+        last_heartbeat = time.time()
+
+        def on_hb(ev: Event) -> None:
+            nonlocal last_heartbeat
+            last_heartbeat = time.time()
+
+        events.register(EventType.HEARTBEAT, on_hb)
+
+        def watchdog() -> None:
+            while not monitor_stop.wait(check_interval):
+                if time.time() - last_heartbeat > heartbeat_timeout:
+                    logger.error(
+                        "paper_runner.heartbeat_timeout",
+                        timeout=heartbeat_timeout,
+                        check_interval=check_interval,
+                        attempt=attempts + 1,
+                    )
+                    stop_event.set()
+                    break
+
+        t = Thread(target=watchdog, daemon=True, name="PaperRunnerMonitor")
+        t.start()
+
+        try:
+            result = run_paper_v3(
+                build_strategy(),
+                data_map,
+                events,
+                slippage=slippage,
+                initial_cash=initial_cash,
+                commission_rate=commission_rate,
+                on_bar_callback=on_bar_callback,
+                heartbeat_interval=heartbeat_interval,
+                stop_event=stop_event,
+            )
+            monitor_stop.set()
+            t.join(timeout=1.0)
+            events.unregister(EventType.HEARTBEAT, on_hb)
+            return result
+        except Exception as exc:
+            attempts += 1
+            monitor_stop.set()
+            t.join(timeout=1.0)
+            try:
+                events.unregister(EventType.HEARTBEAT, on_hb)
+            except Exception:
+                pass
+            if attempts > max_restarts:
+                logger.error("paper_runner.failed_after_retries", retries=max_restarts, error=str(exc))
+                raise
+            logger.warning("paper_runner.restart", attempt=attempts, error=str(exc))
+            continue
 
 
 # =============================================================================

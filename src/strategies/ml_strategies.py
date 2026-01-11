@@ -273,9 +273,15 @@ def _sigmoid(x: float) -> float:
 def _basic_features(df: pd.DataFrame) -> pd.DataFrame:
     """复用已有特征工程，确保列兼容性。"""
     try:
-        return MLWalkForwardStrategy._ta(df.copy())
+        feats = MLWalkForwardStrategy._ta(df.copy())
+        if not feats.empty:
+            return feats
     except Exception:
-        return pd.DataFrame(index=df.index)
+        pass
+    out = pd.DataFrame(index=df.index)
+    close = df["收盘"] if "收盘" in df else df.get("close", pd.Series(index=df.index, dtype=float))
+    out["ret1"] = close.pct_change().fillna(0)
+    return out
 
 
 class DeepSequenceStrategy(BaseStrategy):
@@ -439,6 +445,8 @@ class FeatureSelectionStrategy(BaseStrategy):
 
         ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
         self.selected_features = [k for k, _ in ranked[: self.top_k]]
+        if not self.selected_features:
+            self.selected_features = list(feats.columns[: self.top_k])
 
         if self.selected_features:
             weights = np.ones(len(self.selected_features)) / len(self.selected_features)
@@ -485,3 +493,44 @@ class EnsembleVotingStrategy(BaseStrategy):
             mean_prob = prob_df.mean(axis=1)
 
         return pd.DataFrame(index=df.index, data={"signal": out_signal, "prob": mean_prob})
+
+
+class RegimeAdaptiveMLStrategy(BaseStrategy):
+    """
+    简化版的“波动过滤 + 动量概率”示例策略。
+
+    - 使用 _basic_features 生成的动量特征
+    - 对波动率做滚动过滤，震荡期自动降权为观望
+    """
+
+    def __init__(self, regime_window: int = 40, prob_floor: float = 0.45, prob_cap: float = 0.55):
+        super().__init__(name="Regime-Filtered-ML")
+        self.regime_window = int(regime_window)
+        self.prob_floor = float(prob_floor)
+        self.prob_cap = float(prob_cap)
+
+    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        feats = _basic_features(df)
+        if feats.empty:
+            return pd.DataFrame(index=df.index, data={"signal": 0, "prob": 0.0, "regime_vol": 0.0})
+
+        momentum = feats.filter(like="ret").mean(axis=1).fillna(0)
+        regime_vol = momentum.rolling(self.regime_window, min_periods=max(5, self.regime_window // 4)).std().fillna(0)
+        prob = momentum.apply(_sigmoid)
+
+        vol_gate = max(float(regime_vol.quantile(0.75)), 1e-6)
+        active = regime_vol <= vol_gate
+        gated_prob = prob.where(active, 0.5)
+        if not regime_vol.empty:
+            gated_prob.loc[regime_vol.idxmax()] = 0.5
+        signal = gated_prob.apply(
+            lambda p: 1 if p >= self.prob_cap else (-1 if p <= self.prob_floor else 0)
+        )
+        return pd.DataFrame(
+            index=df.index,
+            data={
+                "signal": signal.astype(int),
+                "prob": gated_prob.astype(float),
+                "regime_vol": regime_vol.astype(float),
+            },
+        )

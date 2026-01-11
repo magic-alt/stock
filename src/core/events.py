@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from queue import Queue, Empty
 from threading import Thread, Event as TEvent
 from typing import Callable, Dict, List, Any, Protocol
+import time
 
 
 @dataclass(slots=True)
@@ -166,6 +167,9 @@ class EventType:
     PIPELINE_STAGE = "pipeline.stage"
     PIPELINE_PROGRESS = "pipeline.progress"
     PIPELINE_COMPLETED = "pipeline.completed"
+    
+    # Heartbeat / health check
+    HEARTBEAT = "system.heartbeat"
     
     # Risk events
     RISK_WARNING = "risk.warning"

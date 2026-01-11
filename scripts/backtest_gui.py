@@ -109,6 +109,17 @@ class AutoConfig:
     regime_scope: str = "trend"
 
 
+@dataclass
+class ComboConfig:
+    navs: Sequence[str]
+    objective: str = "sharpe"
+    step: str = "0.25"
+    allow_short: bool = False
+    max_weight: str = "1.0"
+    risk_free: str = "0.0"
+    out: Optional[str] = None
+
+
 def _ensure_valid_json(text: Optional[str], label: str) -> Optional[str]:
     """Validate JSON string (if provided) and return trimmed text."""
     if not text:
@@ -268,6 +279,31 @@ class CommandBuilder:
             cmd.append("--use_benchmark_regime")
         return cmd
 
+    @staticmethod
+    def build_combo(config: ComboConfig) -> List[str]:
+        if not config.navs:
+            raise ValueError("请至少选择一个 NAV CSV 文件")
+        cmd = [
+            sys.executable,
+            "unified_backtest_framework.py",
+            "combo",
+            "--navs",
+            *config.navs,
+            "--objective",
+            config.objective,
+            "--step",
+            str(config.step),
+            "--max_weight",
+            str(config.max_weight),
+            "--risk_free",
+            str(config.risk_free),
+        ]
+        if config.allow_short:
+            cmd.append("--allow_short")
+        if config.out:
+            cmd.extend(["--out", config.out])
+        return cmd
+
 
 class BacktestGUI:
     """回测分析主界面 V2.10.3"""
@@ -303,6 +339,10 @@ class BacktestGUI:
         self.running = False
         self.process = None
         self.log_queue: "Queue[str]" = Queue()
+        self.log_buffer: List[str] = []
+        self.log_poll_ms = 120
+        self.max_log_lines = 800
+        self.strategy_choices = sorted(STRATEGY_REGISTRY.keys())
         
         # 样式配置
         self.setup_styles()
@@ -311,7 +351,7 @@ class BacktestGUI:
         self.create_widgets()
 
         # 启动日志轮询，确保后台线程安全更新UI
-        self.root.after(80, self._poll_log_queue)
+        self.root.after(self.log_poll_ms, self._poll_log_queue)
         
         # 加载默认配置
         self.load_default_config()
@@ -353,8 +393,11 @@ class BacktestGUI:
         
         # 标签页3: AUTO - 多策略自动优化
         self.create_auto_tab()
+
+        # 标签页4: COMBO - 组合权重优化
+        self.create_combo_tab()
         
-        # 标签页4: DATA - 数据下载
+        # 标签页5: DATA - 数据下载
         self.create_data_download_tab()
         
         # 标签页5: LIST - 策略列表
@@ -402,7 +445,7 @@ class BacktestGUI:
         ttk.Combobox(
             strategy_frame, 
             textvariable=self.run_strategy_var,
-            values=sorted(STRATEGY_REGISTRY.keys()),
+            values=self.strategy_choices,
             state="readonly",
             width=30
         ).pack(side=tk.LEFT, padx=5)
@@ -618,7 +661,7 @@ class BacktestGUI:
         ttk.Combobox(
             scrollable_frame, 
             textvariable=self.grid_strategy_var,
-            values=sorted(STRATEGY_REGISTRY.keys()),
+            values=self.strategy_choices,
             state="readonly",
             width=40
         ).grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=5)
@@ -868,11 +911,11 @@ class BacktestGUI:
         strategy_scrollbar.config(command=self.auto_strategies_listbox.yview)
         
         # 填充策略列表
-        for strategy in sorted(STRATEGY_REGISTRY.keys()):
+        for strategy in self.strategy_choices:
             self.auto_strategies_listbox.insert(tk.END, strategy)
         
         # 默认选择几个常用策略
-        for idx, strategy in enumerate(sorted(STRATEGY_REGISTRY.keys())):
+        for idx, strategy in enumerate(self.strategy_choices):
             if strategy in ["ema", "macd", "bollinger", "rsi"]:
                 self.auto_strategies_listbox.selection_set(idx)
         row += 1
@@ -1055,6 +1098,67 @@ class BacktestGUI:
         ttk.Entry(out_frame, textvariable=self.auto_out_dir_var, width=30).pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(out_frame, text="浏览", command=self.browse_out_dir_auto).pack(side=tk.LEFT, padx=5)
     
+    def create_combo_tab(self):
+        """组合优化标签页"""
+        combo_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(combo_frame, text="?? 策略组合优化 (combo)")
+
+        row = 0
+        ttk.Label(combo_frame, text="NAV文件（回测结果CSV，支持多选）", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        nav_frame = ttk.Frame(combo_frame)
+        nav_frame.grid(row=row, column=0, sticky=(tk.W, tk.E))
+        self.combo_navs_text = scrolledtext.ScrolledText(nav_frame, width=60, height=4)
+        self.combo_navs_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        ttk.Button(nav_frame, text="选择文件", command=self._browse_nav_files).pack(side=tk.LEFT, padx=5)
+        row += 1
+
+        ttk.Label(combo_frame, text="优化目标 / 权重搜索", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+
+        opts_frame = ttk.Frame(combo_frame)
+        opts_frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=5)
+        self.combo_objective_var = tk.StringVar(value="sharpe")
+        ttk.Label(opts_frame, text="目标:").pack(side=tk.LEFT)
+        ttk.Combobox(
+            opts_frame,
+            textvariable=self.combo_objective_var,
+            values=["sharpe", "return", "drawdown"],
+            state="readonly",
+            width=12,
+        ).pack(side=tk.LEFT, padx=4)
+
+        ttk.Label(opts_frame, text="步长:").pack(side=tk.LEFT, padx=4)
+        self.combo_step_var = tk.StringVar(value="0.25")
+        ttk.Entry(opts_frame, textvariable=self.combo_step_var, width=8).pack(side=tk.LEFT)
+
+        ttk.Label(opts_frame, text="最大权重:").pack(side=tk.LEFT, padx=4)
+        self.combo_max_weight_var = tk.StringVar(value="1.0")
+        ttk.Entry(opts_frame, textvariable=self.combo_max_weight_var, width=8).pack(side=tk.LEFT)
+
+        self.combo_allow_short_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts_frame, text="允许空头", variable=self.combo_allow_short_var).pack(side=tk.LEFT, padx=6)
+
+        ttk.Label(opts_frame, text="无风险利率(日):").pack(side=tk.LEFT, padx=4)
+        self.combo_risk_free_var = tk.StringVar(value="0.0")
+        ttk.Entry(opts_frame, textvariable=self.combo_risk_free_var, width=8).pack(side=tk.LEFT)
+        row += 1
+
+        ttk.Label(combo_frame, text="输出路径（可选，保存组合NAV）", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=5
+        )
+        row += 1
+        out_frame_combo = ttk.Frame(combo_frame)
+        out_frame_combo.grid(row=row, column=0, sticky=(tk.W, tk.E))
+        self.combo_out_var = tk.StringVar(value="./combo_nav.csv")
+        ttk.Entry(out_frame_combo, textvariable=self.combo_out_var, width=40).pack(side=tk.LEFT, padx=4)
+        ttk.Button(out_frame_combo, text="选择路径", command=self._browse_combo_out).pack(side=tk.LEFT, padx=4)
+
     def create_data_download_tab(self):
         """数据下载标签页"""
         data_frame = ttk.Frame(self.notebook, padding=10)
@@ -1258,7 +1362,7 @@ class BacktestGUI:
         self.log_output(f"可用策略数: {len(STRATEGY_REGISTRY)}\n")
     
     def log_output(self, message):
-        """输出日志"""
+        """输出日志（写入队列，避免阻塞UI线程）"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_queue.put(f"[{timestamp}] {message}")
 
@@ -1267,11 +1371,23 @@ class BacktestGUI:
         try:
             while True:
                 msg = self.log_queue.get_nowait()
-                self.output_text.insert('end', msg + "\n")
+                self.log_buffer.append(msg)
         except Empty:
             pass
-        self.output_text.see('end')
-        self.root.after(80, self._poll_log_queue)
+
+        if self.log_buffer:
+            batch = "\n".join(self.log_buffer) + "\n"
+            self.log_buffer.clear()
+            self.output_text.insert('end', batch)
+            # 裁剪日志行数，防止 UI 卡顿
+            lines = self.output_text.get('1.0', 'end').splitlines()
+            if len(lines) > self.max_log_lines:
+                keep = "\n".join(lines[-self.max_log_lines :]) + "\n"
+                self.output_text.delete('1.0', 'end')
+                self.output_text.insert('end', keep)
+            self.output_text.see('end')
+
+        self.root.after(self.log_poll_ms, self._poll_log_queue)
     
     def clear_output(self):
         """清空输出"""
@@ -1307,6 +1423,26 @@ class BacktestGUI:
         directory = filedialog.askdirectory()
         if directory:
             self.auto_out_dir_var.set(directory)
+
+    def _browse_nav_files(self):
+        """选择 NAV CSV 文件并填充文本框"""
+        filenames = filedialog.askopenfilenames(
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if filenames:
+            existing = self.combo_navs_text.get("1.0", "end").strip().split()
+            merged = list(existing) + list(filenames)
+            self.combo_navs_text.delete("1.0", "end")
+            self.combo_navs_text.insert("1.0", "\n".join(merged))
+
+    def _browse_combo_out(self):
+        """选择组合NAV输出路径"""
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        if filename:
+            self.combo_out_var.set(filename)
     
     def browse_cache_dir(self):
         """浏览缓存目录"""
@@ -1328,7 +1464,7 @@ class BacktestGUI:
             # 加载策略
             strategies = config.get('strategies', [])
             self.auto_strategies_listbox.selection_clear(0, tk.END)
-            all_strategies = sorted(STRATEGY_REGISTRY.keys())
+            all_strategies = self.strategy_choices
             for strategy in strategies:
                 if strategy in all_strategies:
                     idx = all_strategies.index(strategy)
@@ -1379,6 +1515,8 @@ class BacktestGUI:
             self.run_command_grid()
         elif "自动优化" in current_tab:
             self.run_command_auto()
+        elif "组合优化" in current_tab:
+            self.run_command_combo()
         else:
             messagebox.showinfo("提示", "请切换到对应的功能标签页")
     
@@ -1485,6 +1623,27 @@ class BacktestGUI:
             
         except Exception as e:
             messagebox.showerror("错误", f"构建命令失败: {str(e)}")
+
+    def run_command_combo(self):
+        """执行 COMBO 命令"""
+        try:
+            navs = [s for s in self.combo_navs_text.get("1.0", "end").split() if s.strip()]
+            if not navs:
+                messagebox.showwarning("警告", "请至少选择一个NAV文件")
+                return
+            combo_cfg = ComboConfig(
+                navs=navs,
+                objective=self.combo_objective_var.get(),
+                step=self.combo_step_var.get(),
+                allow_short=self.combo_allow_short_var.get(),
+                max_weight=self.combo_max_weight_var.get(),
+                risk_free=self.combo_risk_free_var.get(),
+                out=self.combo_out_var.get() or None,
+            )
+            cmd = CommandBuilder.build_combo(combo_cfg)
+            self.execute_command(cmd)
+        except Exception as e:
+            messagebox.showerror("错误", f"组合优化命令失败: {str(e)}")
     
     def execute_command(self, cmd):
         """在后台线程执行命令"""

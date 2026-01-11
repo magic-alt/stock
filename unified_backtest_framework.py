@@ -22,9 +22,13 @@ from src.data_sources.providers import get_provider, PROVIDER_NAMES
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.backtest.engine import BacktestEngine
 from src.backtest.plotting import plot_backtest_with_indicators
+from src.optimizer.combo_optimizer import load_nav_series, optimize_portfolio
+from src.core.logger import get_logger
 
 # Default cache directory
 CACHE_DEFAULT = "./cache"
+
+logger = get_logger("unified_cli")
 
 
 def parse_args() -> argparse.Namespace:
@@ -105,6 +109,17 @@ def parse_args() -> argparse.Namespace:
     auto_p.add_argument("--fee-params", dest="fee_params", default=None,
                         help='Fee plugin parameters as JSON string')
 
+    # ===== combo command =====
+    combo_p = sub.add_parser("combo", help="Optimize combination weights from NAV CSVs")
+    combo_p.add_argument("--navs", nargs="+", required=True, help="List of NAV csv files (with 'nav' column)")
+    combo_p.add_argument("--names", nargs="*", default=None, help="Optional names for each NAV")
+    combo_p.add_argument("--objective", default="sharpe", choices=["sharpe", "return", "drawdown"])
+    combo_p.add_argument("--step", type=float, default=0.25, help="Grid search step for weights")
+    combo_p.add_argument("--allow_short", action="store_true", help="Allow negative weights in grid search")
+    combo_p.add_argument("--max_weight", type=float, default=1.0, help="Max absolute weight per leg")
+    combo_p.add_argument("--risk_free", type=float, default=0.0, help="Daily risk-free rate for Sharpe")
+    combo_p.add_argument("--out", default=None, help="Optional path to save combined NAV csv")
+
     # ===== list command =====
     sub.add_parser("list", help="List registered strategies")
 
@@ -117,9 +132,33 @@ def main() -> None:
     
     # ===== list command =====
     if args.command == "list":
-        print("Available strategies:")
+        logger.info("Available strategies:")
         for name, module in STRATEGY_REGISTRY.items():
-            print(f"- {name}: {module.description}")
+            logger.info(f"- {name}: {module.description}")
+        return
+
+    # ===== combo command =====
+    if args.command == "combo":
+        names = args.names or [os.path.splitext(os.path.basename(p))[0] for p in args.navs]
+        if len(names) != len(args.navs):
+            logger.error("names length must match navs length")
+            return
+        nav_map = {name: load_nav_series(path) for name, path in zip(names, args.navs)}
+        result = optimize_portfolio(
+            nav_map,
+            step=args.step,
+            objective=args.objective,
+            allow_short=args.allow_short,
+            max_weight=args.max_weight,
+            risk_free=args.risk_free,
+        )
+        payload = {
+            "weights": result.weights,
+            "stats": result.stats,
+        }
+        logger.info(json.dumps(payload, indent=2, default=float))
+        if args.out:
+            result.nav.to_csv(args.out)
         return
 
     # ===== run command =====
@@ -133,7 +172,7 @@ def main() -> None:
             try:
                 fee_plugin_params = json.loads(args.fee_params)
             except json.JSONDecodeError as e:
-                print(f"Error parsing --fee-params: {e}")
+                logger.error("Error parsing --fee-params", error=str(e))
                 return
         
         engine = BacktestEngine(
@@ -160,7 +199,7 @@ def main() -> None:
         nav = metrics.pop("nav")
         cerebro = metrics.pop("_cerebro", None)
         
-        print(json.dumps({k: v for k, v in metrics.items() if k != "nav"}, indent=2, default=float))
+        logger.info(json.dumps({k: v for k, v in metrics.items() if k != "nav"}, indent=2, default=float))
         
         if args.out_dir:
             os.makedirs(args.out_dir, exist_ok=True)
@@ -181,7 +220,7 @@ def main() -> None:
                 metrics=metrics,  # 传递性能指标
             )
             if report_dir:
-                print(f"\n[报告] 详细报告已保存到: {report_dir}")
+                logger.info(f"[报告] 详细报告已保存到: {report_dir}")
         return
 
     # ===== grid command =====
@@ -209,7 +248,7 @@ def main() -> None:
         if args.out_csv:
             df.to_csv(args.out_csv, index=False)
         else:
-            print(df.head())
+            logger.info(df.head().to_string())
         return
 
     # ===== auto command =====
@@ -237,7 +276,7 @@ def main() -> None:
             use_benchmark_regime=args.use_benchmark_regime,
             regime_scope=args.regime_scope,
         )
-        print(f"Pipeline completed. Results saved to {args.out_dir}")
+        logger.info(f"Pipeline completed. Results saved to {args.out_dir}")
         return
 
 

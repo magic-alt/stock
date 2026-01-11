@@ -1,0 +1,95 @@
+# 量化交易系统配置文件示例
+# 复制此文件为 config.yaml 并根据实际情况修改
+
+# 数据源配置
+data:
+  provider: akshare  # 数据源: akshare, yfinance, tushare
+  cache_dir: ./cache
+  adj: qfq  # 复权类型: qfq (前复权), hfq (后复权), noadj (不复权)
+  start_date: "2023-01-01"
+  end_date: "2024-12-31"
+  
+  # 数据源详细配置
+  providers:
+    akshare:
+      enabled: true
+      rate_limit: 0.5  # 每秒最多2次请求
+    yfinance:
+      enabled: true
+      rate_limit: 1.0
+    tushare:
+      enabled: false  # 需要token
+      token: ""  # 从环境变量 TUSHARE_TOKEN 读取
+
+# 回测配置
+backtest:
+  initial_cash: 200000.0  # 初始资金（元）
+  commission: 0.0003  # 佣金率（万三）
+  slippage: 0.001  # 滑点（千分之一）
+  slippage_type: percentage  # fixed, percentage, volume
+  min_trade_unit: 100  # 最小交易单位（A股100股）
+  allow_short: false  # 是否允许做空（A股不支持）
+
+# 风险控制配置
+risk:
+  enabled: true  # 启用风控
+  strict_mode: true  # 严格模式：任何规则失败都拒绝订单
+  max_position_pct: 0.30  # 单只股票最大仓位（30%）
+  max_positions: 10  # 最大持仓数量
+  daily_loss_limit: 0.05  # 日亏损限制（5%）
+  max_drawdown_limit: 0.20  # 最大回撤限制（20%）
+  max_order_value: 100000.0  # 单笔最大订单金额
+  min_order_value: 1000.0  # 单笔最小订单金额
+  max_price_deviation_pct: 0.05  # 最大价格偏差（5%）
+
+# 执行配置
+execution:
+  gateway: paper  # 网关类型: paper (模拟), backtest (回测), live (实盘)
+  mode: vectorized  # 执行模式: vectorized (向量化), event (事件驱动)
+  enable_matching: true  # 启用订单撮合模拟
+  enable_slippage: true  # 启用滑点模拟
+  
+  # 实盘网关配置（仅当 gateway=live 时生效）
+  live_gateway:
+    broker: futu  # 经纪商: futu, ib, ctp
+    account_id: ""  # 账户ID
+    testnet: true  # 使用测试环境
+
+# 策略配置
+strategy:
+  name: default_strategy
+  symbols:
+    - 600519.SH  # 贵州茅台
+    - 000858.SZ  # 五粮液
+  params:
+    period: 20
+    threshold: 0.02
+
+# 日志配置
+logging:
+  level: INFO  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: ./logs/quant.log  # 日志文件路径（None表示不写入文件）
+  format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+  json_format: false  # 生产环境建议设为 true（JSON格式便于ELK集成）
+  rotate_size: 10485760  # 日志轮转大小（10MB）
+  rotate_count: 5  # 保留日志文件数量
+
+# 数据库配置
+database:
+  path: ./cache/market_data.db
+  backup_enabled: true
+  backup_interval_hours: 24  # 每24小时备份一次
+  backup_retention_days: 30  # 保留30天备份
+
+# 监控配置
+monitoring:
+  enabled: true
+  health_check_interval: 60  # 健康检查间隔（秒）
+  metrics_port: 9090  # Prometheus metrics端口（0表示禁用）
+  alert_email: ""  # 告警邮箱（可选）
+
+# 性能配置
+performance:
+  max_workers: 4  # 最大并行工作进程数
+  cache_enabled: true  # 启用数据缓存
+  cache_expire_days: 1  # 缓存过期天数
