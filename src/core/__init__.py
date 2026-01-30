@@ -112,6 +112,16 @@ from .performance import (
     RateLimiter,
 )
 
+# Monitoring utilities
+from .monitoring import (
+    SystemMonitor,
+    start_monitoring,
+    stop_monitoring,
+    HeartbeatEmitter,
+    HeartbeatMonitor,
+    run_with_heartbeat_monitor,
+)
+
 __all__ = [
     # Events
     "Event",
@@ -204,4 +214,12 @@ __all__ = [
     "optimize_dataframe",
     "timed",
     "RateLimiter",
+
+    # Monitoring
+    "SystemMonitor",
+    "start_monitoring",
+    "stop_monitoring",
+    "HeartbeatEmitter",
+    "HeartbeatMonitor",
+    "run_with_heartbeat_monitor",
 ]

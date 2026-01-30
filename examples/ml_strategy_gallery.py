@@ -17,6 +17,10 @@ from src.strategies.ml_strategies import (
     MLWalkForwardStrategy,
     RegimeAdaptiveMLStrategy,
 )
+from src.strategies.ml_enhanced_strategy import (
+    MLEnhancedStrategy,
+    MLEnsembleStrategy,
+)
 
 
 def _dummy_ohlcv(rows: int = 240) -> pd.DataFrame:
@@ -46,12 +50,22 @@ def main() -> None:
     regime = RegimeAdaptiveMLStrategy(regime_window=25)
     regime_res = regime.generate_signals(df.tail(120))
 
+    enhanced = MLEnhancedStrategy(min_train=120, prob_threshold=0.60)
+    enhanced_res = enhanced.generate_signals(df.tail(160))
+
+    ensemble = MLEnsembleStrategy(min_train=120, prob_threshold=0.60)
+    ensemble_res = ensemble.generate_signals(df.tail(160))
+
     print("[MLWalkForward] 信号示例:")
     print(wf_res[["Signal", "ML_Prob"]].tail())
     print("\n[DeepSequence] 概率示例:")
     print(deep_res[["signal", "prob"]].tail())
     print("\n[RegimeAdaptive] 信号示例:")
     print(regime_res[["signal", "prob", "regime_vol"]].tail())
+    print("\n[MLEnhanced] 置信度示例:")
+    print(enhanced_res[["Signal", "Probability"]].tail())
+    print("\n[MLEnsemble] 置信度示例:")
+    print(ensemble_res[["Signal", "Probability"]].tail())
 
 
 if __name__ == "__main__":

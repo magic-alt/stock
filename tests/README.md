@@ -132,6 +132,8 @@ python -m pytest tests/ --cov=src --cov-report=term-missing
 | src/pipeline/* | >90% | ✅ |
 | **整体** | **>95%** | ✅ |
 
+**说明**: `pytest.ini` 已启用 ML 策略模块覆盖率门槛（`--cov-fail-under=90`），确保 `ml_strategies` / `ml_enhanced_strategy` 持续保持 90%+ 覆盖率。
+
 ## 🔧 测试配置
 
 ### pytest配置 (pytest.ini)

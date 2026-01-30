@@ -48,6 +48,7 @@ from src.core.context import EventEngineContext
 from src.core.paper_gateway_v3 import PaperGateway as PaperGatewayV3
 from src.core.events import EventEngine, Event, EventType
 from src.core.logger import get_logger
+from src.core.monitoring import run_with_heartbeat_monitor
 
 # Legacy template support removed in V3.1.0
 # The StrategyTemplate is deprecated - use BaseStrategy instead
@@ -472,69 +473,32 @@ def run_paper_with_monitor(
     If the runner stalls (no heartbeat within heartbeat_timeout) or raises,
     it will restart up to max_restarts times.
     """
-    attempts = 0
-    result: Dict[str, Any] = {}
-
     def build_strategy() -> BaseStrategy:
         if isinstance(strategy, BaseStrategy):
             return strategy
         return strategy()  # type: ignore
 
-    while attempts <= max_restarts:
-        stop_event = ThreadEvent()
-        monitor_stop = ThreadEvent()
-        last_heartbeat = time.time()
+    def runner(*, stop_event: Optional[ThreadEvent] = None) -> Dict[str, Any]:
+        return run_paper_v3(
+            build_strategy(),
+            data_map,
+            events,
+            slippage=slippage,
+            initial_cash=initial_cash,
+            commission_rate=commission_rate,
+            on_bar_callback=on_bar_callback,
+            heartbeat_interval=heartbeat_interval,
+            stop_event=stop_event,
+        )
 
-        def on_hb(ev: Event) -> None:
-            nonlocal last_heartbeat
-            last_heartbeat = time.time()
-
-        events.register(EventType.HEARTBEAT, on_hb)
-
-        def watchdog() -> None:
-            while not monitor_stop.wait(check_interval):
-                if time.time() - last_heartbeat > heartbeat_timeout:
-                    logger.error(
-                        "paper_runner.heartbeat_timeout",
-                        timeout=heartbeat_timeout,
-                        check_interval=check_interval,
-                        attempt=attempts + 1,
-                    )
-                    stop_event.set()
-                    break
-
-        t = Thread(target=watchdog, daemon=True, name="PaperRunnerMonitor")
-        t.start()
-
-        try:
-            result = run_paper_v3(
-                build_strategy(),
-                data_map,
-                events,
-                slippage=slippage,
-                initial_cash=initial_cash,
-                commission_rate=commission_rate,
-                on_bar_callback=on_bar_callback,
-                heartbeat_interval=heartbeat_interval,
-                stop_event=stop_event,
-            )
-            monitor_stop.set()
-            t.join(timeout=1.0)
-            events.unregister(EventType.HEARTBEAT, on_hb)
-            return result
-        except Exception as exc:
-            attempts += 1
-            monitor_stop.set()
-            t.join(timeout=1.0)
-            try:
-                events.unregister(EventType.HEARTBEAT, on_hb)
-            except Exception:
-                pass
-            if attempts > max_restarts:
-                logger.error("paper_runner.failed_after_retries", retries=max_restarts, error=str(exc))
-                raise
-            logger.warning("paper_runner.restart", attempt=attempts, error=str(exc))
-            continue
+    return run_with_heartbeat_monitor(
+        runner,
+        events=events,
+        heartbeat_timeout=heartbeat_timeout,
+        check_interval=check_interval,
+        max_restarts=max_restarts,
+        sources=["paper_runner_v3"],
+    )
 
 
 # =============================================================================

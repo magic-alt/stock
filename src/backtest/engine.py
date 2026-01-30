@@ -28,6 +28,9 @@ except ImportError as exc:
     raise ImportError("backtrader is required: pip install backtrader") from exc
 
 from src.data_sources.providers import get_provider, DataProviderError, CACHE_DEFAULT
+from src.data_sources.trading_calendar import TradingCalendar, apply_trading_calendar
+from src.data_sources.quality import run_quality_checks
+from src.backtest.repro import compute_data_fingerprint
 from src.strategies.backtrader_registry import BACKTRADER_STRATEGY_REGISTRY
 
 # Import strategy modules (will be defined in separate files)
@@ -125,6 +128,8 @@ class BacktestEngine:
         source: str = "akshare",
         benchmark_source: Optional[str] = None,
         cache_dir: str = CACHE_DEFAULT,
+        calendar: Optional[TradingCalendar] = None,
+        calendar_mode: str = "off",
         # V2.6.0: Optional dependency injection for event-driven architecture
         event_engine: Optional[EventEngine] = None,
         history_gateway: Optional[HistoryGateway] = None,
@@ -146,6 +151,8 @@ class BacktestEngine:
         self.source = source
         self.benchmark_source = benchmark_source or source
         self.cache_dir = cache_dir
+        self.calendar = calendar or TradingCalendar()
+        self.calendar_mode = calendar_mode
         
         # V2.6.0: Initialize event-driven components (with backward compatibility)
         self.events = event_engine or EventEngine()
@@ -160,10 +167,20 @@ class BacktestEngine:
         start: str,
         end: str,
         adj: Optional[str] = None,
+        calendar_mode: Optional[str] = None,
     ) -> Dict[str, pd.DataFrame]:
         """Fetch OHLCV data using the configured gateway (V2.6.0: event-aware)."""
         # V2.6.0: Use gateway protocol instead of direct provider access
         data = self.gw.load_bars(symbols, start, end, adj=adj)
+        mode = calendar_mode if calendar_mode is not None else self.calendar_mode
+        if mode and mode != "off":
+            data = apply_trading_calendar(
+                data,
+                start=start,
+                end=end,
+                calendar=self.calendar,
+                mode=mode,
+            )
         
         # V2.6.0: Publish data loaded event
         self.events.put(Event(EventType.DATA_LOADED, {
@@ -568,6 +585,8 @@ class BacktestEngine:
         enable_plot: bool = False,
         fee_plugin: Optional[str] = None,
         fee_plugin_params: Optional[Dict[str, Any]] = None,
+        calendar_mode: Optional[str] = None,
+        collect_diagnostics: bool = False,
     ) -> Dict[str, Any]:
         """
         Convenience wrapper returning both metrics and NAV for a single run.
@@ -585,7 +604,26 @@ class BacktestEngine:
         if not symbols:
             raise ValueError("At least one symbol is required")
             
-        data_map = self._load_data(symbols, start, end, adj=adj)
+        if collect_diagnostics:
+            raw_data = self._load_data(symbols, start, end, adj=adj, calendar_mode="off")
+            quality_report = run_quality_checks(
+                raw_data,
+                start=start,
+                end=end,
+                calendar=self.calendar,
+            )
+            data_map = apply_trading_calendar(
+                raw_data,
+                start=start,
+                end=end,
+                calendar=self.calendar,
+                mode=calendar_mode or self.calendar_mode,
+            )
+            data_fingerprint = compute_data_fingerprint(data_map)
+        else:
+            quality_report = None
+            data_fingerprint = None
+            data_map = self._load_data(symbols, start, end, adj=adj, calendar_mode=calendar_mode)
         bench_nav = self._load_benchmark(benchmark, start, end) if benchmark else None
         param_dict = module.coerce(params or {})
         
@@ -612,6 +650,9 @@ class BacktestEngine:
         
         metrics.update({"strategy": strategy, **param_dict})
         metrics["nav"] = nav
+        if collect_diagnostics:
+            metrics["_quality_report"] = quality_report
+            metrics["_data_fingerprint"] = data_fingerprint
         if cerebro:
             metrics["_cerebro"] = cerebro
             
@@ -634,6 +675,7 @@ class BacktestEngine:
         bench_nav: Optional[pd.Series] = None,
         max_workers: int = 1,
         extra_params: Optional[Dict[str, Any]] = None,
+        calendar_mode: Optional[str] = None,
     ) -> pd.DataFrame:
         """Evaluate the Cartesian product of parameters and return the score grid."""
         from .strategy_modules import STRATEGY_REGISTRY
@@ -641,7 +683,16 @@ class BacktestEngine:
         if strategy not in STRATEGY_REGISTRY:
             raise KeyError(f"Unknown strategy: {strategy}")
         module = STRATEGY_REGISTRY[strategy]
-        local_data_map = data_map if data_map is not None else self._load_data(symbols, start, end, adj=adj)
+        if data_map is not None:
+            local_data_map = apply_trading_calendar(
+                data_map,
+                start=start,
+                end=end,
+                calendar=self.calendar,
+                mode=calendar_mode or self.calendar_mode,
+            ) if (calendar_mode or self.calendar_mode) != "off" else data_map
+        else:
+            local_data_map = self._load_data(symbols, start, end, adj=adj, calendar_mode=calendar_mode)
         local_bench_nav = bench_nav if bench_nav is not None else (self._load_benchmark(benchmark, start, end) if benchmark else None)
         keys = list(grid.keys())
         combos = list(itertools.product(*grid.values()))
@@ -799,6 +850,7 @@ class BacktestEngine:
         hot_only: bool = False,
         use_benchmark_regime: bool = False,
         regime_scope: str = "trend",
+        calendar_mode: Optional[str] = None,
     ) -> None:
         """Run optimization for each strategy, combine results, and replay top picks."""
         from .strategy_modules import STRATEGY_REGISTRY
@@ -807,7 +859,7 @@ class BacktestEngine:
         strategies = strategies or ["ema","macd","bollinger","rsi","turning_point","keltner","zscore","donchian","triple_ma","adx_trend"]
         os.makedirs(out_dir, exist_ok=True)
         start_ts = time.perf_counter()
-        data_map = self._load_data(symbols, start, end, adj=adj)
+        data_map = self._load_data(symbols, start, end, adj=adj, calendar_mode=calendar_mode)
         logger.info("Data loaded", symbols=len(data_map), symbol_list=list(data_map.keys()))
         if not data_map:
             logger.error("No data loaded. Cannot proceed with auto pipeline.")

@@ -339,8 +339,8 @@ class BacktestGUI:
         self.running = False
         self.process = None
         self.log_queue: "Queue[str]" = Queue()
-        self.log_buffer: List[str] = []
         self.log_poll_ms = 120
+        self.log_batch_size = 200
         self.max_log_lines = 800
         self.strategy_choices = sorted(STRATEGY_REGISTRY.keys())
         
@@ -1368,26 +1368,25 @@ class BacktestGUI:
 
     def _poll_log_queue(self):
         """定时从队列刷新日志，避免跨线程直接操作Tk组件"""
-        try:
-            while True:
-                msg = self.log_queue.get_nowait()
-                self.log_buffer.append(msg)
-        except Empty:
-            pass
+        batch_lines = []
+        for _ in range(self.log_batch_size):
+            try:
+                batch_lines.append(self.log_queue.get_nowait())
+            except Empty:
+                break
 
-        if self.log_buffer:
-            batch = "\n".join(self.log_buffer) + "\n"
-            self.log_buffer.clear()
-            self.output_text.insert('end', batch)
+        if batch_lines:
+            self.output_text.insert('end', "\n".join(batch_lines) + "\n")
             # 裁剪日志行数，防止 UI 卡顿
-            lines = self.output_text.get('1.0', 'end').splitlines()
-            if len(lines) > self.max_log_lines:
-                keep = "\n".join(lines[-self.max_log_lines :]) + "\n"
-                self.output_text.delete('1.0', 'end')
-                self.output_text.insert('end', keep)
+            total_lines = int(self.output_text.index('end-1c').split('.')[0])
+            if total_lines > self.max_log_lines:
+                start_line = total_lines - self.max_log_lines + 1
+                self.output_text.delete('1.0', f"{start_line}.0")
             self.output_text.see('end')
 
-        self.root.after(self.log_poll_ms, self._poll_log_queue)
+        # 若还有大量日志，缩短下一次刷新间隔
+        delay = 20 if not self.log_queue.empty() else self.log_poll_ms
+        self.root.after(delay, self._poll_log_queue)
     
     def clear_output(self):
         """清空输出"""

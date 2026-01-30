@@ -34,6 +34,34 @@ python examples/batch_backtest.py
 
 ---
 
+### 3. ml_strategy_gallery.py - ML策略合集
+**适合进阶** | ML 策略速览
+
+快速浏览多个 ML 策略的信号输出：
+```bash
+python examples/ml_strategy_gallery.py
+```
+
+学习内容：
+- MLWalkForward / DeepSequence / RegimeAdaptive
+- MLEnhanced / MLEnsemble
+
+---
+
+### 4. ml_enhanced_examples.py - ML增强与集成
+**适合进阶** | 特征工程 + 集成策略
+
+演示 MLEnhancedStrategy 与 MLEnsembleStrategy 的基本用法：
+```bash
+python examples/ml_enhanced_examples.py
+```
+
+学习内容：
+- 归一化特征 + 置信度阈值
+- 多模型概率融合
+
+---
+
 ## 🚀 运行所有示例
 
 ```bash

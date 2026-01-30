@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import os
 import time
+import inspect
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
-from threading import Thread, Event
+from threading import Thread, Event as ThreadEvent
 
 # Optional dependency: psutil
 try:
@@ -75,7 +76,7 @@ class SystemMonitor:
         self.alerts: List[Alert] = []
         self._running = False
         self._thread: Optional[Thread] = None
-        self._stop_event = Event()
+        self._stop_event = ThreadEvent()
         
         # 数据库路径
         from src.core.defaults import PATHS
@@ -290,3 +291,201 @@ def stop_monitoring():
     """停止系统监控"""
     monitor = get_monitor()
     monitor.stop()
+
+
+# ---------------------------------------------------------------------------
+# Heartbeat monitoring
+# ---------------------------------------------------------------------------
+
+
+class HeartbeatEmitter:
+    """Emit periodic heartbeat events via EventEngine."""
+
+    def __init__(
+        self,
+        events,
+        *,
+        interval: float = 5.0,
+        source: str = "system",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        self.events = events
+        self.interval = max(interval, 0.1)
+        self.source = source
+        self.meta = meta or {}
+        self._stop_event = ThreadEvent()
+        self._thread: Optional[Thread] = None
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = Thread(
+            target=self._loop,
+            daemon=True,
+            name=f"HeartbeatEmitter[{self.source}]",
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+
+    def _loop(self) -> None:
+        from src.core.events import Event as CoreEvent, EventType
+        next_tick = time.time()
+        while not self._stop_event.is_set():
+            now = time.time()
+            if now >= next_tick:
+                payload = {
+                    "ts": now,
+                    "source": self.source,
+                    "meta": self.meta,
+                }
+                self.events.put(CoreEvent(EventType.HEARTBEAT, payload))
+                next_tick = now + self.interval
+            self._stop_event.wait(min(self.interval, 0.5))
+
+
+class HeartbeatMonitor:
+    """Monitor heartbeat events and trigger callbacks on timeout."""
+
+    def __init__(
+        self,
+        events,
+        *,
+        timeout: float = 30.0,
+        check_interval: float = 5.0,
+        sources: Optional[List[str]] = None,
+        on_timeout: Optional[Callable[[str, float], None]] = None,
+        on_recover: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        self.events = events
+        self.timeout = max(timeout, 0.1)
+        self.check_interval = max(check_interval, 0.1)
+        self.sources = set(sources) if sources else None
+        self.on_timeout = on_timeout
+        self.on_recover = on_recover
+        self._last_seen: Dict[str, float] = {}
+        self._timed_out: set[str] = set()
+        self._stop_event = ThreadEvent()
+        self._thread: Optional[Thread] = None
+        self._handler = self._on_heartbeat
+
+        if self.sources:
+            now = time.time()
+            for source in self.sources:
+                self._last_seen[source] = now
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        from src.core.events import EventType
+        self.events.register(EventType.HEARTBEAT, self._handler)
+        self._stop_event.clear()
+        self._thread = Thread(
+            target=self._loop,
+            daemon=True,
+            name="HeartbeatMonitor",
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        from src.core.events import EventType
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+        try:
+            self.events.unregister(EventType.HEARTBEAT, self._handler)
+        except Exception:
+            pass
+
+    def _on_heartbeat(self, event) -> None:
+        payload = event.data or {}
+        source = payload.get("source", "unknown")
+        if self.sources and source not in self.sources:
+            return
+        self._last_seen[source] = time.time()
+        if source in self._timed_out:
+            self._timed_out.remove(source)
+            if self.on_recover:
+                self.on_recover(source)
+
+    def _loop(self) -> None:
+        while not self._stop_event.is_set():
+            now = time.time()
+            for source, last_seen in list(self._last_seen.items()):
+                age = now - last_seen
+                if age > self.timeout and source not in self._timed_out:
+                    self._timed_out.add(source)
+                    if self.on_timeout:
+                        self.on_timeout(source, age)
+            self._stop_event.wait(self.check_interval)
+
+
+def run_with_heartbeat_monitor(
+    runner: Callable[..., Any],
+    *,
+    events,
+    heartbeat_timeout: float = 30.0,
+    check_interval: float = 5.0,
+    max_restarts: int = 1,
+    sources: Optional[List[str]] = None,
+    runner_args: Optional[List[Any]] = None,
+    runner_kwargs: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """
+    Run a callable with heartbeat monitoring and auto-restart.
+
+    The runner may accept a `stop_event` keyword argument for cooperative shutdown.
+    """
+    attempts = 0
+    runner_args = runner_args or []
+    runner_kwargs = runner_kwargs or {}
+
+    while attempts <= max_restarts:
+        stop_event = ThreadEvent()
+        timed_out = {"value": False}
+
+        def on_timeout(source: str, age: float) -> None:
+            timed_out["value"] = True
+            logger.error(
+                "heartbeat.timeout",
+                source=source,
+                age=round(age, 2),
+                timeout=heartbeat_timeout,
+                attempt=attempts + 1,
+            )
+            stop_event.set()
+
+        monitor = HeartbeatMonitor(
+            events,
+            timeout=heartbeat_timeout,
+            check_interval=check_interval,
+            sources=sources,
+            on_timeout=on_timeout,
+        )
+        monitor.start()
+
+        try:
+            kwargs = dict(runner_kwargs)
+            try:
+                if "stop_event" in inspect.signature(runner).parameters:
+                    kwargs["stop_event"] = stop_event
+            except (TypeError, ValueError):
+                pass
+            result = runner(*runner_args, **kwargs)
+            monitor.stop()
+            if timed_out["value"]:
+                raise RuntimeError("heartbeat timeout")
+            return result
+        except Exception as exc:
+            monitor.stop()
+            attempts += 1
+            if attempts > max_restarts:
+                logger.error("heartbeat.supervisor.failed", retries=max_restarts, error=str(exc))
+                raise
+            logger.warning("heartbeat.supervisor.restart", attempt=attempts, error=str(exc))

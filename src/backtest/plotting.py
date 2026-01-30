@@ -208,6 +208,9 @@ def generate_backtest_report(
     symbols: List[str],
     metrics: dict,
     report_dir: str,
+    repro_command: Optional[str] = None,
+    report_signature: Optional[str] = None,
+    snapshot_path: Optional[str] = None,
 ) -> None:
     """
     生成回测分析报告（Markdown格式）
@@ -352,14 +355,33 @@ def generate_backtest_report(
         report_lines.extend([
             f"---",
             f"",
-            f"## 5. 图表说明",
+            f"## 5. 复现信息",
+            f"",
+        ])
+        if repro_command:
+            report_lines.extend([
+                f"- **复现命令**: `{repro_command}`",
+            ])
+        if report_signature:
+            report_lines.extend([
+                f"- **报告签名**: `{report_signature}`",
+            ])
+        if snapshot_path:
+            report_lines.extend([
+                f"- **快照路径**: `{snapshot_path}`",
+            ])
+        report_lines.extend([
+            f"",
+            f"---",
+            f"",
+            f"## 6. 图表说明",
             f"",
             f"- **backtest_result.png**: K线图表，包含买卖点标记和技术指标",
             f"- **backtest_result.pkl**: 原生matplotlib格式，可用于重新编辑",
             f"",
             f"---",
             f"",
-            f"## 6. 使用建议",
+            f"## 7. 使用建议",
             f"",
             f"### 风险提示",
             f"- 历史数据回测结果不代表未来实际收益",
@@ -392,6 +414,9 @@ def generate_backtest_report(
             'initial_value': initial_value,
             'final_value': final_value,
             'metrics': metrics,
+            'repro_command': repro_command,
+            'report_signature': report_signature,
+            'snapshot_path': snapshot_path,
         }
         
         json_path = os.path.join(report_dir, "backtest_summary.json")
@@ -416,6 +441,10 @@ def plot_backtest_with_indicators(
     strategy_name: str = "strategy",   # 新增：策略名称
     symbols: List[str] = None,         # 新增：股票代码列表
     metrics: dict = None,              # 新增：性能指标
+    report_dir: Optional[str] = None,  # 新增：报告输出目录
+    repro_command: Optional[str] = None,
+    report_signature: Optional[str] = None,
+    snapshot_path: Optional[str] = None,
 ) -> Optional[str]:
     """
     绘制 Backtrader 回测结果，并添加技术指标。
@@ -433,6 +462,10 @@ def plot_backtest_with_indicators(
         strategy_name: 策略名称（用于目录命名）
         symbols: 股票代码列表（用于目录命名）
         metrics: 性能指标字典（用于生成报告）
+        report_dir: 报告输出目录（auto_save=True时生效）
+        repro_command: 复现命令
+        report_signature: 报告签名
+        snapshot_path: 配置快照路径
     
     Returns:
         保存的目录路径（如果auto_save=True）
@@ -441,17 +474,17 @@ def plot_backtest_with_indicators(
     print_trade_analysis(cerebro)
     
     # 自动保存模式：创建报告目录
-    report_dir = None
+    report_dir = report_dir
     if auto_save:
-        # 生成目录名：股票名_策略_时间
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        symbol_part = "_".join(symbols) if symbols else "unknown"
-        # 简化符号名（去除.SH/.SZ等）
-        symbol_part = symbol_part.replace(".SH", "").replace(".SZ", "").replace(".", "_")
-        dir_name = f"{symbol_part}_{strategy_name}_{timestamp}"
-        
-        # 创建report目录
-        report_dir = os.path.join("report", dir_name)
+        if report_dir is None:
+            # 生成目录名：股票名_策略_时间
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            symbol_part = "_".join(symbols) if symbols else "unknown"
+            # 简化符号名（去除.SH/.SZ等）
+            symbol_part = symbol_part.replace(".SH", "").replace(".SZ", "").replace(".", "_")
+            dir_name = f"{symbol_part}_{strategy_name}_{timestamp}"
+            # 创建report目录
+            report_dir = os.path.join("report", dir_name)
         os.makedirs(report_dir, exist_ok=True)
         
         # 设置输出文件路径
@@ -784,6 +817,9 @@ def plot_backtest_with_indicators(
                         symbols=symbols,
                         metrics=metrics,
                         report_dir=report_dir,
+                        repro_command=repro_command,
+                        report_signature=report_signature,
+                        snapshot_path=snapshot_path,
                     )
                 
                 # 关闭所有图表

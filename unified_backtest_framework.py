@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from typing import Dict
 
 # Import modularized components
@@ -22,6 +23,8 @@ from src.data_sources.providers import get_provider, PROVIDER_NAMES
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.backtest.engine import BacktestEngine
 from src.backtest.plotting import plot_backtest_with_indicators
+from src.backtest.repro import build_repro_command, build_snapshot_payload, compute_report_signature, write_snapshot
+from src.data_sources.quality import save_quality_report
 from src.optimizer.combo_optimizer import load_nav_series, optimize_portfolio
 from src.core.logger import get_logger
 
@@ -29,6 +32,17 @@ from src.core.logger import get_logger
 CACHE_DEFAULT = "./cache"
 
 logger = get_logger("unified_cli")
+
+
+def _build_report_dir(args: argparse.Namespace) -> str:
+    """Return output directory for reports/snapshots."""
+    if getattr(args, "out_dir", None):
+        return args.out_dir
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    symbol_part = "_".join(args.symbols) if getattr(args, "symbols", None) else "unknown"
+    symbol_part = symbol_part.replace(".SH", "").replace(".SZ", "").replace(".", "_")
+    strategy = getattr(args, "strategy", "run")
+    return os.path.join("report", f"{symbol_part}_{strategy}_{timestamp}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +66,8 @@ def parse_args() -> argparse.Namespace:
     run_p.add_argument("--adj", default=None)
     run_p.add_argument("--out_dir", default=None)
     run_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
+    run_p.add_argument("--calendar", choices=["off", "fill"], default="fill",
+                       help="Trading calendar alignment (off/fill)")
     run_p.add_argument("--plot", action="store_true", help="Display backtest chart with technical indicators")
     run_p.add_argument("--fee-config", dest="fee_config", default=None, 
                        help="Fee plugin name (e.g., 'cn_stock'). If not specified, uses default commission.")
@@ -73,6 +89,8 @@ def parse_args() -> argparse.Namespace:
     grid_p.add_argument("--slippage", type=float, default=0.0005)
     grid_p.add_argument("--adj", default=None)
     grid_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
+    grid_p.add_argument("--calendar", choices=["off", "fill"], default="fill",
+                        help="Trading calendar alignment (off/fill)")
     grid_p.add_argument("--out_csv", default=None)
     grid_p.add_argument("--workers", type=int, default=1)
     grid_p.add_argument("--fee-config", dest="fee_config", default=None,
@@ -98,6 +116,8 @@ def parse_args() -> argparse.Namespace:
     auto_p.add_argument("--adj", default=None)
     auto_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
     auto_p.add_argument("--out_dir", default="./reports_auto")
+    auto_p.add_argument("--calendar", choices=["off", "fill"], default="fill",
+                        help="Trading calendar alignment (off/fill)")
     auto_p.add_argument("--workers", type=int, default=1)
     auto_p.add_argument("--hot_only", action="store_true", help="Use narrowed hot-zone parameter grids for strategies")
     auto_p.add_argument("--use_benchmark_regime", action="store_true",
@@ -179,6 +199,7 @@ def main() -> None:
             source=args.source,
             benchmark_source=args.benchmark_source or args.source,
             cache_dir=args.cache_dir,
+            calendar_mode=args.calendar,
         )
         metrics = engine.run_strategy(
             args.strategy,
@@ -195,16 +216,51 @@ def main() -> None:
             enable_plot=args.plot,
             fee_plugin=fee_plugin,
             fee_plugin_params=fee_plugin_params,
+            calendar_mode=args.calendar,
+            collect_diagnostics=True,
         )
         nav = metrics.pop("nav")
         cerebro = metrics.pop("_cerebro", None)
+        quality_report = metrics.pop("_quality_report", None)
+        data_fingerprint = metrics.pop("_data_fingerprint", None)
         
         logger.info(json.dumps({k: v for k, v in metrics.items() if k != "nav"}, indent=2, default=float))
-        
+
+        report_dir = _build_report_dir(args)
+        os.makedirs(report_dir, exist_ok=True)
         if args.out_dir:
-            os.makedirs(args.out_dir, exist_ok=True)
-            nav.to_csv(os.path.join(args.out_dir, f"{args.strategy}_nav.csv"))
+            nav.to_csv(os.path.join(report_dir, f"{args.strategy}_nav.csv"))
         
+        run_config = {
+            "strategy": args.strategy,
+            "symbols": args.symbols,
+            "start": args.start,
+            "end": args.end,
+            "source": args.source,
+            "benchmark": args.benchmark,
+            "benchmark_source": args.benchmark_source or args.source,
+            "params": params or {},
+            "cash": args.cash,
+            "commission": args.commission,
+            "slippage": args.slippage,
+            "adj": args.adj,
+            "calendar_mode": args.calendar,
+            "cache_dir": args.cache_dir,
+        }
+        repro_command = build_repro_command(args)
+        snapshot_payload = build_snapshot_payload(
+            run_config=run_config,
+            metrics={k: v for k, v in metrics.items() if k != "nav"},
+            data_fingerprint=data_fingerprint or {},
+            quality_report=quality_report,
+            repro_command=repro_command,
+        )
+        report_signature = compute_report_signature(snapshot_payload)
+        snapshot_payload["report_signature"] = report_signature
+        snapshot_path = write_snapshot(report_dir, snapshot_payload)
+        if quality_report:
+            save_quality_report(report_dir, quality_report)
+
         # Plot if enabled and cerebro is available
         if args.plot and cerebro:
             # 自动保存模式：保存到report目录
@@ -218,6 +274,10 @@ def main() -> None:
                 strategy_name=args.strategy,
                 symbols=args.symbols,
                 metrics=metrics,  # 传递性能指标
+                report_dir=report_dir,
+                repro_command=repro_command,
+                report_signature=report_signature,
+                snapshot_path=snapshot_path,
             )
             if report_dir:
                 logger.info(f"[报告] 详细报告已保存到: {report_dir}")
@@ -229,6 +289,7 @@ def main() -> None:
             source=args.source,
             benchmark_source=args.benchmark_source or args.source,
             cache_dir=args.cache_dir,
+            calendar_mode=args.calendar,
         )
         module = STRATEGY_REGISTRY[args.strategy]
         grid = json.loads(args.grid) if args.grid else module.grid_defaults
@@ -244,6 +305,7 @@ def main() -> None:
             benchmark=args.benchmark,
             adj=args.adj,
             max_workers=args.workers,
+            calendar_mode=args.calendar,
         )
         if args.out_csv:
             df.to_csv(args.out_csv, index=False)
@@ -257,6 +319,7 @@ def main() -> None:
             source=args.source,
             benchmark_source=args.benchmark_source or args.source,
             cache_dir=args.cache_dir,
+            calendar_mode=args.calendar,
         )
         engine.auto_pipeline(
             args.symbols,
@@ -275,6 +338,7 @@ def main() -> None:
             hot_only=args.hot_only,
             use_benchmark_regime=args.use_benchmark_regime,
             regime_scope=args.regime_scope,
+            calendar_mode=args.calendar,
         )
         logger.info(f"Pipeline completed. Results saved to {args.out_dir}")
         return

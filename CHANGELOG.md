@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### 🛠️ Improvements
+- GUI: batch log rendering to reduce UI stutter in `scripts/backtest_gui.py`.
+- Core: add heartbeat monitoring utilities and reuse them in `paper_runner_v3`.
+- ML: add new strategy examples in `examples/` and expand the gallery.
+- Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.
+- Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
+- Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
+
 ## [V3.2.0] - 2026-01-11
 
 ### 🎯 Phase 2 部分完成: 实盘交易API
