@@ -10,6 +10,7 @@ from .model_registry import ModelRegistry, ModelMetadata
 from .inference import InferenceService, BatchInferenceRunner
 from .validation import population_stability_index, detect_feature_drift, compare_backtest_live_metrics
 from .finrl_adapter import build_finrl_frame
+from .qlib_adapter import build_qlib_frame
 
 __all__ = [
     "SignalSchema",
@@ -29,4 +30,5 @@ __all__ = [
     "detect_feature_drift",
     "compare_backtest_live_metrics",
     "build_finrl_frame",
+    "build_qlib_frame",
 ]
