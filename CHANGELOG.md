@@ -9,8 +9,18 @@ All notable changes to this project will be documented in this file.
 - Core: add heartbeat monitoring utilities and reuse them in `paper_runner_v3`.
 - ML: add new strategy examples in `examples/` and expand the gallery.
 - Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.
+- MLOps: add AI signal schema and `AISignalStrategy` adapter for framework integration.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
+- Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
+- Execution: add market impact slippage, fill-probability, and delay models to simulation matching engine.
+- Compliance: add audit logging, RBAC authorization, and tenant/strategy isolation hooks.
+- HA/DR: add snapshot/restore utilities and component registry for health checks.
+- Data: add lineage records to SQLite cache for compliance tracking.
+
+### 📝 Documentation
+- Added AI framework integration analysis and implementation plan in `docs/AI_FRAMEWORK_INTEGRATION.md`.
+- Expanded Phase 3.5 AI integration plan in `ROADMAP.md`.
 
 ## [V3.2.0] - 2026-01-11
 
