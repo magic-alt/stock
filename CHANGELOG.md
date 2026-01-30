@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - MLOps: add Qlib data adapter with long and MultiIndex formats.
 - MLOps: add training/export helpers and registry registration flow.
 - MLOps: add FinRL/Qlib trainer adapters for standardized registration.
+- MLOps: add FinRL/Qlib training scripts and integration modules.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.

@@ -18,6 +18,8 @@ from .training import (
     QlibTrainerAdapter,
     register_trained_model,
 )
+from .finrl_training import FinRLTrainingConfig, train_and_register_finrl
+from .qlib_training import QlibTrainingConfig, train_and_register_qlib
 
 __all__ = [
     "SignalSchema",
@@ -43,4 +45,8 @@ __all__ = [
     "FinRLTrainerAdapter",
     "QlibTrainerAdapter",
     "register_trained_model",
+    "FinRLTrainingConfig",
+    "train_and_register_finrl",
+    "QlibTrainingConfig",
+    "train_and_register_qlib",
 ]
