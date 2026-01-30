@@ -4,6 +4,10 @@ MLOps utilities for AI signal integration.
 
 from .signals import SignalSchema, SignalAction, normalize_signal_output
 from .strategy_adapter import AISignalStrategy, default_feature_builder
+from .data_adapter import normalize_ohlcv_frame, align_to_trading_calendar, build_feature_frame
+from .license_policy import LicensePolicy
+from .model_registry import ModelRegistry, ModelMetadata
+from .inference import InferenceService, BatchInferenceRunner
 
 __all__ = [
     "SignalSchema",
@@ -11,4 +15,12 @@ __all__ = [
     "normalize_signal_output",
     "AISignalStrategy",
     "default_feature_builder",
+    "normalize_ohlcv_frame",
+    "align_to_trading_calendar",
+    "build_feature_frame",
+    "LicensePolicy",
+    "ModelRegistry",
+    "ModelMetadata",
+    "InferenceService",
+    "BatchInferenceRunner",
 ]

@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - MLOps: add AI signal schema and `AISignalStrategy` adapter for framework integration.
 - MLOps: add OHLCV normalization and calendar alignment utilities for AI feature pipelines.
 - MLOps: add JSON model registry and license policy checks for AI framework compliance.
+- MLOps: add local inference service and batch runner for AI signal generation.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
