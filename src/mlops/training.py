@@ -100,6 +100,34 @@ class BaseTrainerAdapter:
         )
 
 
+class FinRLTrainerAdapter(BaseTrainerAdapter):
+    """Convenience adapter for FinRL workflows (MIT license)."""
+
+    def __init__(self, *, name: str, train_fn: TrainFn, export_fn: Optional[ExportFn] = None, **kwargs) -> None:
+        super().__init__(
+            name=name,
+            framework="finrl",
+            license_id="MIT",
+            train_fn=train_fn,
+            export_fn=export_fn,
+            **kwargs,
+        )
+
+
+class QlibTrainerAdapter(BaseTrainerAdapter):
+    """Convenience adapter for Qlib workflows (MIT license)."""
+
+    def __init__(self, *, name: str, train_fn: TrainFn, export_fn: Optional[ExportFn] = None, **kwargs) -> None:
+        super().__init__(
+            name=name,
+            framework="qlib",
+            license_id="MIT",
+            train_fn=train_fn,
+            export_fn=export_fn,
+            **kwargs,
+        )
+
+
 def register_trained_model(
     trainer: TrainerProtocol,
     registry: Optional[ModelRegistry] = None,

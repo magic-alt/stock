@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from src.mlops.model_registry import ModelRegistry
-from src.mlops.training import BaseTrainerAdapter, TrainingArtifact, register_trained_model
+from src.mlops.training import BaseTrainerAdapter, FinRLTrainerAdapter, QlibTrainerAdapter, TrainingArtifact, register_trained_model
 
 
 def test_register_trained_model(tmp_path: Path) -> None:
@@ -49,3 +49,15 @@ def test_trainer_export_fn(tmp_path: Path) -> None:
     )
     artifact = trainer.train()
     assert Path(artifact.artifact_path).exists()
+
+
+def test_framework_trainer_defaults() -> None:
+    def train_fn() -> TrainingArtifact:
+        return TrainingArtifact(artifact_path="dummy.bin")
+
+    finrl = FinRLTrainerAdapter(name="finrl-demo", train_fn=train_fn)
+    qlib = QlibTrainerAdapter(name="qlib-demo", train_fn=train_fn)
+    assert finrl.framework == "finrl"
+    assert finrl.license_id == "MIT"
+    assert qlib.framework == "qlib"
+    assert qlib.license_id == "MIT"
