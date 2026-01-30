@@ -11,6 +11,7 @@ from .inference import InferenceService, BatchInferenceRunner
 from .validation import population_stability_index, detect_feature_drift, compare_backtest_live_metrics
 from .finrl_adapter import build_finrl_frame
 from .qlib_adapter import build_qlib_frame
+from .training import TrainingArtifact, BaseTrainerAdapter, register_trained_model
 
 __all__ = [
     "SignalSchema",
@@ -31,4 +32,7 @@ __all__ = [
     "compare_backtest_live_metrics",
     "build_finrl_frame",
     "build_qlib_frame",
+    "TrainingArtifact",
+    "BaseTrainerAdapter",
+    "register_trained_model",
 ]

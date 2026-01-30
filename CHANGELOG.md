@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - MLOps: add drift detection and backtest/live consistency checks.
 - MLOps: add FinRL data adapter for long-format training pipelines.
 - MLOps: add Qlib data adapter with long and MultiIndex formats.
+- MLOps: add training/export helpers and registry registration flow.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
