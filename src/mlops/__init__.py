@@ -8,6 +8,7 @@ from .data_adapter import normalize_ohlcv_frame, align_to_trading_calendar, buil
 from .license_policy import LicensePolicy
 from .model_registry import ModelRegistry, ModelMetadata
 from .inference import InferenceService, BatchInferenceRunner
+from .validation import population_stability_index, detect_feature_drift, compare_backtest_live_metrics
 
 __all__ = [
     "SignalSchema",
@@ -23,4 +24,7 @@ __all__ = [
     "ModelMetadata",
     "InferenceService",
     "BatchInferenceRunner",
+    "population_stability_index",
+    "detect_feature_drift",
+    "compare_backtest_live_metrics",
 ]
