@@ -9,6 +9,7 @@ from .license_policy import LicensePolicy
 from .model_registry import ModelRegistry, ModelMetadata
 from .inference import InferenceService, BatchInferenceRunner
 from .validation import population_stability_index, detect_feature_drift, compare_backtest_live_metrics
+from .finrl_adapter import build_finrl_frame
 
 __all__ = [
     "SignalSchema",
@@ -27,4 +28,5 @@ __all__ = [
     "population_stability_index",
     "detect_feature_drift",
     "compare_backtest_live_metrics",
+    "build_finrl_frame",
 ]
