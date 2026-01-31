@@ -15,6 +15,7 @@ V2.10.1 Update:
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import time
@@ -262,6 +263,17 @@ def _nav_from_close(close: pd.Series) -> pd.Series:
     return nav
 
 
+def _data_checksum(df: pd.DataFrame) -> Optional[str]:
+    """Compute a checksum for a dataframe."""
+    if df is None or df.empty:
+        return None
+    frame = df.copy()
+    frame.index = pd.to_datetime(frame.index)
+    frame = frame.sort_index()
+    hash_values = pd.util.hash_pandas_object(frame, index=True).values
+    return hashlib.sha256(hash_values.tobytes()).hexdigest()
+
+
 # ---------------------------------------------------------------------------
 # AKShare Provider
 # ---------------------------------------------------------------------------
@@ -328,6 +340,18 @@ class AkshareProvider(DataProvider):
                     if df_new is not None and not df_new.empty:
                         # Save to database
                         self.db.save_stock_data(symbol, df_new, adj_type)
+                        # Record lineage
+                        checksum = _data_checksum(df_new)
+                        self.db.record_lineage(
+                            symbol=symbol,
+                            data_type="stock",
+                            adj_type=adj_type,
+                            source=self.name,
+                            start_date=str(df_new.index.min().date()),
+                            end_date=str(df_new.index.max().date()),
+                            record_count=len(df_new),
+                            checksum=checksum,
+                        )
                         logger.debug(f"  Saved {len(df_new)} bars for range {fetch_start} to {fetch_end}")
                 
                 # Load complete data from database
@@ -441,6 +465,17 @@ class AkshareProvider(DataProvider):
                 df_new = self._fetch_index_from_source(index_code, fetch_start, fetch_end)
                 if df_new is not None and not df_new.empty:
                     self.db.save_index_data(index_code, df_new, adj_type)
+                    checksum = _data_checksum(df_new)
+                    self.db.record_lineage(
+                        symbol=index_code,
+                        data_type="index",
+                        adj_type=adj_type,
+                        source=self.name,
+                        start_date=str(df_new.index.min().date()),
+                        end_date=str(df_new.index.max().date()),
+                        record_count=len(df_new),
+                        checksum=checksum,
+                    )
             
             # Load complete data
             final_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)
@@ -585,6 +620,28 @@ class YFinanceProvider(DataProvider):
                     df_new = self._fetch_stock_from_source(symbol, fetch_start, fetch_end, adj)
                     if df_new is not None:
                         self.db.save_stock_data(symbol, df_new, adj_type)
+                        checksum = _data_checksum(df_new)
+                        self.db.record_lineage(
+                            symbol=symbol,
+                            data_type="stock",
+                            adj_type=adj_type,
+                            source=self.name,
+                            start_date=str(df_new.index.min().date()),
+                            end_date=str(df_new.index.max().date()),
+                            record_count=len(df_new),
+                            checksum=checksum,
+                        )
+                        checksum = _data_checksum(df_new)
+                        self.db.record_lineage(
+                            symbol=symbol,
+                            data_type="stock",
+                            adj_type=adj_type,
+                            source=self.name,
+                            start_date=str(df_new.index.min().date()),
+                            end_date=str(df_new.index.max().date()),
+                            record_count=len(df_new),
+                            checksum=checksum,
+                        )
                 
                 # Load complete data
                 final_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
@@ -654,6 +711,28 @@ class YFinanceProvider(DataProvider):
                 df_new = self._fetch_index_from_source(index_code, fetch_start, fetch_end)
                 if df_new is not None:
                     self.db.save_index_data(index_code, df_new, adj_type)
+                    checksum = _data_checksum(df_new)
+                    self.db.record_lineage(
+                        symbol=index_code,
+                        data_type="index",
+                        adj_type=adj_type,
+                        source=self.name,
+                        start_date=str(df_new.index.min().date()),
+                        end_date=str(df_new.index.max().date()),
+                        record_count=len(df_new),
+                        checksum=checksum,
+                    )
+                    checksum = _data_checksum(df_new)
+                    self.db.record_lineage(
+                        symbol=index_code,
+                        data_type="index",
+                        adj_type=adj_type,
+                        source=self.name,
+                        start_date=str(df_new.index.min().date()),
+                        end_date=str(df_new.index.max().date()),
+                        record_count=len(df_new),
+                        checksum=checksum,
+                    )
             
             # Load complete data
             final_df = self.db.load_index_data(index_code, start_clean, end_clean, adj_type)

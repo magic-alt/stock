@@ -31,6 +31,15 @@ from src.data_sources.providers import get_provider, DataProviderError, CACHE_DE
 from src.data_sources.trading_calendar import TradingCalendar, apply_trading_calendar
 from src.data_sources.quality import run_quality_checks
 from src.backtest.repro import compute_data_fingerprint
+from src.backtest.attribution import (
+    compute_var_es,
+    compute_tracking_error,
+    compute_information_ratio,
+    compute_capm_metrics,
+    compute_style_exposure,
+    compute_concentration_metrics,
+    compute_sector_exposure,
+)
 from src.strategies.backtrader_registry import BACKTRADER_STRATEGY_REGISTRY
 
 # Import strategy modules (will be defined in separate files)
@@ -428,6 +437,16 @@ class BacktestEngine:
         metrics["ann_return"] = float((1 + timeret).prod() ** (ann_factor / max(len(timeret), 1)) - 1) if len(timeret) else float("nan")
         metrics["ann_vol"] = float(std * math.sqrt(ann_factor)) if std == std else float("nan")
         metrics["mdd"] = float(-((nav / nav.cummax()) - 1).min()) if len(nav) else float("nan")
+
+        # Risk metrics (VaR / ES)
+        var_95, es_95 = compute_var_es(timeret, level=0.95)
+        var_99, es_99 = compute_var_es(timeret, level=0.99)
+        metrics.update({
+            "var_95": float(var_95),
+            "es_95": float(es_95),
+            "var_99": float(var_99),
+            "es_99": float(es_99),
+        })
         
         # Trade statistics
         try:
@@ -481,6 +500,37 @@ class BacktestEngine:
                 "exposure_ratio": float("nan"),
                 "trade_freq": float("nan"),
             })
+
+        # Attribution vs benchmark
+        if benchmark_nav is not None and not benchmark_nav.empty:
+            try:
+                bench_returns = benchmark_nav.pct_change().dropna()
+                aligned = pd.concat([timeret, bench_returns], axis=1).dropna()
+                if not aligned.empty:
+                    strat_ret = aligned.iloc[:, 0]
+                    bench_ret = aligned.iloc[:, 1]
+                    metrics["tracking_error"] = compute_tracking_error(strat_ret, bench_ret, ann_factor)
+                    metrics["info_ratio"] = compute_information_ratio(strat_ret, bench_ret, ann_factor)
+                    metrics.update(compute_capm_metrics(strat_ret, bench_ret, risk_free=0.0, annual_factor=ann_factor))
+                    metrics.update(compute_style_exposure(strat_ret, bench_ret))
+            except Exception:
+                metrics["tracking_error"] = float("nan")
+                metrics["info_ratio"] = float("nan")
+                metrics["beta"] = float("nan")
+                metrics["alpha_daily"] = float("nan")
+                metrics["alpha_annual"] = float("nan")
+                metrics["r2"] = float("nan")
+                metrics["market_corr"] = float("nan")
+                metrics["momentum_corr"] = float("nan")
+                metrics["volatility_corr"] = float("nan")
+
+        # Optional portfolio concentration / sector exposure (if provided)
+        weights = params.get("_position_weights") if isinstance(params, dict) else None
+        sector_map = params.get("_sector_map") if isinstance(params, dict) else None
+        if isinstance(weights, dict):
+            metrics.update(compute_concentration_metrics(weights))
+            if isinstance(sector_map, dict):
+                metrics["sector_exposure"] = compute_sector_exposure(weights, sector_map)
             
         # Calmar ratio
         metrics["calmar"] = float(metrics["ann_return"] / metrics["mdd"]) if (metrics.get("mdd") and metrics["mdd"] > 0) else float("nan")

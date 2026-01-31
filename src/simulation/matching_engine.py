@@ -13,6 +13,7 @@ from src.core.events import EventEngine, Event, EventType
 from .order import Order, Trade, OrderStatus, OrderType, OrderDirection
 from .order_book import OrderBook
 from .slippage import SlippageModel, FixedSlippage
+from .execution_models import AlwaysFill, FillProbabilityModel, ExecutionDelayModel
 
 
 class MatchingEngine:
@@ -37,6 +38,8 @@ class MatchingEngine:
     def __init__(
         self,
         slippage_model: Optional[SlippageModel] = None,
+        fill_model: Optional[FillProbabilityModel] = None,
+        delay_model: Optional[ExecutionDelayModel] = None,
         event_engine: Optional[EventEngine] = None,
     ):
         """
@@ -49,12 +52,16 @@ class MatchingEngine:
         self.order_books: Dict[str, OrderBook] = {}
         self.slippage_model = slippage_model or FixedSlippage(slippage_ticks=1, tick_size=0.01)
         self.event_engine = event_engine
+        self.fill_model = fill_model or AlwaysFill()
+        self.delay_model = delay_model
         
         # 订单索引（快速查找）
         self.active_orders: Dict[str, Order] = {}
         
         # 待撮合的市价单队列（等待下一个 bar）
         self.pending_market_orders: Dict[str, list] = {}  # {symbol: [Order, ...]}
+        # 延迟激活订单队列
+        self.pending_delayed_orders: Dict[str, list] = {}  # {symbol: [{"order": Order, "remaining": int}]}
         
         # 成交ID计数器
         self._trade_counter = 0
@@ -77,22 +84,16 @@ class MatchingEngine:
         
         order_book = self.order_books[order.symbol]
         
-        # 2. 根据订单类型分发
-        if order.order_type == OrderType.MARKET:
-            # 市价单：加入待撮合队列，等待下一个 bar
+        # 2. 延迟/立即激活
+        delay = self.delay_model.delay_bars(order) if self.delay_model else 0
+        if delay > 0:
             order.status = OrderStatus.PENDING
-            if order.symbol not in self.pending_market_orders:
-                self.pending_market_orders[order.symbol] = []
-            self.pending_market_orders[order.symbol].append(order)
+            if order.symbol not in self.pending_delayed_orders:
+                self.pending_delayed_orders[order.symbol] = []
+            self.pending_delayed_orders[order.symbol].append({"order": order, "remaining": delay})
             self.active_orders[order.order_id] = order
-        elif order.order_type == OrderType.LIMIT:
-            # 限价单：加入订单簿
-            order_book.add_limit_order(order)
-            self.active_orders[order.order_id] = order
-        elif order.order_type == OrderType.STOP:
-            # 止损单：加入止损队列
-            order_book.add_stop_order(order)
-            self.active_orders[order.order_id] = order
+        else:
+            self._activate_order(order)
         
         # 3. 发布订单事件
         if self.event_engine:
@@ -122,6 +123,18 @@ class MatchingEngine:
             order_book.remove_limit_order(order)
         elif order.order_type == OrderType.STOP:
             order_book.remove_stop_order(order_id)
+        # 从延迟队列移除
+        if order.symbol in self.pending_delayed_orders:
+            self.pending_delayed_orders[order.symbol] = [
+                item for item in self.pending_delayed_orders[order.symbol]
+                if item["order"].order_id != order_id
+            ]
+        # 从市价队列移除
+        if order.symbol in self.pending_market_orders:
+            self.pending_market_orders[order.symbol] = [
+                o for o in self.pending_market_orders[order.symbol]
+                if o.order_id != order_id
+            ]
         
         # 更新状态
         order.status = OrderStatus.CANCELLED
@@ -152,24 +165,36 @@ class MatchingEngine:
         order_book = self.order_books[symbol]
         current_price = bar['close']
         
+        # 0. 激活延迟订单
+        if symbol in self.pending_delayed_orders:
+            remaining_items = []
+            for item in self.pending_delayed_orders[symbol]:
+                item["remaining"] -= 1
+                if item["remaining"] <= 0:
+                    self._activate_order(item["order"])
+                else:
+                    remaining_items.append(item)
+            if remaining_items:
+                self.pending_delayed_orders[symbol] = remaining_items
+            else:
+                del self.pending_delayed_orders[symbol]
+
         # 1. 撮合待处理的市价单（使用当前价格）
         if symbol in self.pending_market_orders:
             market_orders = self.pending_market_orders.pop(symbol)
             for market_order in market_orders:
-                del self.active_orders[market_order.order_id]
-                self._match_market_order(market_order, market_price=current_price)
+                self._match_market_order(market_order, market_price=current_price, bar=bar)
         
         # 2. 检查止损单触发
         triggered_stops = order_book.check_stop_trigger(current_price)
         for stop_order in triggered_stops:
             # 止损单触发后转为市价单
-            del self.active_orders[stop_order.order_id]
-            self._match_market_order(stop_order, market_price=current_price)
+            self._match_market_order(stop_order, market_price=current_price, bar=bar)
         
         # 3. 撮合限价单（使用K线的高低价）
         self._match_limit_orders(symbol, bar)
     
-    def _match_market_order(self, order: Order, market_price: Optional[float] = None) -> None:
+    def _match_market_order(self, order: Order, market_price: Optional[float] = None, bar: Optional[pd.Series] = None) -> None:
         """
         撮合市价单（立即成交）
         
@@ -202,10 +227,20 @@ class MatchingEngine:
             return
         
         # 计算滑点后的实际成交价
+        if self.fill_model and not self.fill_model.should_fill(order, bar):
+            order.status = OrderStatus.PENDING
+            if order.symbol not in self.pending_market_orders:
+                self.pending_market_orders[order.symbol] = []
+            self.pending_market_orders[order.symbol].append(order)
+            self.active_orders[order.order_id] = order
+            return
+
         fill_price = self.slippage_model.calculate_slippage(order, market_price)
         
         # 执行成交
         self._fill_order(order, fill_price, order.quantity)
+        if order.order_id in self.active_orders:
+            del self.active_orders[order.order_id]
     
     def _match_limit_orders(self, symbol: str, bar: pd.Series) -> None:
         """
@@ -228,18 +263,24 @@ class MatchingEngine:
             if bid_order.price >= low_price:
                 # 价格匹配，使用限价或更优价格成交
                 fill_price = min(bid_order.price, high_price)
+                if self.fill_model and not self.fill_model.should_fill(bid_order, bar):
+                    continue
                 self._fill_order(bid_order, fill_price, bid_order.remaining_qty)
                 order_book.remove_limit_order(bid_order)
-                del self.active_orders[bid_order.order_id]
+                if bid_order.order_id in self.active_orders:
+                    del self.active_orders[bid_order.order_id]
         
         # 撮合卖单（限价 <= 最高价）
         for ask_order in list(order_book.asks):
             if ask_order.price <= high_price:
                 # 价格匹配，使用限价或更优价格成交
                 fill_price = max(ask_order.price, low_price)
+                if self.fill_model and not self.fill_model.should_fill(ask_order, bar):
+                    continue
                 self._fill_order(ask_order, fill_price, ask_order.remaining_qty)
                 order_book.remove_limit_order(ask_order)
-                del self.active_orders[ask_order.order_id]
+                if ask_order.order_id in self.active_orders:
+                    del self.active_orders[ask_order.order_id]
     
     def _fill_order(self, order: Order, fill_price: float, fill_qty: float) -> None:
         """
@@ -323,3 +364,25 @@ class MatchingEngine:
         self.order_books.clear()
         self.active_orders.clear()
         self._trade_counter = 0
+        self.pending_market_orders.clear()
+        self.pending_delayed_orders.clear()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _activate_order(self, order: Order) -> None:
+        """Activate order into book/queue after delay."""
+        order_book = self.order_books[order.symbol]
+        if order.order_type == OrderType.MARKET:
+            order.status = OrderStatus.PENDING
+            if order.symbol not in self.pending_market_orders:
+                self.pending_market_orders[order.symbol] = []
+            self.pending_market_orders[order.symbol].append(order)
+            self.active_orders[order.order_id] = order
+        elif order.order_type == OrderType.LIMIT:
+            order_book.add_limit_order(order)
+            self.active_orders[order.order_id] = order
+        elif order.order_type == OrderType.STOP:
+            order_book.add_stop_order(order)
+            self.active_orders[order.order_id] = order

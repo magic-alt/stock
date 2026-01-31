@@ -9,7 +9,8 @@ from datetime import datetime
 
 from src.simulation.order import Order, Trade, OrderStatus, OrderType, OrderDirection
 from src.simulation.order_book import OrderBook
-from src.simulation.slippage import FixedSlippage, PercentSlippage, VolumeShareSlippage
+from src.simulation.slippage import FixedSlippage, PercentSlippage, VolumeShareSlippage, SquareRootImpactSlippage
+from src.simulation.execution_models import VolumeBasedFill, FixedDelay
 from src.simulation.matching_engine import MatchingEngine
 
 
@@ -167,6 +168,15 @@ def test_volume_share_slippage():
     assert abs(fill_price - 1887.0) < 1.0  # 1850 * 1.02
 
 
+def test_square_root_impact_slippage():
+    """测试平方根冲击模型"""
+    slippage = SquareRootImpactSlippage(impact_coef=0.1)
+    buy_order = Order("B2", "600519.SH", OrderDirection.BUY, OrderType.MARKET, 1000)
+    fill_price = slippage.calculate_slippage(buy_order, 100.0, avg_volume=10000)
+    # sqrt(0.1) * 0.1 = 0.0316 -> 103.16
+    assert abs(fill_price - 103.16) < 0.5
+
+
 # ===== MatchingEngine Tests =====
 
 def test_matching_engine_market_order():
@@ -220,6 +230,24 @@ def test_matching_engine_stop_order():
     
     # 价格跌破：触发转市价单成交
     bar2 = pd.Series({"open": 1810, "high": 1810, "low": 1790, "close": 1795, "volume": 10000})
+    engine.on_bar("600519.SH", bar2)
+    assert order.status == OrderStatus.FILLED
+
+
+def test_matching_engine_delay_and_fill_prob():
+    """测试延迟激活与成交概率"""
+    engine = MatchingEngine(fill_model=VolumeBasedFill(participation_rate=0.1),
+                            delay_model=FixedDelay(bars=1))
+    order = Order("L3", "600519.SH", OrderDirection.BUY, OrderType.LIMIT, 100, price=1840.0)
+    engine.submit_order(order)
+
+    # 第一根bar: 订单激活但成交量不足，不应成交
+    bar1 = pd.Series({"open": 1845, "high": 1850, "low": 1835, "close": 1840, "volume": 500})
+    engine.on_bar("600519.SH", bar1)
+    assert order.status == OrderStatus.PENDING
+
+    # 第二根bar: 成交量足够，应成交
+    bar2 = pd.Series({"open": 1845, "high": 1850, "low": 1835, "close": 1840, "volume": 2000})
     engine.on_bar("600519.SH", bar2)
     assert order.status == OrderStatus.FILLED
 

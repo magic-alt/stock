@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-01-30
+## [Unreleased] - 2026-01-31
 
 ### Added
 - ML: add new strategy examples in `examples/` and expand the gallery.
@@ -34,8 +34,14 @@ All notable changes to this project will be documented in this file.
 - Docs: expand Phase 3.5 AI integration plan in `ROADMAP.md`.
 - Docs: mark Phase 3.5 AI framework integration tasks as completed in `ROADMAP.md`.
 
+### Fixed
+- CI: add required `pydantic` dependency to ensure config tests run.
+- MLOps: avoid read-only PSI breakpoint mutation when computing feature drift.
+- ML: guard sklearn symbols and scaler fallback in `ml_enhanced_strategy`.
+
 ### Tests
 - Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.
+- Tests: align CI coverage flags with `pytest.ini` to avoid full-src coverage failures.
 
 ## [V3.2.0] - 2026-01-11
 

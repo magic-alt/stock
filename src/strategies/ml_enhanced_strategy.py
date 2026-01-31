@@ -31,6 +31,10 @@ except ImportError:
 
 # 检查 sklearn
 _HAS_SKLEARN = False
+RandomForestClassifier = None
+GradientBoostingClassifier = None
+StandardScaler = None
+Pipeline = None
 try:
     from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
     from sklearn.preprocessing import StandardScaler
@@ -46,6 +50,16 @@ try:
     _HAS_XGB = True
 except ImportError:
     pass
+
+
+class _IdentityScaler:
+    """Fallback scaler when sklearn is unavailable."""
+
+    def fit_transform(self, X):
+        return X
+
+    def transform(self, X):
+        return X
 
 
 class MLEnhancedStrategy(BaseStrategy):
@@ -83,7 +97,7 @@ class MLEnhancedStrategy(BaseStrategy):
         self.retrain_interval = int(retrain_interval)
         
         self._model = None
-        self._scaler = StandardScaler() if _HAS_SKLEARN else None
+        self._scaler = StandardScaler() if (_HAS_SKLEARN and StandardScaler is not None) else None
         self._last_train_idx = 0
         
     def _get_model(self):
@@ -97,13 +111,13 @@ class MLEnhancedStrategy(BaseStrategy):
                 eval_metric='logloss',
                 verbosity=0,
             )
-        elif self.model_type == "gb" and _HAS_SKLEARN:
+        elif self.model_type == "gb" and _HAS_SKLEARN and GradientBoostingClassifier is not None:
             return GradientBoostingClassifier(
                 n_estimators=100,
                 max_depth=4,
                 learning_rate=0.1,
             )
-        elif _HAS_SKLEARN:
+        elif _HAS_SKLEARN and RandomForestClassifier is not None:
             return RandomForestClassifier(
                 n_estimators=100,
                 max_depth=6,
@@ -273,7 +287,11 @@ class MLEnhancedStrategy(BaseStrategy):
                 y_train = y_train[valid_mask].astype(int)
                 
                 # 标准化
-                self._scaler = StandardScaler()
+                if self._scaler is None:
+                    if StandardScaler is not None:
+                        self._scaler = StandardScaler()
+                    else:
+                        self._scaler = _IdentityScaler()
                 X_train_scaled = self._scaler.fit_transform(X_train)
                 
                 # 训练模型

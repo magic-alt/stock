@@ -19,6 +19,9 @@
 - **自动化流程**: `run` / `grid` / `auto` / `combo`
 - **统一架构**: BaseStrategy + EventEngine + 统一接口层
 - **实盘网关**: XtQuant / XTP / Hundsun UFT（SDK 可用时启用）
+- **风险与归因**: VaR/ES、CAPM α/β、跟踪误差、风格暴露
+- **执行建模**: 市场冲击滑点 + 成交概率/延迟模拟
+- **合规与运维**: 审计日志、RBAC 权限隔离、快照恢复（HA/DR）
 - **报告输出**: PNG / Markdown / JSON + 运行快照/数据质量报告；默认写入 `report/`（或 `--out_dir` 指定）
 
 ---

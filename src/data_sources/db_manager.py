@@ -89,6 +89,23 @@ class SQLiteDataManager:
                 CREATE INDEX IF NOT EXISTS idx_metadata_symbol 
                 ON metadata (symbol, data_type)
             """)
+
+            # Lineage table for compliance/audit
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS lineage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT NOT NULL,
+                    data_type TEXT NOT NULL,
+                    adj_type TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    start_date TEXT,
+                    end_date TEXT,
+                    record_count INTEGER DEFAULT 0,
+                    checksum TEXT,
+                    extra TEXT,
+                    fetched_at TEXT
+                )
+            """)
             
             conn.commit()
     
@@ -481,6 +498,39 @@ class SQLiteDataManager:
             record_count,
             datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         ))
+
+    def record_lineage(
+        self,
+        *,
+        symbol: str,
+        data_type: str,
+        adj_type: str,
+        source: str,
+        start_date: str,
+        end_date: str,
+        record_count: int,
+        checksum: Optional[str] = None,
+        extra: Optional[str] = None,
+    ) -> None:
+        """Record data lineage entry for compliance/audit."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                INSERT INTO lineage
+                (symbol, data_type, adj_type, source, start_date, end_date,
+                 record_count, checksum, extra, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol,
+                data_type,
+                adj_type,
+                source,
+                start_date,
+                end_date,
+                int(record_count),
+                checksum,
+                extra,
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            ))
     
     def get_data_range(
         self,

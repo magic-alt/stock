@@ -188,6 +188,33 @@ class VolumeShareSlippage:
             return market_price - slippage
 
 
+class SquareRootImpactSlippage:
+    """
+    Square-root market impact model.
+
+    slippage_percent = impact_coef * sqrt(order_qty / avg_volume)
+    """
+
+    def __init__(self, impact_coef: float = 0.1):
+        self.impact_coef = impact_coef
+
+    def calculate_slippage(self, order: Order, market_price: float, **kwargs) -> float:
+        avg_volume = kwargs.get("avg_volume")
+        if avg_volume is None:
+            raise ValueError("SquareRootImpactSlippage requires 'avg_volume' parameter")
+        if avg_volume <= 0:
+            slippage_percent = 0.05
+        else:
+            volume_share = order.quantity / avg_volume
+            volume_share = min(max(volume_share, 0.0), 1.0)
+            slippage_percent = self.impact_coef * (volume_share ** 0.5)
+        slippage = market_price * slippage_percent
+        if order.direction == OrderDirection.BUY:
+            return market_price + slippage
+        else:
+            return market_price - slippage
+
+
 class NoSlippage:
     """
     零滑点模型（理想化场景，用于测试）

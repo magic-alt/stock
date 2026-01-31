@@ -122,6 +122,11 @@ from .monitoring import (
     run_with_heartbeat_monitor,
 )
 
+# Security & HA
+from .audit import AuditLogger
+from .auth import Authorizer, Subject, Role, Permission, ResourceScope
+from .ha import SnapshotStore, ComponentRegistry, HealthCheckResult
+
 __all__ = [
     # Events
     "Event",
@@ -222,4 +227,15 @@ __all__ = [
     "HeartbeatEmitter",
     "HeartbeatMonitor",
     "run_with_heartbeat_monitor",
+
+    # Audit / Auth / HA
+    "AuditLogger",
+    "Authorizer",
+    "Subject",
+    "Role",
+    "Permission",
+    "ResourceScope",
+    "SnapshotStore",
+    "ComponentRegistry",
+    "HealthCheckResult",
 ]

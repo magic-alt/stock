@@ -32,6 +32,14 @@
 - For every optimization, update the relevant documentation and record the change in `CHANGELOG.md`.
 - PRs should include: short summary, tests run (or reason not run), and doc/CHANGELOG updates for user-facing changes. Add screenshots or sample reports when GUI or visualization output changes.
 
+## CHANGELOG.md (Mandatory)
+- Follow Keep a Changelog + Semantic Versioning; format is `## [Vx.y.z] - YYYY-MM-DD`.
+- Always keep `Unreleased` at the top with the latest date; add entries there until a release is cut.
+- Record user-facing changes (features, fixes, breaking changes, docs) and notable internal changes.
+- Use the standard categories: Added, Changed, Fixed, Deprecated, Removed, Security, Tests (omit empty sections).
+- Keep entries concise; avoid large code blocks and exhaustive file lists.
+- When `CHANGELOG.md` grows too large, archive older details into `CHANGELOG_ARCHIVE.md` and keep `CHANGELOG.md` as the curated summary.
+
 ## Security & Configuration Tips
 - Keep API tokens out of VCS; `config.yaml.example` notes `TUSHARE_TOKEN` via environment variable.
 - Avoid committing generated data in `cache/`, `report/`, or `logs/`.

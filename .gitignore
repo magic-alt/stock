@@ -3,3 +3,5 @@
 /reports_gui
 __pycache__
 report
+/qlib_data
+/mlruns

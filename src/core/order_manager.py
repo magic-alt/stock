@@ -38,6 +38,8 @@ from src.core.interfaces import (
     OrderInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum
 )
 from src.core.events import EventEngine, Event
+from src.core.audit import AuditLogger, audit_event
+from src.core.auth import Authorizer, Permission, ResourceScope, Subject
 from src.core.logger import get_logger
 
 logger = get_logger("order_manager")
@@ -90,6 +92,7 @@ class ManagedOrder:
     
     # Management metadata
     strategy_id: str = ""
+    tenant_id: str = ""
     parent_order_id: str = ""  # For split orders
     child_order_ids: List[str] = field(default_factory=list)
     tags: Dict[str, str] = field(default_factory=dict)
@@ -190,7 +193,11 @@ class OrderManager:
         gateway = None,
         event_engine: Optional[EventEngine] = None,
         max_orders_per_symbol: int = 100,
-        order_timeout_minutes: int = 60
+        order_timeout_minutes: int = 60,
+        tenant_id: str = "",
+        allowed_strategies: Optional[Set[str]] = None,
+        authorizer: Optional[Authorizer] = None,
+        audit_logger: Optional[AuditLogger] = None,
     ):
         """
         Initialize order manager.
@@ -205,6 +212,10 @@ class OrderManager:
         self.event_engine = event_engine
         self.max_orders_per_symbol = max_orders_per_symbol
         self.order_timeout = timedelta(minutes=order_timeout_minutes)
+        self.tenant_id = tenant_id
+        self.allowed_strategies = allowed_strategies
+        self.authorizer = authorizer
+        self.audit_logger = audit_logger
         
         # Order storage
         self._orders: Dict[str, ManagedOrder] = {}
@@ -237,7 +248,9 @@ class OrderManager:
         strategy_id: str = "",
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
-        tags: Optional[Dict[str, str]] = None
+        tags: Optional[Dict[str, str]] = None,
+        tenant_id: str = "",
+        subject: Optional[Subject] = None,
     ) -> ManagedOrder:
         """
         Create a new order (not submitted yet).
@@ -263,6 +276,11 @@ class OrderManager:
         if order_type == OrderTypeEnum.LIMIT and price is None:
             raise ValueError("Limit order requires price")
         
+        # Authorization & isolation
+        scope = ResourceScope(tenant_id=tenant_id or self.tenant_id, strategy_id=strategy_id)
+        self._authorize(Permission.ORDER_CREATE, subject, scope)
+        self._check_isolation(strategy_id, tenant_id)
+
         # Check order limit
         active_count = len([
             oid for oid in self._orders_by_symbol[symbol]
@@ -284,6 +302,7 @@ class OrderManager:
             price=price,
             quantity=quantity,
             strategy_id=strategy_id,
+            tenant_id=tenant_id or self.tenant_id,
             stop_loss=stop_loss,
             take_profit=take_profit,
             tags=tags or {}
@@ -304,6 +323,7 @@ class OrderManager:
             quantity=quantity,
             price=price
         )
+        self._audit("order.create", order, result="ok", subject=subject)
         
         self._publish_order_event(order, OrderEvent.CREATED)
         return order
@@ -316,7 +336,9 @@ class OrderManager:
         entry_price: float,
         stop_loss: float,
         take_profit: float,
-        strategy_id: str = ""
+        strategy_id: str = "",
+        tenant_id: str = "",
+        subject: Optional[Subject] = None,
     ) -> List[ManagedOrder]:
         """
         Create bracket order (entry + stop loss + take profit).
@@ -341,7 +363,9 @@ class OrderManager:
             price=entry_price,
             order_type=OrderTypeEnum.LIMIT,
             strategy_id=strategy_id,
-            tags={"bracket": "entry"}
+            tags={"bracket": "entry"},
+            tenant_id=tenant_id,
+            subject=subject,
         )
         
         # Stop loss order (opposite side)
@@ -353,7 +377,9 @@ class OrderManager:
             price=stop_loss,
             order_type=OrderTypeEnum.STOP,
             strategy_id=strategy_id,
-            tags={"bracket": "stop_loss", "parent": entry.order_id}
+            tags={"bracket": "stop_loss", "parent": entry.order_id},
+            tenant_id=tenant_id,
+            subject=subject,
         )
         sl_order.parent_order_id = entry.order_id
         entry.child_order_ids.append(sl_order.order_id)
@@ -366,7 +392,9 @@ class OrderManager:
             price=take_profit,
             order_type=OrderTypeEnum.LIMIT,
             strategy_id=strategy_id,
-            tags={"bracket": "take_profit", "parent": entry.order_id}
+            tags={"bracket": "take_profit", "parent": entry.order_id},
+            tenant_id=tenant_id,
+            subject=subject,
         )
         tp_order.parent_order_id = entry.order_id
         entry.child_order_ids.append(tp_order.order_id)
@@ -377,7 +405,7 @@ class OrderManager:
     # Order Submission
     # ---------------------------------------------------------------------------
     
-    def submit_order(self, order_id: str) -> bool:
+    def submit_order(self, order_id: str, subject: Optional[Subject] = None) -> bool:
         """
         Submit order to gateway.
         
@@ -397,6 +425,9 @@ class OrderManager:
             return False
         
         try:
+            self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(
+                tenant_id=order.tenant_id, strategy_id=order.strategy_id
+            ))
             # Submit to gateway
             if self.gateway:
                 broker_id = self.gateway._adapter.submit_order(
@@ -414,6 +445,7 @@ class OrderManager:
             
             logger.info("Order submitted", order_id=order_id)
             self._publish_order_event(order, OrderEvent.SUBMITTED)
+            self._audit("order.submit", order, result="ok", subject=subject)
             return True
             
         except Exception as e:
@@ -421,9 +453,10 @@ class OrderManager:
             self._update_order_status(order, OrderStatusEnum.REJECTED)
             logger.error("Order submission failed", order_id=order_id, error=str(e))
             self._publish_order_event(order, OrderEvent.REJECTED)
+            self._audit("order.submit", order, result="error", subject=subject, details={"error": str(e)})
             return False
     
-    def submit_all_pending(self, symbol: Optional[str] = None) -> int:
+    def submit_all_pending(self, symbol: Optional[str] = None, subject: Optional[Subject] = None) -> int:
         """
         Submit all pending orders.
         
@@ -437,7 +470,7 @@ class OrderManager:
         for order_id in list(self._orders_by_status[OrderStatusEnum.PENDING]):
             order = self._orders[order_id]
             if symbol is None or order.symbol == symbol:
-                if self.submit_order(order_id):
+                if self.submit_order(order_id, subject=subject):
                     count += 1
         return count
     
@@ -445,7 +478,7 @@ class OrderManager:
     # Order Cancellation
     # ---------------------------------------------------------------------------
     
-    def cancel_order(self, order_id: str, reason: str = "") -> bool:
+    def cancel_order(self, order_id: str, reason: str = "", subject: Optional[Subject] = None) -> bool:
         """
         Cancel an active order.
         
@@ -466,6 +499,9 @@ class OrderManager:
             return False
         
         try:
+            self._authorize(Permission.ORDER_CANCEL, subject, ResourceScope(
+                tenant_id=order.tenant_id, strategy_id=order.strategy_id
+            ))
             # Cancel via gateway
             if self.gateway and order.broker_order_id:
                 self.gateway.cancel(order.broker_order_id)
@@ -480,16 +516,19 @@ class OrderManager:
             
             logger.info("Order cancelled", order_id=order_id, reason=reason)
             self._publish_order_event(order, OrderEvent.CANCELLED)
+            self._audit("order.cancel", order, result="ok", subject=subject, details={"reason": reason})
             return True
             
         except Exception as e:
             logger.error("Order cancellation failed", order_id=order_id, error=str(e))
+            self._audit("order.cancel", order, result="error", subject=subject, details={"error": str(e)})
             return False
     
     def cancel_all_orders(
         self,
         symbol: Optional[str] = None,
-        strategy_id: Optional[str] = None
+        strategy_id: Optional[str] = None,
+        subject: Optional[Subject] = None,
     ) -> int:
         """
         Cancel all active orders.
@@ -517,7 +556,7 @@ class OrderManager:
             if strategy_id and order.strategy_id != strategy_id:
                 continue
             
-            if self.cancel_order(order_id, "Batch cancel"):
+            if self.cancel_order(order_id, "Batch cancel", subject=subject):
                 count += 1
         
         logger.info("Batch cancel completed", count=count, symbol=symbol, strategy_id=strategy_id)
@@ -580,6 +619,7 @@ class OrderManager:
             self._update_order_status(order, OrderStatusEnum.FILLED)
             order.fill_time = datetime.now()
             self._publish_order_event(order, OrderEvent.FILLED)
+            self._audit("order.fill", order, result="filled", details={"trade_id": trade.trade_id})
             logger.info(
                 "Order filled",
                 order_id=order_id,
@@ -590,6 +630,7 @@ class OrderManager:
         else:
             self._update_order_status(order, OrderStatusEnum.PARTIAL)
             self._publish_order_event(order, OrderEvent.PARTIAL_FILL)
+            self._audit("order.fill.partial", order, result="partial", details={"trade_id": trade.trade_id})
             logger.info(
                 "Order partially filled",
                 order_id=order_id,
@@ -775,6 +816,41 @@ class OrderManager:
                     "filled": order.filled_quantity
                 }
             ))
+
+    def _authorize(self, permission: str, subject: Optional[Subject], scope: ResourceScope) -> None:
+        if self.authorizer:
+            self.authorizer.require(permission, subject, scope)
+
+    def _check_isolation(self, strategy_id: str, tenant_id: str) -> None:
+        if self.tenant_id and tenant_id and tenant_id != self.tenant_id:
+            raise PermissionError("Tenant isolation violation")
+        if self.allowed_strategies and strategy_id and strategy_id not in self.allowed_strategies:
+            raise PermissionError("Strategy isolation violation")
+
+    def _audit(
+        self,
+        action: str,
+        order: ManagedOrder,
+        *,
+        result: str,
+        subject: Optional[Subject] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        actor = subject.subject_id if subject else "system"
+        audit_event(
+            self.audit_logger,
+            actor=actor,
+            action=action,
+            resource=f"order:{order.order_id}",
+            result=result,
+            details={
+                "symbol": order.symbol,
+                "side": order.side.value,
+                "quantity": order.quantity,
+                "status": order.status.value,
+                **(details or {}),
+            },
+        )
     
     # ---------------------------------------------------------------------------
     # Cleanup
@@ -833,6 +909,135 @@ class OrderManager:
         
         logger.info("Order history cleared", count=count)
         return count
+
+    # ---------------------------------------------------------------------------
+    # Snapshot / Restore
+    # ---------------------------------------------------------------------------
+
+    def snapshot_state(self) -> Dict[str, Any]:
+        """Snapshot OMS state for disaster recovery."""
+        return {
+            "order_seq": self._order_seq,
+            "tenant_id": self.tenant_id,
+            "orders": [self._serialize_order(o) for o in self._orders.values()],
+            "trades": [self._serialize_trade(t) for t in self._trades],
+        }
+
+    def restore_state(self, payload: Dict[str, Any]) -> None:
+        """Restore OMS state from snapshot."""
+        self._orders.clear()
+        self._orders_by_symbol.clear()
+        self._orders_by_strategy.clear()
+        self._orders_by_status.clear()
+        self._trades.clear()
+        self._trades_by_order.clear()
+
+        self._order_seq = int(payload.get("order_seq", 0))
+        self.tenant_id = payload.get("tenant_id", self.tenant_id)
+
+        for data in payload.get("orders", []):
+            order = self._deserialize_order(data)
+            self._orders[order.order_id] = order
+            self._orders_by_symbol[order.symbol].add(order.order_id)
+            if order.strategy_id:
+                self._orders_by_strategy[order.strategy_id].add(order.order_id)
+            self._orders_by_status[order.status].add(order.order_id)
+
+        for data in payload.get("trades", []):
+            trade = self._deserialize_trade(data)
+            self._trades.append(trade)
+            self._trades_by_order[trade.order_id].append(trade)
+
+    @staticmethod
+    def _serialize_datetime(value: Optional[datetime]) -> Optional[str]:
+        return value.isoformat() if value else None
+
+    def _serialize_order(self, order: ManagedOrder) -> Dict[str, Any]:
+        return {
+            "order_id": order.order_id,
+            "symbol": order.symbol,
+            "side": order.side.value,
+            "order_type": order.order_type.value,
+            "price": order.price,
+            "quantity": order.quantity,
+            "filled_quantity": order.filled_quantity,
+            "avg_fill_price": order.avg_fill_price,
+            "status": order.status.value,
+            "create_time": self._serialize_datetime(order.create_time),
+            "submit_time": self._serialize_datetime(order.submit_time),
+            "update_time": self._serialize_datetime(order.update_time),
+            "fill_time": self._serialize_datetime(order.fill_time),
+            "strategy_id": order.strategy_id,
+            "tenant_id": order.tenant_id,
+            "parent_order_id": order.parent_order_id,
+            "child_order_ids": list(order.child_order_ids),
+            "tags": dict(order.tags),
+            "stop_loss": order.stop_loss,
+            "take_profit": order.take_profit,
+            "broker_order_id": order.broker_order_id,
+            "reject_reason": order.reject_reason,
+        }
+
+    def _deserialize_order(self, data: Dict[str, Any]) -> ManagedOrder:
+        order = ManagedOrder(
+            order_id=data["order_id"],
+            symbol=data["symbol"],
+            side=Side(data["side"]),
+            order_type=OrderTypeEnum(data["order_type"]),
+            price=data.get("price"),
+            quantity=float(data.get("quantity", 0)),
+            filled_quantity=float(data.get("filled_quantity", 0)),
+            avg_fill_price=float(data.get("avg_fill_price", 0)),
+            status=OrderStatusEnum(data.get("status", OrderStatusEnum.PENDING.value)),
+            strategy_id=data.get("strategy_id", ""),
+            tenant_id=data.get("tenant_id", ""),
+            parent_order_id=data.get("parent_order_id", ""),
+            child_order_ids=list(data.get("child_order_ids", [])),
+            tags=dict(data.get("tags", {})),
+            stop_loss=data.get("stop_loss"),
+            take_profit=data.get("take_profit"),
+            broker_order_id=data.get("broker_order_id", ""),
+            reject_reason=data.get("reject_reason", ""),
+        )
+        order.create_time = self._parse_dt(data.get("create_time"))
+        order.submit_time = self._parse_dt(data.get("submit_time"))
+        order.update_time = self._parse_dt(data.get("update_time"))
+        order.fill_time = self._parse_dt(data.get("fill_time"))
+        return order
+
+    def _serialize_trade(self, trade: TradeInfo) -> Dict[str, Any]:
+        return {
+            "trade_id": trade.trade_id,
+            "order_id": trade.order_id,
+            "symbol": trade.symbol,
+            "side": trade.side.value,
+            "price": trade.price,
+            "quantity": trade.quantity,
+            "commission": trade.commission,
+            "timestamp": self._serialize_datetime(trade.timestamp),
+        }
+
+    def _deserialize_trade(self, data: Dict[str, Any]) -> TradeInfo:
+        trade = TradeInfo(
+            trade_id=data["trade_id"],
+            order_id=data["order_id"],
+            symbol=data["symbol"],
+            side=Side(data["side"]),
+            price=float(data.get("price", 0)),
+            quantity=float(data.get("quantity", 0)),
+            commission=float(data.get("commission", 0)),
+            timestamp=self._parse_dt(data.get("timestamp")),
+        )
+        return trade
+
+    @staticmethod
+    def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value.replace("Z", ""))
+        except ValueError:
+            return None
 
 
 # ---------------------------------------------------------------------------

@@ -37,6 +37,8 @@ from src.core.interfaces import (
     Side, OrderTypeEnum, OrderStatusEnum
 )
 from src.core.logger import get_logger
+from src.core.audit import AuditLogger, audit_event
+from src.core.auth import Authorizer, Permission, ResourceScope, Subject
 
 logger = get_logger("trading_gateway")
 
@@ -371,6 +373,110 @@ class PaperTradingAdapter:
             commission=commission
         )
 
+    # ---------------------------------------------------------------------------
+    # Snapshot / Restore
+    # ---------------------------------------------------------------------------
+
+    def snapshot_state(self) -> Dict[str, Any]:
+        return {
+            "cash": self._cash,
+            "positions": [self._serialize_position(p) for p in self._positions.values()],
+            "orders": [self._serialize_order(o) for o in self._orders.values()],
+            "trades": [self._serialize_trade(t) for t in self._trades],
+            "last_prices": dict(self._last_prices),
+        }
+
+    def restore_state(self, payload: Dict[str, Any]) -> None:
+        self._cash = float(payload.get("cash", self._cash))
+        self._positions = {p.symbol: p for p in (self._deserialize_position(d) for d in payload.get("positions", []))}
+        self._orders = {o.order_id: o for o in (self._deserialize_order(d) for d in payload.get("orders", []))}
+        self._pending_orders = {
+            oid: o for oid, o in self._orders.items()
+            if o.status in (OrderStatusEnum.SUBMITTED, OrderStatusEnum.PENDING)
+        }
+        self._trades = [self._deserialize_trade(d) for d in payload.get("trades", [])]
+        self._last_prices = dict(payload.get("last_prices", {}))
+
+    @staticmethod
+    def _serialize_position(pos: PositionInfo) -> Dict[str, Any]:
+        return {
+            "symbol": pos.symbol,
+            "size": pos.size,
+            "avg_price": pos.avg_price,
+            "market_value": pos.market_value,
+            "unrealized_pnl": pos.unrealized_pnl,
+            "realized_pnl": pos.realized_pnl,
+        }
+
+    @staticmethod
+    def _deserialize_position(data: Dict[str, Any]) -> PositionInfo:
+        return PositionInfo(
+            symbol=data["symbol"],
+            size=float(data.get("size", 0.0)),
+            avg_price=float(data.get("avg_price", 0.0)),
+            market_value=float(data.get("market_value", 0.0)),
+            unrealized_pnl=float(data.get("unrealized_pnl", 0.0)),
+            realized_pnl=float(data.get("realized_pnl", 0.0)),
+        )
+
+    @staticmethod
+    def _serialize_order(order: OrderInfo) -> Dict[str, Any]:
+        return {
+            "order_id": order.order_id,
+            "symbol": order.symbol,
+            "side": order.side.value,
+            "order_type": order.order_type.value,
+            "price": order.price,
+            "quantity": order.quantity,
+            "filled_quantity": order.filled_quantity,
+            "avg_fill_price": order.avg_fill_price,
+            "status": order.status.value,
+            "create_time": order.create_time.isoformat() if order.create_time else None,
+            "update_time": order.update_time.isoformat() if order.update_time else None,
+        }
+
+    @staticmethod
+    def _deserialize_order(data: Dict[str, Any]) -> OrderInfo:
+        return OrderInfo(
+            order_id=data["order_id"],
+            symbol=data["symbol"],
+            side=Side(data["side"]),
+            order_type=OrderTypeEnum(data["order_type"]),
+            price=data.get("price"),
+            quantity=float(data.get("quantity", 0.0)),
+            filled_quantity=float(data.get("filled_quantity", 0.0)),
+            avg_fill_price=float(data.get("avg_fill_price", 0.0)),
+            status=OrderStatusEnum(data.get("status", OrderStatusEnum.PENDING.value)),
+            create_time=_parse_dt(data.get("create_time")),
+            update_time=_parse_dt(data.get("update_time")),
+        )
+
+    @staticmethod
+    def _serialize_trade(trade: TradeInfo) -> Dict[str, Any]:
+        return {
+            "trade_id": trade.trade_id,
+            "order_id": trade.order_id,
+            "symbol": trade.symbol,
+            "side": trade.side.value,
+            "price": trade.price,
+            "quantity": trade.quantity,
+            "commission": trade.commission,
+            "timestamp": trade.timestamp.isoformat() if trade.timestamp else None,
+        }
+
+    @staticmethod
+    def _deserialize_trade(data: Dict[str, Any]) -> TradeInfo:
+        return TradeInfo(
+            trade_id=data["trade_id"],
+            order_id=data["order_id"],
+            symbol=data["symbol"],
+            side=Side(data["side"]),
+            price=float(data.get("price", 0.0)),
+            quantity=float(data.get("quantity", 0.0)),
+            commission=float(data.get("commission", 0.0)),
+            timestamp=_parse_dt(data.get("timestamp")),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Broker Adapters (Stubs for real broker integration)
@@ -597,7 +703,10 @@ class TradingGateway:
         self,
         config: Optional[GatewayConfig] = None,
         event_engine: Optional[EventEngine] = None,
-        risk_manager = None
+        risk_manager = None,
+        authorizer: Optional[Authorizer] = None,
+        audit_logger: Optional[AuditLogger] = None,
+        tenant_id: str = "",
     ):
         """
         Initialize trading gateway.
@@ -610,6 +719,9 @@ class TradingGateway:
         self.config = config or GatewayConfig()
         self.event_engine = event_engine
         self.risk_manager = risk_manager
+        self.authorizer = authorizer
+        self.audit_logger = audit_logger
+        self.tenant_id = tenant_id
         
         self._status = GatewayStatus.DISCONNECTED
         self._adapter = self._create_adapter()
@@ -717,7 +829,8 @@ class TradingGateway:
         symbol: str,
         quantity: float,
         price: Optional[float] = None,
-        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT
+        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT,
+        subject: Optional[Subject] = None,
     ) -> str:
         """
         Submit buy order.
@@ -731,14 +844,15 @@ class TradingGateway:
         Returns:
             Order ID
         """
-        return self._submit_order(symbol, Side.BUY, quantity, price, order_type)
+        return self._submit_order(symbol, Side.BUY, quantity, price, order_type, subject=subject)
     
     def sell(
         self,
         symbol: str,
         quantity: float,
         price: Optional[float] = None,
-        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT
+        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT,
+        subject: Optional[Subject] = None,
     ) -> str:
         """
         Submit sell order.
@@ -752,13 +866,15 @@ class TradingGateway:
         Returns:
             Order ID
         """
-        return self._submit_order(symbol, Side.SELL, quantity, price, order_type)
+        return self._submit_order(symbol, Side.SELL, quantity, price, order_type, subject=subject)
     
-    def cancel(self, order_id: str) -> bool:
+    def cancel(self, order_id: str, subject: Optional[Subject] = None) -> bool:
         """Cancel order."""
+        self._authorize(Permission.ORDER_CANCEL, subject, ResourceScope(tenant_id=self.tenant_id))
         result = self._adapter.cancel_order(order_id)
         if result:
             self._publish_event("order.cancelled", {"order_id": order_id})
+            self._audit("order.cancel", subject, {"order_id": order_id}, result="ok")
         return result
     
     def _submit_order(
@@ -767,13 +883,16 @@ class TradingGateway:
         side: Side,
         quantity: float,
         price: Optional[float],
-        order_type: OrderTypeEnum
+        order_type: OrderTypeEnum,
+        subject: Optional[Subject] = None,
     ) -> str:
         """Internal order submission with risk checks."""
         # Risk check (if enabled)
         if self.risk_manager and self.config.enable_risk_check:
             # TODO: Integrate with risk manager
             pass
+
+        self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(tenant_id=self.tenant_id))
         
         # Submit to adapter
         order_id = self._adapter.submit_order(symbol, side, quantity, price, order_type)
@@ -785,6 +904,7 @@ class TradingGateway:
             "quantity": quantity,
             "price": price
         })
+        self._audit("order.submit", subject, {"order_id": order_id, "symbol": symbol}, result="ok")
         
         return order_id
     
@@ -844,6 +964,43 @@ class TradingGateway:
         """Publish event if event engine is available."""
         if self.event_engine:
             self.event_engine.put(Event(event_type, data))
+
+    def _authorize(self, permission: str, subject: Optional[Subject], scope: ResourceScope) -> None:
+        if self.authorizer:
+            self.authorizer.require(permission, subject, scope)
+
+    def _audit(self, action: str, subject: Optional[Subject], details: Dict[str, Any], result: str) -> None:
+        actor = subject.subject_id if subject else "system"
+        audit_event(
+            self.audit_logger,
+            actor=actor,
+            action=action,
+            resource="gateway",
+            result=result,
+            details=details,
+        )
+
+    # ---------------------------------------------------------------------------
+    # Snapshot / Restore
+    # ---------------------------------------------------------------------------
+
+    def snapshot_state(self) -> Dict[str, Any]:
+        if hasattr(self._adapter, "snapshot_state"):
+            return self._adapter.snapshot_state()
+        return {}
+
+    def restore_state(self, payload: Dict[str, Any]) -> None:
+        if hasattr(self._adapter, "restore_state"):
+            self._adapter.restore_state(payload)
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", ""))
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------------------

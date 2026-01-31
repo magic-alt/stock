@@ -22,7 +22,7 @@ def population_stability_index(
         return 0.0
 
     quantiles = np.linspace(0, 1, buckets + 1)
-    breakpoints = expected.quantile(quantiles).values
+    breakpoints = expected.quantile(quantiles).to_numpy(copy=True)
     breakpoints[0] = -np.inf
     breakpoints[-1] = np.inf
 
