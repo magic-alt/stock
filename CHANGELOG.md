@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - MLOps: add FinRL/Qlib training scripts and integration modules.
 - MLOps: add Qlib dataset download helper script.
 - MLOps: pin yfinance to a compatible version for FinRL imports.
+- Backtest: add registered Qlib model strategy and local Qlib data provider for registry-driven backtests.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
@@ -31,6 +32,7 @@ All notable changes to this project will be documented in this file.
 - GUI: refactor backtest GUI for full CLI coverage (calendar/fee/combo names), modern layout, and config persistence.
 - Core: add heartbeat monitoring utilities and reuse them in `paper_runner_v3`.
 - Docs: add AI framework integration analysis and implementation plan in `docs/AI_FRAMEWORK_INTEGRATION.md`.
+- Docs: document registered model backtest flow for Qlib in `docs/AI_FRAMEWORK_INTEGRATION.md`.
 - Docs: expand Phase 3.5 AI integration plan in `ROADMAP.md`.
 - Docs: mark Phase 3.5 AI framework integration tasks as completed in `ROADMAP.md`.
 

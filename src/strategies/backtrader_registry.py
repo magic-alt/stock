@@ -65,6 +65,10 @@ from .ml_enhanced_strategy import (
     _coerce_ml_enhanced,
     ML_ENHANCED_CONFIG, ML_ENSEMBLE_CONFIG,
 )
+from .qlib_registered_strategy import (
+    QlibRegistrySignalStrategy,
+    _coerce_qlib_registry,
+)
 
 
 class StrategyModule:
@@ -754,6 +758,37 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
+# Registered Qlib model signal strategy
+register_strategy(StrategyModule(
+    name='qlib_registry',
+    description='Registered Qlib model signals (model registry)',
+    strategy_cls=QlibRegistrySignalStrategy,
+    param_names=[
+        'model_id', 'model_name', 'provider_uri', 'region',
+        'threshold', 'allow_short', 'position_pct', 'lot_size',
+        'min_hold_bars', 'cooldown_bars',
+    ],
+    defaults={
+        'model_id': None,
+        'model_name': 'qlib-csi300',
+        'provider_uri': './qlib_data',
+        'region': 'cn',
+        'threshold': 0.0,
+        'allow_short': False,
+        'position_pct': 0.95,
+        'lot_size': 100,
+        'min_hold_bars': 1,
+        'cooldown_bars': 0,
+    },
+    grid_defaults={
+        'threshold': [0.0, 0.001, 0.002],
+        'position_pct': [0.5, 0.75, 0.95],
+        'min_hold_bars': [1, 3, 5],
+    },
+    coercer=_coerce_qlib_registry,
+    multi_symbol=False,
+))
+
 
 # ============================================================================
 # V3.1.0: 策略别名映射系统 (Strategy Alias Mapping)
@@ -1005,6 +1040,7 @@ __all__ = [
     # V3.0.0-beta.4 ML 增强策略
     'MLEnhancedStrategy',
     'MLEnsembleStrategy',
+    'QlibRegistrySignalStrategy',
     'ML_ENHANCED_CONFIG',
     'ML_ENSEMBLE_CONFIG',
 ]

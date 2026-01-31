@@ -406,20 +406,19 @@ class AkshareProvider(DataProvider):
                 end_date=end.replace("-", ""),
                 adjust=adj or "",
             )
-            
+
             if df is None or df.empty:
                 return None
-            
+
             df = _standardize_stock_frame(df)
-            
+
             # Filter to requested date range
             df = df.loc[start:end]
-            
             return df
-            
         except Exception as e:
             logger.error(f"AKShare fetch error for {symbol}: {e}")
             return None
+
 
     def load_index_nav(
         self,
@@ -539,6 +538,100 @@ class AkshareProvider(DataProvider):
             logger.error(f"AKShare index fetch error for {index_code}: {e}")
             return None
 
+
+
+# ---------------------------------------------------------------------------
+# Qlib Provider (Local)
+# ---------------------------------------------------------------------------
+
+def _to_qlib_symbol(symbol: str) -> str:
+    """Convert 600519.SH -> SH600519 for Qlib provider."""
+    if not symbol:
+        return symbol
+    sym = symbol.strip().upper()
+    if sym.startswith(("SH", "SZ")) and len(sym) > 2:
+        return sym
+    if sym.endswith(".SH"):
+        return f"SH{sym[:-3]}"
+    if sym.endswith(".SZ"):
+        return f"SZ{sym[:-3]}"
+    return sym
+
+
+class QlibProvider(DataProvider):
+    """Local Qlib data provider (offline)."""
+
+    name: str = "qlib"
+    _init_state: Tuple[Optional[str], Optional[str]] = (None, None)
+
+    def __init__(self, cache_dir: str = CACHE_DEFAULT, provider_uri: Optional[str] = None, region: str = "cn"):
+        super().__init__(cache_dir)
+        self.provider_uri = provider_uri or os.environ.get("QLIB_DATA", "./qlib_data")
+        self.region = region
+        self._init_qlib()
+
+    def _init_qlib(self) -> None:
+        try:
+            import qlib  # type: ignore
+        except Exception as exc:
+            raise DataProviderUnavailable("Qlib is not installed. Install pyqlib first.") from exc
+        if self._init_state == (self.provider_uri, self.region):
+            return
+        qlib.init(provider_uri=self.provider_uri, region=self.region)
+        self._init_state = (self.provider_uri, self.region)
+
+    def load_stock_daily(
+        self,
+        symbols: Sequence[str],
+        start: str,
+        end: str,
+        *,
+        adj: Optional[str] = None,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> Dict[str, pd.DataFrame]:
+        self._init_qlib()
+        start_clean, end_clean = self._validate_dates(start, end)
+        try:
+            from qlib.data import D  # type: ignore
+        except Exception as exc:
+            raise DataProviderUnavailable("Qlib is not installed. Install pyqlib first.") from exc
+
+        fields = ["$open", "$high", "$low", "$close", "$volume"]
+        data_map: Dict[str, pd.DataFrame] = {}
+        for symbol in symbols:
+            qlib_symbol = _to_qlib_symbol(symbol)
+            df = D.features([qlib_symbol], fields, start_time=start_clean, end_time=end_clean)
+            if df is None or df.empty:
+                continue
+            frame = df.reset_index()
+            frame = frame[frame["instrument"] == qlib_symbol]
+            frame = frame.set_index("datetime")
+            frame.index = pd.to_datetime(frame.index).tz_localize(None)
+            frame = frame.rename(
+                columns={
+                    "$open": "open",
+                    "$high": "high",
+                    "$low": "low",
+                    "$close": "close",
+                    "$volume": "volume",
+                }
+            )
+            frame.index.name = "date"
+            data_map[symbol] = frame.sort_index()
+
+        if not data_map:
+            raise DataProviderError("Qlib provider returned no data. Check symbols and date range.")
+        return data_map
+
+    def load_index_nav(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+        *,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> pd.Series:
+        raise DataProviderError("QlibProvider does not support index NAV loading.")
 
 
 # ---------------------------------------------------------------------------
@@ -964,8 +1057,10 @@ def get_provider(name: str, cache_dir: str = CACHE_DEFAULT) -> DataProvider:
         return YFinanceProvider(cache_dir)
     elif name == "tushare":
         return TuShareProvider(cache_dir=cache_dir)
+    elif name == "qlib":
+        return QlibProvider(cache_dir=cache_dir)
     else:
         raise ValueError(f"Unknown provider: {name}. Available: {PROVIDER_NAMES}")
 
 # Export available provider names for CLI
-PROVIDER_NAMES = ["akshare", "yfinance", "tushare"]
+PROVIDER_NAMES = ["akshare", "yfinance", "tushare", "qlib"]

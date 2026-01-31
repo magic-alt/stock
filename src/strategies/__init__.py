@@ -41,6 +41,7 @@ from .backtrader_registry import (
     MultiFactorSelectionStrategy,
     IndexEnhancementStrategy,
     IndustryRotationStrategy,
+    QlibRegistrySignalStrategy,
 )
 
 # 特殊策略（套利、ML等 - 保留用于未来扩展）
@@ -100,6 +101,7 @@ __all__ = [
     'MultiFactorSelectionStrategy',
     'IndexEnhancementStrategy',
     'IndustryRotationStrategy',
+    'QlibRegistrySignalStrategy',
     
     # 特殊策略可用性标志
     'SPECIAL_STRATEGIES_AVAILABLE',
