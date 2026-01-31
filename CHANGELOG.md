@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 - MLOps: add FinRL/Qlib trainer adapters for standardized registration.
 - MLOps: add FinRL/Qlib training scripts and integration modules.
 - MLOps: add Qlib dataset download helper script.
+- MLOps: pin yfinance to a compatible version for FinRL imports.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.

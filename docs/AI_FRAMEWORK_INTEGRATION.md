@@ -144,6 +144,7 @@ pip install -r requirements-mlops.txt
 ```
 
 > 注意：Qlib/FinRL 对 Python 版本敏感，建议在独立虚拟环境中安装。
+> 本仓库已固定 `yfinance==0.2.28` 以避免 FinRL 依赖冲突（与 `alpaca-trade-api` 的 websockets 版本约束）。
 
 ### 8.2 FinRL 训练（示例）
 ```
