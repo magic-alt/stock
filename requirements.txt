@@ -1,11 +1,17 @@
 akshare>=1.12.0
 pandas>=2.0.0
 numpy>=1.24.0
+PyYAML>=6.0.0
+sortedcontainers>=2.4.0
 
 # 核心依赖
 backtrader>=1.9.76  # 回测框架
 matplotlib>=3.5.0   # 图表绘制
 psutil>=5.9.0      # 系统监控（可选，但推荐）
+
+# 测试依赖
+pytest>=7.0.0
+pytest-cov>=4.0.0
 
 # 可选依赖
 # tushare>=1.2.0      # 备用数据源（需要token）
