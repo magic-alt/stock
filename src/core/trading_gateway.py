@@ -29,6 +29,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
 from src.core.events import EventEngine, Event, EventType
@@ -39,8 +40,41 @@ from src.core.interfaces import (
 from src.core.logger import get_logger
 from src.core.audit import AuditLogger, audit_event
 from src.core.auth import Authorizer, Permission, ResourceScope, Subject
+from src.gateways.base_live_gateway import (
+    GatewayConfig as LiveGatewayConfig,
+    BaseLiveGateway,
+)
+from src.gateways.xtquant_gateway import XtQuantGateway
+from src.gateways.xtp_gateway import XtpGateway
+from src.gateways.hundsun_uft_gateway import HundsunUftGateway
 
 logger = get_logger("trading_gateway")
+
+try:
+    import easytrader  # type: ignore
+except ImportError:
+    easytrader = None
+
+try:
+    from futu import (  # type: ignore
+        OpenSecTradeContext,
+        TrdSide,
+        OrderType as FutuOrderType,
+        RET_OK,
+    )
+except ImportError:
+    OpenSecTradeContext = None
+    TrdSide = None
+    FutuOrderType = None
+    RET_OK = None
+
+try:
+    from ib_insync import IB, Stock, MarketOrder, LimitOrder  # type: ignore
+except ImportError:
+    IB = None
+    Stock = None
+    MarketOrder = None
+    LimitOrder = None
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +105,9 @@ class BrokerType(str, Enum):
     XUEQIU = "xueqiu"           # 雪球
     IB = "ib"                   # Interactive Brokers
     CTP = "ctp"                 # 中国期货CTP
+    XTQUANT = "xtquant"         # XtQuant/QMT
+    XTP = "xtp"                 # 中泰证券XTP
+    HUNDSUN = "hundsun"         # 恒生UFT
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +127,15 @@ class GatewayConfig:
     secret: str = ""
     account: str = ""
     password: str = ""
+
+    # Live gateway specific (XtQuant/XTP/Hundsun)
+    terminal_type: str = "QMT"
+    terminal_path: str = ""
+    trade_server: str = ""
+    quote_server: str = ""
+    client_id: int = 1
+    td_front: str = ""
+    md_front: str = ""
     
     # Trading settings
     initial_cash: float = 1_000_000.0
@@ -103,6 +149,7 @@ class GatewayConfig:
     
     # Misc
     testnet: bool = True  # Use testnet/sandbox by default
+    broker_options: Dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +197,124 @@ class BrokerAdapter(Protocol):
     def query_positions(self) -> Dict[str, PositionInfo]:
         """Query all positions."""
         ...
+
+
+class BaseLiveGatewayAdapter:
+    """
+    Adapter that wraps BaseLiveGateway implementations (XtQuant/XTP/Hundsun).
+    """
+
+    def __init__(self, config: GatewayConfig, gateway_cls: type[BaseLiveGateway]):
+        self.config = config
+        self._event_queue: Queue = Queue()
+        self._gateway = gateway_cls(self._build_live_config(), self._event_queue)
+
+    def connect(self) -> bool:
+        return self._gateway.connect()
+
+    def disconnect(self) -> None:
+        self._gateway.disconnect()
+
+    def is_connected(self) -> bool:
+        return bool(self._gateway.is_connected)
+
+    def submit_order(
+        self,
+        symbol: str,
+        side: Side,
+        quantity: float,
+        price: Optional[float] = None,
+        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT,
+    ) -> str:
+        return self._gateway.send_order(
+            symbol=symbol,
+            side=side.value,
+            quantity=quantity,
+            price=price,
+            order_type=order_type.value,
+        )
+
+    def cancel_order(self, order_id: str) -> bool:
+        return self._gateway.cancel_order(order_id)
+
+    def query_order(self, order_id: str) -> Optional[OrderInfo]:
+        order = self._gateway.get_order(order_id)
+        if not order:
+            return None
+        return OrderInfo(
+            order_id=order.client_order_id,
+            symbol=order.symbol,
+            side=Side(order.side.value),
+            order_type=OrderTypeEnum(order.order_type.value),
+            price=order.price,
+            quantity=order.quantity,
+            filled_quantity=order.filled_quantity,
+            avg_fill_price=order.avg_fill_price,
+            status=_map_live_order_status(order.status.value),
+            create_time=order.create_time,
+            update_time=order.update_time,
+        )
+
+    def query_account(self) -> AccountInfo:
+        update = self._gateway.query_account()
+        if not update:
+            return AccountInfo(account_id=self._account_id())
+        total_value = update.equity or (update.cash + update.unrealized_pnl)
+        return AccountInfo(
+            account_id=update.account_id,
+            cash=update.cash,
+            total_value=total_value,
+            available=update.available,
+            margin=update.margin,
+            unrealized_pnl=update.unrealized_pnl,
+            realized_pnl=update.realized_pnl,
+        )
+
+    def query_positions(self) -> Dict[str, PositionInfo]:
+        positions: Dict[str, PositionInfo] = {}
+        updates = self._gateway.query_positions()
+        for pos in updates:
+            positions[pos.symbol] = PositionInfo(
+                symbol=pos.symbol,
+                size=pos.total_quantity,
+                avg_price=pos.avg_price,
+                market_value=pos.market_value,
+                unrealized_pnl=pos.unrealized_pnl,
+                realized_pnl=pos.realized_pnl,
+            )
+        return positions
+
+    def _account_id(self) -> str:
+        return self.config.account or "default"
+
+    def _build_live_config(self) -> LiveGatewayConfig:
+        return LiveGatewayConfig(
+            account_id=self._account_id(),
+            broker=self.config.broker.value,
+            password=self.config.password or None,
+            terminal_type=self.config.terminal_type or "QMT",
+            terminal_path=self.config.terminal_path or None,
+            trade_server=self.config.trade_server or None,
+            quote_server=self.config.quote_server or None,
+            client_id=self.config.client_id or 1,
+            td_front=self.config.td_front or None,
+            md_front=self.config.md_front or None,
+        )
+
+
+class XtQuantAdapter(BaseLiveGatewayAdapter):
+    def __init__(self, config: GatewayConfig):
+        super().__init__(config, XtQuantGateway)
+
+
+class XtpAdapter(BaseLiveGatewayAdapter):
+    def __init__(self, config: GatewayConfig):
+        super().__init__(config, XtpGateway)
+
+
+class HundsunUftAdapter(BaseLiveGatewayAdapter):
+    def __init__(self, config: GatewayConfig):
+        super().__init__(config, HundsunUftGateway)
 
 
 # ---------------------------------------------------------------------------
@@ -501,11 +666,23 @@ class EastMoneyAdapter:
     
     def connect(self) -> bool:
         logger.info("Connecting to EastMoney...")
-        # TODO: Implement actual connection
-        # import easytrader
-        # self._client = easytrader.use('universal_client')
-        # self._client.connect(exe_path=..., tesseract_cmd=...)
-        raise NotImplementedError("EastMoney adapter not implemented. Install easytrader first.")
+        if easytrader is None:
+            raise NotImplementedError("easytrader not installed. Install easytrader first.")
+
+        client_type = self.config.broker_options.get("client_type", "universal_client")
+        self._client = easytrader.use(client_type)
+
+        exe_path = self.config.broker_options.get("exe_path") or self.config.host or ""
+        kwargs = dict(self.config.broker_options.get("connect_kwargs", {}))
+        if hasattr(self._client, "connect"):
+            if exe_path:
+                kwargs.setdefault("exe_path", exe_path)
+            self._client.connect(**kwargs)
+        elif hasattr(self._client, "prepare"):
+            if exe_path:
+                self._client.prepare(exe_path, **kwargs)
+        self._connected = True
+        return True
     
     def disconnect(self) -> None:
         self._connected = False
@@ -515,19 +692,79 @@ class EastMoneyAdapter:
     
     def submit_order(self, symbol: str, side: Side, quantity: float, 
                      price: Optional[float] = None, order_type: OrderTypeEnum = OrderTypeEnum.LIMIT) -> str:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("EastMoney client not connected")
+        if side == Side.BUY:
+            result = self._client.buy(code=symbol, price=price or 0.0, amount=quantity)
+        else:
+            result = self._client.sell(code=symbol, price=price or 0.0, amount=quantity)
+        if isinstance(result, dict):
+            return str(result.get("order_id") or result.get("entrust_no") or result.get("id") or "")
+        return str(result)
     
     def cancel_order(self, order_id: str) -> bool:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("EastMoney client not connected")
+        if hasattr(self._client, "cancel_entrust"):
+            result = self._client.cancel_entrust(order_id)
+            return bool(result)
+        if hasattr(self._client, "cancel_order"):
+            result = self._client.cancel_order(order_id)
+            return bool(result)
+        raise NotImplementedError("cancel_order not supported by easytrader client")
     
     def query_order(self, order_id: str) -> Optional[OrderInfo]:
-        raise NotImplementedError()
+        if not self._client:
+            return None
+        if hasattr(self._client, "get_order"):
+            data = self._client.get_order(order_id)
+            if isinstance(data, dict):
+                return OrderInfo(
+                    order_id=str(order_id),
+                    symbol=str(data.get("symbol", "")),
+                    side=Side(data.get("side", "buy")),
+                    order_type=OrderTypeEnum.LIMIT,
+                    price=float(data.get("price", 0.0)),
+                    quantity=float(data.get("quantity", 0.0)),
+                )
+        return None
     
     def query_account(self) -> AccountInfo:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("EastMoney client not connected")
+        balance = getattr(self._client, "balance", None)
+        data = balance() if callable(balance) else balance or {}
+        cash = float(data.get("cash_balance", data.get("cash", 0.0))) if isinstance(data, dict) else 0.0
+        total = float(data.get("asset_balance", data.get("total_asset", cash))) if isinstance(data, dict) else cash
+        available = float(data.get("available", cash)) if isinstance(data, dict) else cash
+        return AccountInfo(
+            account_id=self.config.account or "eastmoney",
+            cash=cash,
+            total_value=total,
+            available=available,
+        )
     
     def query_positions(self) -> Dict[str, PositionInfo]:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("EastMoney client not connected")
+        positions = getattr(self._client, "position", None)
+        data = positions() if callable(positions) else positions or []
+        results: Dict[str, PositionInfo] = {}
+        if isinstance(data, list):
+            for row in data:
+                symbol = str(row.get("symbol") or row.get("证券代码") or row.get("code") or "")
+                size = float(row.get("volume") or row.get("可用余额") or row.get("amount") or 0.0)
+                avg_price = float(row.get("avg_price") or row.get("成本价") or 0.0)
+                market_value = float(row.get("market_value") or row.get("市值") or 0.0)
+                unrealized = float(row.get("unrealized_pnl") or row.get("浮动盈亏") or 0.0)
+                results[symbol] = PositionInfo(
+                    symbol=symbol,
+                    size=size,
+                    avg_price=avg_price,
+                    market_value=market_value,
+                    unrealized_pnl=unrealized,
+                )
+        return results
 
 
 class FutuAdapter:
@@ -548,10 +785,17 @@ class FutuAdapter:
     
     def connect(self) -> bool:
         logger.info("Connecting to Futu OpenD...")
-        # TODO: Implement actual connection
-        # from futu import OpenSecTradeContext
-        # self._ctx = OpenSecTradeContext(host=config.host, port=config.port)
-        raise NotImplementedError("Futu adapter not implemented. Install futu-api first.")
+        if OpenSecTradeContext is None:
+            raise NotImplementedError("futu-api not installed. Install futu-api first.")
+        host = self.config.host or "127.0.0.1"
+        port = self.config.port or 11111
+        self._ctx = OpenSecTradeContext(host=host, port=port)
+        if self.config.password:
+            ret, _ = self._ctx.unlock_trade(self.config.password)
+            if RET_OK is not None and ret != RET_OK:
+                raise RuntimeError("Futu unlock_trade failed")
+        self._connected = True
+        return True
     
     def disconnect(self) -> None:
         self._connected = False
@@ -561,19 +805,101 @@ class FutuAdapter:
     
     def submit_order(self, symbol: str, side: Side, quantity: float,
                      price: Optional[float] = None, order_type: OrderTypeEnum = OrderTypeEnum.LIMIT) -> str:
-        raise NotImplementedError()
+        if not self._ctx:
+            raise RuntimeError("Futu context not connected")
+        if TrdSide is None or FutuOrderType is None:
+            raise RuntimeError("Futu API not available")
+        futu_side = TrdSide.BUY if side == Side.BUY else TrdSide.SELL
+        if order_type == OrderTypeEnum.MARKET:
+            futu_type = FutuOrderType.MARKET
+        else:
+            futu_type = FutuOrderType.NORMAL
+        ret, data = self._ctx.place_order(
+            price=price or 0.0,
+            qty=quantity,
+            code=symbol,
+            trd_side=futu_side,
+            order_type=futu_type,
+        )
+        if RET_OK is not None and ret != RET_OK:
+            raise RuntimeError(f"Futu place_order failed: {data}")
+        order_id = ""
+        if hasattr(data, "order_id"):
+            order_id = str(data.order_id)
+        elif isinstance(data, dict):
+            order_id = str(data.get("order_id") or "")
+        return order_id
     
     def cancel_order(self, order_id: str) -> bool:
-        raise NotImplementedError()
+        if not self._ctx:
+            raise RuntimeError("Futu context not connected")
+        if hasattr(self._ctx, "modify_order"):
+            ret, _ = self._ctx.modify_order(order_id=order_id, modify_order_op=0)
+        else:
+            ret, _ = self._ctx.cancel_order(order_id=order_id)
+        if RET_OK is not None and ret != RET_OK:
+            return False
+        return True
     
     def query_order(self, order_id: str) -> Optional[OrderInfo]:
-        raise NotImplementedError()
+        if not self._ctx:
+            return None
+        if hasattr(self._ctx, "order_list_query"):
+            ret, data = self._ctx.order_list_query(order_id=order_id)
+            if RET_OK is not None and ret != RET_OK:
+                return None
+            if isinstance(data, dict):
+                symbol = str(data.get("code", ""))
+                side = Side.BUY if data.get("trd_side") == 0 else Side.SELL
+                return OrderInfo(
+                    order_id=str(order_id),
+                    symbol=symbol,
+                    side=side,
+                    order_type=OrderTypeEnum.LIMIT,
+                    price=float(data.get("price", 0.0)),
+                    quantity=float(data.get("qty", 0.0)),
+                    status=OrderStatusEnum.SUBMITTED,
+                )
+        return None
     
     def query_account(self) -> AccountInfo:
-        raise NotImplementedError()
+        if not self._ctx:
+            raise RuntimeError("Futu context not connected")
+        if hasattr(self._ctx, "accinfo_query"):
+            ret, data = self._ctx.accinfo_query()
+            if RET_OK is not None and ret != RET_OK:
+                raise RuntimeError("Futu accinfo_query failed")
+            if isinstance(data, dict):
+                cash = float(data.get("cash", 0.0))
+                total = float(data.get("total_assets", cash))
+                available = float(data.get("avl_withdrawal_cash", cash))
+                return AccountInfo(account_id=self.config.account or "futu", cash=cash, total_value=total, available=available)
+        return AccountInfo(account_id=self.config.account or "futu")
     
     def query_positions(self) -> Dict[str, PositionInfo]:
-        raise NotImplementedError()
+        if not self._ctx:
+            raise RuntimeError("Futu context not connected")
+        if hasattr(self._ctx, "position_list_query"):
+            ret, data = self._ctx.position_list_query()
+            if RET_OK is not None and ret != RET_OK:
+                raise RuntimeError("Futu position_list_query failed")
+            results: Dict[str, PositionInfo] = {}
+            if isinstance(data, list):
+                for row in data:
+                    symbol = str(row.get("code", ""))
+                    qty = float(row.get("qty", 0.0))
+                    avg_price = float(row.get("cost_price", 0.0))
+                    market_value = float(row.get("market_val", 0.0))
+                    pnl = float(row.get("pl_val", 0.0))
+                    results[symbol] = PositionInfo(
+                        symbol=symbol,
+                        size=qty,
+                        avg_price=avg_price,
+                        market_value=market_value,
+                        unrealized_pnl=pnl,
+                    )
+            return results
+        return {}
 
 
 class XueqiuAdapter:
@@ -593,7 +919,15 @@ class XueqiuAdapter:
     
     def connect(self) -> bool:
         logger.info("Connecting to Xueqiu...")
-        raise NotImplementedError("Xueqiu adapter not implemented.")
+        if easytrader is None:
+            raise NotImplementedError("easytrader not installed. Install easytrader first.")
+        client_type = self.config.broker_options.get("client_type", "xq")
+        self._client = easytrader.use(client_type)
+        cookie = self.config.broker_options.get("cookie")
+        if hasattr(self._client, "prepare") and cookie:
+            self._client.prepare(cookie=cookie)
+        self._connected = True
+        return True
     
     def disconnect(self) -> None:
         self._connected = False
@@ -603,19 +937,79 @@ class XueqiuAdapter:
     
     def submit_order(self, symbol: str, side: Side, quantity: float,
                      price: Optional[float] = None, order_type: OrderTypeEnum = OrderTypeEnum.LIMIT) -> str:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("Xueqiu client not connected")
+        if side == Side.BUY:
+            result = self._client.buy(code=symbol, price=price or 0.0, amount=quantity)
+        else:
+            result = self._client.sell(code=symbol, price=price or 0.0, amount=quantity)
+        if isinstance(result, dict):
+            return str(result.get("order_id") or result.get("id") or "")
+        return str(result)
     
     def cancel_order(self, order_id: str) -> bool:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("Xueqiu client not connected")
+        if hasattr(self._client, "cancel_order"):
+            result = self._client.cancel_order(order_id)
+            return bool(result)
+        if hasattr(self._client, "cancel_entrust"):
+            result = self._client.cancel_entrust(order_id)
+            return bool(result)
+        raise NotImplementedError("cancel_order not supported by Xueqiu client")
     
     def query_order(self, order_id: str) -> Optional[OrderInfo]:
-        raise NotImplementedError()
+        if not self._client or not hasattr(self._client, "get_order"):
+            return None
+        data = self._client.get_order(order_id)
+        if isinstance(data, dict):
+            side = data.get("side", "buy")
+            return OrderInfo(
+                order_id=str(order_id),
+                symbol=str(data.get("symbol", "")),
+                side=Side(side),
+                order_type=OrderTypeEnum.LIMIT,
+                price=float(data.get("price", 0.0)),
+                quantity=float(data.get("quantity", 0.0)),
+            )
+        return None
     
     def query_account(self) -> AccountInfo:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("Xueqiu client not connected")
+        balance = getattr(self._client, "balance", None)
+        data = balance() if callable(balance) else balance or {}
+        cash = float(data.get("cash", 0.0)) if isinstance(data, dict) else 0.0
+        total = float(data.get("total_asset", cash)) if isinstance(data, dict) else cash
+        available = float(data.get("available", cash)) if isinstance(data, dict) else cash
+        return AccountInfo(
+            account_id=self.config.account or "xueqiu",
+            cash=cash,
+            total_value=total,
+            available=available,
+        )
     
     def query_positions(self) -> Dict[str, PositionInfo]:
-        raise NotImplementedError()
+        if not self._client:
+            raise RuntimeError("Xueqiu client not connected")
+        positions = getattr(self._client, "position", None)
+        data = positions() if callable(positions) else positions or []
+        results: Dict[str, PositionInfo] = {}
+        if isinstance(data, list):
+            for row in data:
+                symbol = str(row.get("symbol") or row.get("code") or "")
+                size = float(row.get("amount") or row.get("volume") or 0.0)
+                avg_price = float(row.get("avg_price") or row.get("cost_price") or 0.0)
+                market_value = float(row.get("market_value") or row.get("market_val") or 0.0)
+                unrealized = float(row.get("unrealized_pnl") or row.get("profit") or 0.0)
+                results[symbol] = PositionInfo(
+                    symbol=symbol,
+                    size=size,
+                    avg_price=avg_price,
+                    market_value=market_value,
+                    unrealized_pnl=unrealized,
+                )
+        return results
 
 
 class IBAdapter:
@@ -633,16 +1027,29 @@ class IBAdapter:
     def __init__(self, config: GatewayConfig):
         self.config = config
         self._connected = False
+        self._client = None
+        self._ctx = None
+        self._ib = None
+        self._orders: Dict[str, Any] = {}
     
     def connect(self) -> bool:
         logger.info("Connecting to Interactive Brokers...")
-        # TODO: Implement actual connection
-        # from ib_insync import IB
-        # self._ib = IB()
-        # self._ib.connect(host=config.host, port=config.port, clientId=1)
-        raise NotImplementedError("IB adapter not implemented. Install ib_insync first.")
+        if IB is None:
+            raise NotImplementedError("ib_insync not installed. Install ib_insync first.")
+        host = self.config.host or "127.0.0.1"
+        port = self.config.port or 7497
+        client_id = self.config.client_id or 1
+        self._ib = IB()
+        self._ib.connect(host, port, clientId=client_id)
+        self._connected = True
+        return True
     
     def disconnect(self) -> None:
+        if self._ib:
+            try:
+                self._ib.disconnect()
+            except Exception:
+                pass
         self._connected = False
     
     def is_connected(self) -> bool:
@@ -650,19 +1057,79 @@ class IBAdapter:
     
     def submit_order(self, symbol: str, side: Side, quantity: float,
                      price: Optional[float] = None, order_type: OrderTypeEnum = OrderTypeEnum.LIMIT) -> str:
-        raise NotImplementedError()
+        if not self._ib:
+            raise RuntimeError("IB client not connected")
+        if Stock is None or MarketOrder is None or LimitOrder is None:
+            raise RuntimeError("ib_insync not available")
+        exchange = self.config.broker_options.get("exchange", "SMART")
+        currency = self.config.broker_options.get("currency", "USD")
+        primary_exchange = self.config.broker_options.get("primary_exchange", "")
+        sym = symbol.split(".")[0]
+        contract = Stock(sym, exchange, currency)
+        if primary_exchange:
+            contract.primaryExchange = primary_exchange
+        if order_type == OrderTypeEnum.MARKET:
+            order = MarketOrder("BUY" if side == Side.BUY else "SELL", quantity)
+        else:
+            order = LimitOrder("BUY" if side == Side.BUY else "SELL", quantity, price or 0.0)
+        trade = self._ib.placeOrder(contract, order)
+        order_id = str(trade.order.orderId)
+        self._orders[order_id] = trade
+        return order_id
     
     def cancel_order(self, order_id: str) -> bool:
-        raise NotImplementedError()
+        if not self._ib:
+            raise RuntimeError("IB client not connected")
+        trade = self._orders.get(order_id)
+        if not trade:
+            return False
+        self._ib.cancelOrder(trade.order)
+        return True
     
     def query_order(self, order_id: str) -> Optional[OrderInfo]:
-        raise NotImplementedError()
+        trade = self._orders.get(order_id)
+        if not trade:
+            return None
+        side = Side.BUY if trade.order.action.upper() == "BUY" else Side.SELL
+        order_type = OrderTypeEnum.MARKET if trade.order.orderType.upper() == "MKT" else OrderTypeEnum.LIMIT
+        return OrderInfo(
+            order_id=order_id,
+            symbol=str(trade.contract.symbol),
+            side=side,
+            order_type=order_type,
+            price=getattr(trade.order, "lmtPrice", None),
+            quantity=float(trade.order.totalQuantity),
+            status=OrderStatusEnum.SUBMITTED,
+        )
     
     def query_account(self) -> AccountInfo:
-        raise NotImplementedError()
+        if not self._ib:
+            raise RuntimeError("IB client not connected")
+        summary = self._ib.accountSummary()
+        data = {item.tag: float(item.value) for item in summary if item.value is not None}
+        cash = data.get("TotalCashValue", 0.0)
+        total = data.get("NetLiquidation", cash)
+        return AccountInfo(
+            account_id=self.config.account or "ib",
+            cash=cash,
+            total_value=total,
+            available=data.get("AvailableFunds", cash),
+        )
     
     def query_positions(self) -> Dict[str, PositionInfo]:
-        raise NotImplementedError()
+        if not self._ib:
+            raise RuntimeError("IB client not connected")
+        results: Dict[str, PositionInfo] = {}
+        for pos in self._ib.positions():
+            symbol = pos.contract.symbol
+            results[symbol] = PositionInfo(
+                symbol=symbol,
+                size=float(pos.position),
+                avg_price=float(pos.avgCost),
+                market_value=float(pos.marketValue or 0.0) if hasattr(pos, "marketValue") else 0.0,
+                unrealized_pnl=float(pos.unrealizedPNL or 0.0) if hasattr(pos, "unrealizedPNL") else 0.0,
+            )
+        return results
 
 
 # ---------------------------------------------------------------------------
@@ -777,6 +1244,12 @@ class TradingGateway:
             return XueqiuAdapter(self.config)
         elif broker == BrokerType.IB:
             return IBAdapter(self.config)
+        elif broker == BrokerType.XTQUANT:
+            return XtQuantAdapter(self.config)
+        elif broker == BrokerType.XTP:
+            return XtpAdapter(self.config)
+        elif broker == BrokerType.HUNDSUN:
+            return HundsunUftAdapter(self.config)
         else:
             raise ValueError(f"Unsupported broker: {broker}")
     
@@ -889,8 +1362,21 @@ class TradingGateway:
         """Internal order submission with risk checks."""
         # Risk check (if enabled)
         if self.risk_manager and self.config.enable_risk_check:
-            # TODO: Integrate with risk manager
-            pass
+            if price is None and order_type == OrderTypeEnum.MARKET:
+                logger.warning("Risk check skipped for market order without price", symbol=symbol)
+            else:
+                account = self.get_account()
+                positions = self.get_positions()
+                result = self.risk_manager.check_order(
+                    symbol=symbol,
+                    side=side,
+                    quantity=quantity,
+                    price=price or 0.0,
+                    account=account,
+                    positions=positions,
+                )
+                if not result.passed:
+                    raise PermissionError(f"Risk check failed: {result.reason}")
 
         self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(tenant_id=self.tenant_id))
         
@@ -1003,6 +1489,21 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _map_live_order_status(status: str) -> OrderStatusEnum:
+    mapping = {
+        "pending_submit": OrderStatusEnum.PENDING,
+        "submitted": OrderStatusEnum.SUBMITTED,
+        "partial_fill": OrderStatusEnum.PARTIAL,
+        "filled": OrderStatusEnum.FILLED,
+        "cancel_pending": OrderStatusEnum.PENDING,
+        "cancelled": OrderStatusEnum.CANCELLED,
+        "rejected": OrderStatusEnum.REJECTED,
+        "expired": OrderStatusEnum.CANCELLED,
+        "error": OrderStatusEnum.REJECTED,
+    }
+    return mapping.get(status, OrderStatusEnum.PENDING)
+
+
 # ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
@@ -1018,4 +1519,7 @@ __all__ = [
     'FutuAdapter',
     'XueqiuAdapter',
     'IBAdapter',
+    'XtQuantAdapter',
+    'XtpAdapter',
+    'HundsunUftAdapter',
 ]

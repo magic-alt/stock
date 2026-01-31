@@ -1,9 +1,9 @@
 # 项目路线图 | Project Roadmap
 
 **项目**: 量化回测与实盘系统（Unified Quant Platform）  
-**当前版本**: V3.2.0  
+**当前版本**: V3.2.0（Phase 3.x 完成）  
 **更新日期**: 2026-01-31  
-**状态**: 🟢 本地部署就绪 | 商业级加固中
+**状态**: 🟢 生产可用 | V4.0 技术路线规划中
 
 ---
 
@@ -12,25 +12,33 @@
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │ Presentation Layer                                             │
-│  CLI / GUI / Examples                                          │
+│  CLI / GUI / Examples / Platform API                           │
 ├───────────────────────────────────────────────────────────────┤
 │ Application Layer                                              │
-│  BacktestEngine • Auto Pipeline • StrategyRegistry             │
-│  OrderManager • RiskManagerV2 • TradingGateway                 │
+│  BacktestEngine • Auto/Pipeline • StrategyRegistry             │
+│  PaperRunnerV3 • TradingGateway • Orchestrator                 │
 ├───────────────────────────────────────────────────────────────┤
 │ Domain Layer                                                   │
-│  BaseStrategy • StrategyContext • EventEngine • Data Models    │
+│  BaseStrategy • StrategyContext • EventEngine                  │
+│  RiskManagerV2 • OrderManager • Performance/Attribution         │
 ├───────────────────────────────────────────────────────────────┤
 │ Infrastructure Layer                                           │
-│  Data Providers • SQLite Cache • MatchingEngine                │
-│  Live Gateways (XtQuant/XTP/UFT) • Monitoring • Logging         │
+│  Data Providers • SQLite/Cache • MatchingEngine                │
+│  Slippage/Fill/Delay Models • RealtimeData                     │
+│  Live Gateways (XtQuant/XTP/UFT)                               │
+├───────────────────────────────────────────────────────────────┤
+│ Platform & Ops                                                 │
+│  JobQueue • DataLake • API Server • Monitoring                 │
+│  Audit/RBAC • HA Snapshot • Repro Snapshot • Logging           │
 └───────────────────────────────────────────────────────────────┘
 ```
 
 **核心链路**:
-- **回测**: Data Provider → BacktestEngine → Backtrader Strategy → 绩效/报告
-- **模拟交易**: BaseStrategy → EventEngineContext → PaperGatewayV3 → MatchingEngine
-- **实盘对接**: TradingGateway / LiveGateways → 订单/成交/资金/持仓事件
+- **回测**: Data Provider/SQLite → BacktestEngine → Strategy → 归因/报告 + Repro Snapshot
+- **模拟交易**: BaseStrategy → EventEngineContext → PaperGatewayV3 → MatchingEngine → OMS/Risk
+- **实盘对接**: Strategy → TradingGateway → Live Gateways → OMS/Risk/Audit
+- **平台任务**: API → JobQueue/Orchestrator → BacktestTask → DataLake/Report
+- **MLOps**: Adapter → Training/Registry → Inference → SignalSchema → Strategy
 
 ---
 
@@ -39,28 +47,40 @@
 ### 数据与存储
 - ✅ 多数据源：AKShare / YFinance / TuShare
 - ✅ 数据标准化与缓存：SQLite + cache 目录
+- ✅ DataPortal 统一访问 + DataLake 清单注册
+- ✅ 交易日历对齐 / 停复牌填充
+- ✅ 数据质量报告 + 数据血缘记录（lineage）
 - ✅ 基准指数 NAV 计算与回退
-- 🟡 公司行动/复权一致性校验（基础支持，需完善）
+- 🟡 数据版本锁定/快照化（数据湖分区/校验门禁）
+- 🟡 统一列式存储（Parquet）与冷热分层
 
 ### 回测与分析
 - ✅ 单策略回测 / 多策略批量 / 网格搜索 / 自动化流程
 - ✅ 组合优化（NAV 权重）
-- ✅ 回测报告与图表：Markdown / JSON / PNG
+- ✅ 回测报告与图表：Markdown / JSON / PNG + Top-N 重放
+- ✅ 绩效归因与风格暴露：VaR/ES/Tracking/Concentration/Sector
+- ✅ 复现快照与报告签名（repro snapshot）
 - ✅ 滑点与手续费插件（CN 规则）
-- 🟡 市场冲击模型、成交概率模型（需完善）
+- ✅ 市场冲击/成交概率/延迟模型（execution_models）
+- 🟡 回测性能提升（向量化/并行/缓存复用）
 
 ### 交易与执行
-- ✅ MatchingEngine（限价/市价/止损）
-- ✅ PaperGatewayV3（模拟撮合）
-- ✅ TradingGateway 统一接口
-- ✅ Live Gateways: XtQuant / XTP / Hundsun UFT（SDK 可用时）
-- 🟡 交易日历、撮合延迟/排队模型（需完善）
+- ✅ MatchingEngine（限价/市价/止损/订单簿）
+- ✅ PaperGatewayV3 + PaperRunnerV3（事件驱动）
+- ✅ Execution models：滑点/成交概率/延迟
+- ✅ TradingGateway 统一接口（含模拟交易）
+- ✅ Live Gateways: XtQuant / XTP / Hundsun UFT（SDK 依赖）
+- 🟡 TradingGateway 与 RiskManagerV2 前置风控整合（TODO）
+- 🟡 RealtimeData Providers 实接入（Sina/Eastmoney/Tencent）
 
 ### 风控与订单管理
 - ✅ OrderManager 订单生命周期
 - ✅ RiskManagerV2：订单/仓位/回撤/日亏损/自动止损
+- ✅ 审计日志（Hash Chain）+ RBAC/租户隔离
+- ✅ Snapshot/Restore（OMS）
 - ✅ 事件驱动风控输出
-- 🟡 组合层风险指标（VaR/ES/行业暴露）
+- 🟡 组合级/多账户风险聚合与资金分配
+- 🟡 实盘/回测一致性自动对账
 
 ### 事件、监控与运维
 - ✅ EventEngine + 统一事件类型
@@ -68,12 +88,24 @@
 - ✅ 结构化日志（structlog）
 - ✅ 全局异常处理与错误统计
 - ✅ 健康检查 / 备份脚本
+- 🟡 指标导出（Prometheus/OTel）与告警联动
+- 🟡 日志集中化与 Trace
 
-### 策略与 ML
+### 策略与 ML / MLOps
 - ✅ 技术指标策略库（趋势、均值回归、多因子、期货等）
 - ✅ ML 策略：`ml_walk`, `ml_meta`, `ml_prob_band`, `ml_enhanced`, `ml_ensemble`
 - ✅ DL/RL/特征选择/集成的示例策略
-- 🟡 MLOps（模型版本/训练可追溯）
+- ✅ Qlib / FinRL 适配器 + SignalSchema + 策略包装
+- ✅ Model Registry + Training/Inference + Drift 校验
+- 🟡 实验追踪与模型部署流水线
+- 🟡 在线推理服务弹性与批量推理
+
+### 平台 / API / 分布式
+- ✅ JobQueue / Orchestrator / Distributed（本地线程/进程）
+- ✅ Minimal API Server（HTTP）
+- ✅ DataLake（manifest）
+- 🟡 任务编排 DAG、持久队列与多租户
+- 🟡 API 认证、限流、审计注入、版本化
 
 ### GUI / CLI / Examples
 - ✅ CLI：`run/grid/auto/combo/list`
@@ -87,24 +119,27 @@
 ### ✅ 已具备（核心框架可支撑基金级回测）
 - 统一策略接口与事件驱动架构
 - 多数据源与缓存
-- 多策略批量回测 + 参数优化
-- 订单/风控/撮合模块
+- DataPortal + SQLite 数据库
+- 数据质量 + 交易日历对齐 + 数据血缘
+- 多策略批量回测 + 参数优化 + 复现快照
+- 订单/风控/撮合模块 + 审计/RBAC
 - 可视化报告输出
-- 实盘网关接口层（A 股三类主流柜台）
+- 实盘网关接口层（XTP/XtQuant/UFT，SDK 依赖）
+- 平台化 MVP（API/JobQueue/Distributed）
 
 ### 🟡 需要补齐的基金级能力
-- 投资组合级风险指标（VaR/ES/行业暴露/集中度）
-- 市场冲击模型 + 成交概率模型
-- 交易日历 / 停复牌 / 价格带规则
-- 数据质量与版本控制（数据血缘、校验、锁定）
-- 回测可复现性（配置快照 + 数据快照 + 依赖锁定）
-- 回测/实盘一致性校验与对账
+- 统一交易链路（TradingGateway/PaperGateway/LiveGateways）与前置风控
+- 实时报价与行情接入（Sina/Eastmoney/Tencent/Level2）
+- 数据湖版本化、列式存储与质量门禁
+- 分布式调度与可扩展队列（非本地）
+- 可观测性体系（metrics/tracing/alert）
+- 多账户/组合级风控与资金分配
 
 ### 🔴 尚未实现（基金级“生产化”必要项）
-- 多账户/多策略隔离与权限
-- 审计日志与合规模块（操作留痕）
-- 灾备/高可用（多实例、主备切换）
-- Web API / 任务编排 / 分布式回测
+- 服务化 API 的权限/审计/隔离完备实现
+- 高可用集群与自动故障切换（多节点）
+- 统一清算/对账/回放体系
+- 合规与审计存证（长期不可篡改存储）
 
 ---
 
@@ -115,45 +150,94 @@
 - [x] 优化 GUI 界面响应速度
 - [x] 增加 Heartbeat 事件
 - [x] 实现自动重启监控
-- [ ] 完善英文文档
+- [x] 完善英文文档
 
 ---
 
-## 5) 下一步技术路线（面向基金级生产能力）
+## 5) 下一步技术路线（面向 V4.0）
 
-### Phase 3.2.1（1-2 周）稳定化
-- [x] 统一运行配置快照（参数/版本/数据快照）
-- [x] 数据质量校验与报告（缺失/异常/复权一致性）
-- [x] 交易日历/停牌处理增强
-- [x] 回测结果复现命令与报告签名
+### 历史阶段（已完成）
+- [x] Phase 3.2.1 稳定化（配置快照 / 数据质量 / 交易日历 / 复现签名）
+- [x] Phase 3.3 风控与交易建模升级（VaR/ES/归因/冲击/延迟）
+- [x] Phase 3.4 生产化与合规（审计/RBAC/血缘/灾备）
+- [x] Phase 3.5 AI 框架接入与 MLOps（Qlib/FinRL/Registry/Inference）
+- [x] Phase 4 MVP 平台化（API/作业编排/分布式/数据湖）
 
-### Phase 3.3（1-2 月）风控与交易建模升级
-- [x] 组合级风险指标（VaR/ES/行业暴露/集中度）
-- [x] 市场冲击模型 + 成交概率模型
-- [x] 执行延迟与排队撮合
-- [x] 绩效归因与风格暴露
+### V4.0-A（架构收敛，4-6 周）
+- [ ] 统一交易链路：TradingGateway ↔ PaperGatewayV3 ↔ LiveGateways 适配器合并
+- [ ] OMS/Risk/Execution 事件规范化与前置风控落地
+- [ ] RealtimeData 实接入：Sina/Eastmoney/Tencent + BarBuilder
+- [ ] 统一配置 Schema + 依赖锁定（requirements lock / seed）
 
-### Phase 3.4（2-3 月）生产化与合规
-- [x] 审计日志 + 权限与账户隔离
-- [x] 数据血缘与合规模块
-- [x] 高可用部署（服务化、主备、监控告警）
-- [x] 灾备与回放机制
+#### 任务拆解（模块实施清单 + 测试计划）
+- 任务：统一交易链路
+  - 模块实施清单：`src/core/trading_gateway.py` 统一适配器入口；`src/core/paper_gateway_v3.py`/`src/gateways/*` 对齐接口；`src/core/interfaces.py` 统一 DTO；`src/core/order_manager.py` 订单生命周期一致化；`src/simulation/matching_engine.py` 成交回报对齐
+  - 测试计划：新增 `tests/test_gateway_unification.py`；扩展 `tests/test_trading_infrastructure.py` 覆盖 Paper/Live Stub 流程；回归 `tests/test_order_manager_security.py`
+- 任务：OMS/Risk/Execution 事件规范化与前置风控
+  - 模块实施清单：`src/core/events.py` 事件 schema；`src/core/risk_manager_v2.py` 前置风控规则；`src/core/trading_gateway.py` 接入风控；`src/core/paper_gateway_v3.py`/`src/simulation/execution_models.py` 事件映射
+  - 测试计划：新增 `tests/test_risk_precheck.py`；扩展 `tests/test_trading_infrastructure.py` 验证拒单/事件顺序；回归 `tests/test_monitoring.py`
+- 任务：RealtimeData 实接入
+  - 模块实施清单：`src/core/realtime_data.py` provider 实装与 BarBuilder；新增 `src/core/realtime_providers/*.py`；`src/core/config.py` 增加数据源配置
+  - 测试计划：新增 `tests/test_realtime_data.py`（mock WebSocket/HTTP）；扩展 `tests/test_trading_infrastructure.py` 的实时推送联动
+- 任务：统一配置 Schema + 依赖锁定
+  - 模块实施清单：`src/core/config.py` 定义 schema 校验；`src/core/defaults.py`/`config.yaml.example` 对齐字段；新增 `requirements.lock` 或 `constraints.txt`
+  - 测试计划：新增 `tests/test_config_schema.py`；扩展 `tests/test_system_integration.py` 覆盖加载与缺省值
 
-### Phase 3.5（1-2 月）AI 框架接入与 MLOps
-- [x] 许可证与合规评估（MIT/Apache 优先，GPL/AGPL 隔离方案）
-- [x] 框架选型与 PoC：FinRL / Qlib（研究与训练）接口与示例打通
-- [x] 统一数据/特征适配器（对齐 OHLCV、复权、交易日历、缺失处理）
-- [x] 统一信号协议 `SignalSchema` 与策略包装器（BaseStrategy 兼容）
-- [x] 模型注册与版本管理（模型签名、训练配置快照、数据血缘）
-- [x] 推理服务化（本地推理 + 延迟/吞吐基准）
-- [x] 回测/实盘一致性验证（结果对比 + 漂移检测）
-- [x] 安全与风控隔离（模型仅输出意图，最终下单走 RiskManagerV2）
-- [x] 文档与示例：`docs/AI_FRAMEWORK_INTEGRATION.md` + 端到端样例流程
+### V4.0-B（性能与数据治理，6-8 周）
+- [ ] BacktestEngine 性能：向量化/Numba、缓存复用、内存基线
+- [ ] 数据湖升级：Parquet 分区、版本化、校验门禁、冷热分层
+- [ ] 回测/实盘一致性自动化：对账、漂移监控、异常回放
+- [ ] 组合级资本分配与风险聚合（多策略/多账户）
 
-### Phase 4（长期）平台化
-- [x] Web API / 作业编排 / 任务队列
-- [x] Docker/K8s 容器化
-- [x] 分布式回测与数据湖
+#### 任务拆解（模块实施清单 + 测试计划）
+- 任务：BacktestEngine 性能提升
+  - 模块实施清单：`src/backtest/engine.py` 向量化与缓存复用；`src/backtest/analysis.py` 指标计算优化；`src/data_sources/providers.py` 缓存策略统一
+  - 测试计划：新增 `tests/test_backtest_performance.py`（基准对比）；回归 `tests/test_backtest.py`/`tests/test_pipeline.py` 确保一致性
+- 任务：数据湖升级
+  - 模块实施清单：`src/platform/data_lake.py` 支持 Parquet/版本元数据；新增 `src/platform/data_lake_parquet.py`；`src/data_sources/db_manager.py` 输出 Parquet/分区
+  - 测试计划：扩展 `tests/test_platform_data_lake.py`；新增 `tests/test_data_lake_versioning.py`
+- 任务：回测/实盘一致性自动化
+  - 模块实施清单：新增 `src/core/reconciliation.py`；扩展 `src/mlops/validation.py` 指标对比；`src/backtest/repro.py` 回放链路对齐
+  - 测试计划：新增 `tests/test_reconciliation.py`；回归 `tests/test_mlops_validation.py`
+- 任务：组合级资本分配与风险聚合
+  - 模块实施清单：新增 `src/core/portfolio.py`；扩展 `src/optimizer/combo_optimizer.py` 资金权重；`src/core/risk_manager_v2.py` 聚合风控
+  - 测试计划：扩展 `tests/test_combo_optimizer.py`；新增 `tests/test_portfolio_risk.py`
+
+### V4.0-C（平台化与可靠性，8-12 周）
+- [ ] API 服务化：FastAPI/gRPC + RBAC/Token + 审计注入
+- [ ] 任务编排：JobQueue → Redis/Postgres，DAG/重试/幂等
+- [ ] 分布式回测：Ray/Dask + 弹性资源/队列
+- [ ] 可观测性：Metrics/Tracing/Alert + 日志聚合
+
+#### 任务拆解（模块实施清单 + 测试计划）
+- 任务：API 服务化
+  - 模块实施清单：`src/platform/api_server.py` 迁移到 `src/platform/api/*.py`；集成 `src/core/auth.py`/`src/core/audit.py`
+  - 测试计划：新增 `tests/test_platform_api.py`（TestClient）；回归 `tests/test_auth_rbac.py`/`tests/test_audit_log.py`
+- 任务：任务编排与持久队列
+  - 模块实施清单：`src/platform/job_queue.py` 增加 Redis/Postgres backend；`src/platform/orchestrator.py` DAG/重试语义
+  - 测试计划：扩展 `tests/test_platform_job_queue.py`；新增 `tests/test_platform_orchestrator.py`（失败重试/幂等）
+- 任务：分布式回测
+  - 模块实施清单：`src/platform/distributed.py` 适配 Ray/Dask；`src/platform/backtest_task.py` 并行入口统一
+  - 测试计划：新增 `tests/test_platform_distributed.py`（本地进程回归 + 远程适配器跳过）
+- 任务：可观测性
+  - 模块实施清单：`src/core/monitoring.py` 导出指标；`src/core/logger.py` 追踪上下文；关键链路埋点
+  - 测试计划：扩展 `tests/test_monitoring.py`；新增 `tests/test_observability_hooks.py`
+
+### V4.0-D（合规与多租户，持续迭代）
+- [ ] 多账户/多策略隔离策略、资金划拨与权限模型
+- [ ] 审计日志归档/签名存证与保留策略
+- [ ] 灾备：多实例主备切换、数据快照恢复演练
+
+#### 任务拆解（模块实施清单 + 测试计划）
+- 任务：多账户/多策略隔离
+  - 模块实施清单：`src/core/auth.py` 租户/策略隔离；`src/core/trading_gateway.py`/`src/core/order_manager.py` 多账户路由；`src/core/risk_manager_v2.py` 账户级聚合
+  - 测试计划：扩展 `tests/test_auth_rbac.py`；新增 `tests/test_multi_account_routing.py`
+- 任务：审计日志归档/签名存证
+  - 模块实施清单：`src/core/audit.py` 增加归档与签名存证；新增归档存储适配
+  - 测试计划：扩展 `tests/test_audit_log.py`（归档/签名验证）
+- 任务：灾备与恢复演练
+  - 模块实施清单：`src/core/ha.py` 扩展组件快照；`src/core/order_manager.py`/`src/core/trading_gateway.py` 持久化与恢复
+  - 测试计划：扩展 `tests/test_ha_snapshot.py`；新增 `tests/test_dr_restore.py`
 
 ---
 

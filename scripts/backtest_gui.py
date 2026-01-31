@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import sys
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import List, Optional, Sequence
 from queue import Queue, Empty
 
@@ -35,6 +35,9 @@ if project_root not in sys.path:
 
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.data_sources.providers import PROVIDER_NAMES
+from src.core.trading_gateway import TradingGateway, GatewayConfig, TradingMode, BrokerType
+from src.core.interfaces import OrderTypeEnum, Side
+from src.core.risk_manager_v2 import RiskManagerV2, RiskConfig
 
 # 与 CLI 保持一致的默认缓存目录
 CACHE_DEFAULT = "./cache"
@@ -343,6 +346,8 @@ class BacktestGUI:
         self.log_batch_size = 200
         self.max_log_lines = 800
         self.strategy_choices = sorted(STRATEGY_REGISTRY.keys())
+        self.live_gateway: Optional[TradingGateway] = None
+        self.live_risk_manager: Optional[RiskManagerV2] = None
         
         # 样式配置
         self.setup_styles()
@@ -399,8 +404,11 @@ class BacktestGUI:
         
         # 标签页5: DATA - 数据下载
         self.create_data_download_tab()
+
+        # 标签页6: LIVE - 实盘/模拟交易
+        self.create_live_trading_tab()
         
-        # 标签页5: LIST - 策略列表
+        # 标签页7: LIST - 策略列表
         self.create_list_tab()
         
         # 右侧：输出区域
@@ -1252,6 +1260,243 @@ class BacktestGUI:
             command=self.start_download,
             style='Run.TButton'
         ).grid(row=row, column=0, columnspan=2, pady=20)
+
+    def create_live_trading_tab(self):
+        """实盘/模拟交易标签页"""
+        live_frame = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(live_frame, text="⚡ 实盘/模拟交易")
+
+        canvas = tk.Canvas(live_frame)
+        scrollbar = ttk.Scrollbar(live_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        scrollable_frame.columnconfigure(1, weight=1)
+
+        row = 0
+        ttk.Label(scrollable_frame, text="实盘/模拟交易控制台", style='Title.TLabel').grid(
+            row=row, column=0, columnspan=2, pady=8, sticky=tk.W
+        )
+        row += 1
+
+        ttk.Label(scrollable_frame, text="连接配置", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=6
+        )
+        row += 1
+
+        mode_frame = ttk.Frame(scrollable_frame)
+        mode_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+
+        ttk.Label(mode_frame, text="模式:").pack(side=tk.LEFT)
+        self.live_mode_var = tk.StringVar(value="paper")
+        ttk.Combobox(
+            mode_frame,
+            textvariable=self.live_mode_var,
+            values=["paper", "live"],
+            state="readonly",
+            width=10
+        ).pack(side=tk.LEFT, padx=6)
+
+        ttk.Label(mode_frame, text="券商:").pack(side=tk.LEFT, padx=4)
+        self.live_broker_var = tk.StringVar(value="paper")
+        ttk.Combobox(
+            mode_frame,
+            textvariable=self.live_broker_var,
+            values=["paper", "eastmoney", "futu", "xueqiu", "ib", "xtquant", "xtp", "hundsun"],
+            state="readonly",
+            width=14
+        ).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        host_frame = ttk.Frame(scrollable_frame)
+        host_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(host_frame, text="Host:").pack(side=tk.LEFT)
+        self.live_host_var = tk.StringVar(value="127.0.0.1")
+        ttk.Entry(host_frame, textvariable=self.live_host_var, width=18).pack(side=tk.LEFT, padx=6)
+        ttk.Label(host_frame, text="Port:").pack(side=tk.LEFT, padx=4)
+        self.live_port_var = tk.StringVar(value="11111")
+        ttk.Entry(host_frame, textvariable=self.live_port_var, width=8).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        acct_frame = ttk.Frame(scrollable_frame)
+        acct_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(acct_frame, text="账号:").pack(side=tk.LEFT)
+        self.live_account_var = tk.StringVar(value="")
+        ttk.Entry(acct_frame, textvariable=self.live_account_var, width=18).pack(side=tk.LEFT, padx=6)
+        ttk.Label(acct_frame, text="密码:").pack(side=tk.LEFT, padx=4)
+        self.live_password_var = tk.StringVar(value="")
+        ttk.Entry(acct_frame, textvariable=self.live_password_var, width=18, show="*").pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        key_frame = ttk.Frame(scrollable_frame)
+        key_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(key_frame, text="API Key:").pack(side=tk.LEFT)
+        self.live_api_key_var = tk.StringVar(value="")
+        ttk.Entry(key_frame, textvariable=self.live_api_key_var, width=20).pack(side=tk.LEFT, padx=6)
+        ttk.Label(key_frame, text="Secret:").pack(side=tk.LEFT, padx=4)
+        self.live_secret_var = tk.StringVar(value="")
+        ttk.Entry(key_frame, textvariable=self.live_secret_var, width=20, show="*").pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        live_extra_frame = ttk.Frame(scrollable_frame)
+        live_extra_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(live_extra_frame, text="Terminal Type:").pack(side=tk.LEFT)
+        self.live_terminal_type_var = tk.StringVar(value="QMT")
+        ttk.Entry(live_extra_frame, textvariable=self.live_terminal_type_var, width=10).pack(side=tk.LEFT, padx=6)
+        ttk.Label(live_extra_frame, text="Terminal Path:").pack(side=tk.LEFT, padx=4)
+        self.live_terminal_path_var = tk.StringVar(value="")
+        ttk.Entry(live_extra_frame, textvariable=self.live_terminal_path_var, width=24).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        server_frame = ttk.Frame(scrollable_frame)
+        server_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(server_frame, text="Trade Server:").pack(side=tk.LEFT)
+        self.live_trade_server_var = tk.StringVar(value="")
+        ttk.Entry(server_frame, textvariable=self.live_trade_server_var, width=20).pack(side=tk.LEFT, padx=6)
+        ttk.Label(server_frame, text="Quote Server:").pack(side=tk.LEFT, padx=4)
+        self.live_quote_server_var = tk.StringVar(value="")
+        ttk.Entry(server_frame, textvariable=self.live_quote_server_var, width=20).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        front_frame = ttk.Frame(scrollable_frame)
+        front_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(front_frame, text="TD Front:").pack(side=tk.LEFT)
+        self.live_td_front_var = tk.StringVar(value="")
+        ttk.Entry(front_frame, textvariable=self.live_td_front_var, width=20).pack(side=tk.LEFT, padx=6)
+        ttk.Label(front_frame, text="MD Front:").pack(side=tk.LEFT, padx=4)
+        self.live_md_front_var = tk.StringVar(value="")
+        ttk.Entry(front_frame, textvariable=self.live_md_front_var, width=20).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        client_frame = ttk.Frame(scrollable_frame)
+        client_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(client_frame, text="Client ID:").pack(side=tk.LEFT)
+        self.live_client_id_var = tk.StringVar(value="1")
+        ttk.Entry(client_frame, textvariable=self.live_client_id_var, width=8).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        trade_frame = ttk.Frame(scrollable_frame)
+        trade_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(trade_frame, text="初始资金:").pack(side=tk.LEFT)
+        self.live_initial_cash_var = tk.StringVar(value="1000000")
+        ttk.Entry(trade_frame, textvariable=self.live_initial_cash_var, width=12).pack(side=tk.LEFT, padx=6)
+        ttk.Label(trade_frame, text="手续费:").pack(side=tk.LEFT, padx=4)
+        self.live_commission_var = tk.StringVar(value="0.0003")
+        ttk.Entry(trade_frame, textvariable=self.live_commission_var, width=10).pack(side=tk.LEFT, padx=6)
+        ttk.Label(trade_frame, text="滑点:").pack(side=tk.LEFT, padx=4)
+        self.live_slippage_var = tk.StringVar(value="0.0001")
+        ttk.Entry(trade_frame, textvariable=self.live_slippage_var, width=10).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        opt_frame = ttk.Frame(scrollable_frame)
+        opt_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        self.live_enable_risk_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(opt_frame, text="启用前置风控", variable=self.live_enable_risk_var).pack(side=tk.LEFT)
+        row += 1
+
+        action_frame = ttk.Frame(scrollable_frame)
+        action_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=6)
+        ttk.Button(action_frame, text="连接", command=self.connect_live_gateway).pack(side=tk.LEFT, padx=4)
+        ttk.Button(action_frame, text="断开", command=self.disconnect_live_gateway).pack(side=tk.LEFT, padx=4)
+        ttk.Button(action_frame, text="刷新账户", command=self.refresh_live_account).pack(side=tk.LEFT, padx=4)
+        ttk.Button(action_frame, text="刷新持仓", command=self.refresh_live_positions).pack(side=tk.LEFT, padx=4)
+        row += 1
+
+        status_frame = ttk.Frame(scrollable_frame)
+        status_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(status_frame, text="状态:").pack(side=tk.LEFT)
+        self.live_status_var = tk.StringVar(value="disconnected")
+        ttk.Label(status_frame, textvariable=self.live_status_var).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="账户信息", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=6
+        )
+        row += 1
+        self.live_account_text = scrolledtext.ScrolledText(scrollable_frame, height=6, width=60)
+        self.live_account_text.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="持仓信息", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=6
+        )
+        row += 1
+        self.live_positions_text = scrolledtext.ScrolledText(scrollable_frame, height=6, width=60)
+        self.live_positions_text.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="下单", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=6
+        )
+        row += 1
+
+        order_frame = ttk.Frame(scrollable_frame)
+        order_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(order_frame, text="标的:").pack(side=tk.LEFT)
+        self.live_order_symbol_var = tk.StringVar(value="600519.SH")
+        ttk.Entry(order_frame, textvariable=self.live_order_symbol_var, width=12).pack(side=tk.LEFT, padx=6)
+        ttk.Label(order_frame, text="方向:").pack(side=tk.LEFT, padx=4)
+        self.live_order_side_var = tk.StringVar(value="buy")
+        ttk.Combobox(
+            order_frame,
+            textvariable=self.live_order_side_var,
+            values=["buy", "sell"],
+            state="readonly",
+            width=8
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Label(order_frame, text="数量:").pack(side=tk.LEFT, padx=4)
+        self.live_order_qty_var = tk.StringVar(value="100")
+        ttk.Entry(order_frame, textvariable=self.live_order_qty_var, width=10).pack(side=tk.LEFT, padx=4)
+        ttk.Label(order_frame, text="价格:").pack(side=tk.LEFT, padx=4)
+        self.live_order_price_var = tk.StringVar(value="1800")
+        ttk.Entry(order_frame, textvariable=self.live_order_price_var, width=10).pack(side=tk.LEFT, padx=4)
+        ttk.Label(order_frame, text="类型:").pack(side=tk.LEFT, padx=4)
+        self.live_order_type_var = tk.StringVar(value=OrderTypeEnum.LIMIT.value)
+        ttk.Combobox(
+            order_frame,
+            textvariable=self.live_order_type_var,
+            values=[t.value for t in OrderTypeEnum],
+            state="readonly",
+            width=10
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Button(order_frame, text="提交订单", command=self.submit_live_order).pack(side=tk.LEFT, padx=6)
+        row += 1
+
+        cancel_frame = ttk.Frame(scrollable_frame)
+        cancel_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(cancel_frame, text="撤单ID:").pack(side=tk.LEFT)
+        self.live_cancel_order_id_var = tk.StringVar(value="")
+        ttk.Entry(cancel_frame, textvariable=self.live_cancel_order_id_var, width=24).pack(side=tk.LEFT, padx=6)
+        ttk.Button(cancel_frame, text="撤单", command=self.cancel_live_order).pack(side=tk.LEFT, padx=4)
+        row += 1
+
+        ttk.Label(scrollable_frame, text="模拟价格更新 (仅 Paper)", style='Section.TLabel').grid(
+            row=row, column=0, sticky=tk.W, pady=6
+        )
+        row += 1
+        price_frame = ttk.Frame(scrollable_frame)
+        price_frame.grid(row=row, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=4)
+        ttk.Label(price_frame, text="标的:").pack(side=tk.LEFT)
+        self.live_price_symbol_var = tk.StringVar(value="600519.SH")
+        ttk.Entry(price_frame, textvariable=self.live_price_symbol_var, width=12).pack(side=tk.LEFT, padx=6)
+        ttk.Label(price_frame, text="价格:").pack(side=tk.LEFT, padx=4)
+        self.live_price_value_var = tk.StringVar(value="1800")
+        ttk.Entry(price_frame, textvariable=self.live_price_value_var, width=12).pack(side=tk.LEFT, padx=6)
+        ttk.Button(price_frame, text="更新价格", command=self.update_paper_price).pack(side=tk.LEFT, padx=4)
+        row += 1
+
+        note = "提示：实盘券商适配器目前为占位实现，需接入 SDK 后才能正常连接。"
+        ttk.Label(scrollable_frame, text=note).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=6)
     
     def create_list_tab(self):
         """LIST命令标签页：策略列表"""
@@ -1280,6 +1525,198 @@ class BacktestGUI:
             strategies_text.insert('end', f"参数: {list(module.grid_defaults.keys())}\n")
             strategies_text.insert('end', f"默认网格: {module.grid_defaults}\n")
             strategies_text.insert('end', "-" * 60 + "\n\n")
+
+    # ========== 实盘/模拟交易辅助方法 ==========
+
+    def _format_json(self, payload):
+        return json.dumps(payload, ensure_ascii=False, indent=2, default=str)
+
+    def _ensure_live_risk_manager(self) -> RiskManagerV2:
+        if not self.live_risk_manager:
+            self.live_risk_manager = RiskManagerV2(RiskConfig())
+        return self.live_risk_manager
+
+    def _build_live_config(self) -> GatewayConfig:
+        try:
+            mode = TradingMode(self.live_mode_var.get())
+            broker = BrokerType(self.live_broker_var.get())
+        except ValueError as exc:
+            raise ValueError(f"模式或券商无效: {exc}") from exc
+
+        port = int(self.live_port_var.get() or 0)
+        initial_cash = float(self.live_initial_cash_var.get() or 0)
+        commission = float(self.live_commission_var.get() or 0)
+        slippage = float(self.live_slippage_var.get() or 0)
+        client_id = int(self.live_client_id_var.get() or 1)
+
+        return GatewayConfig(
+            mode=mode,
+            broker=broker,
+            host=self.live_host_var.get().strip(),
+            port=port,
+            api_key=self.live_api_key_var.get().strip(),
+            secret=self.live_secret_var.get().strip(),
+            account=self.live_account_var.get().strip(),
+            password=self.live_password_var.get().strip(),
+            initial_cash=initial_cash,
+            commission_rate=commission,
+            slippage=slippage,
+            enable_risk_check=bool(self.live_enable_risk_var.get()),
+            terminal_type=self.live_terminal_type_var.get().strip() or "QMT",
+            terminal_path=self.live_terminal_path_var.get().strip(),
+            trade_server=self.live_trade_server_var.get().strip(),
+            quote_server=self.live_quote_server_var.get().strip(),
+            client_id=client_id,
+            td_front=self.live_td_front_var.get().strip(),
+            md_front=self.live_md_front_var.get().strip(),
+        )
+
+    def connect_live_gateway(self):
+        if self.live_gateway and self.live_gateway.is_connected():
+            messagebox.showinfo("提示", "网关已连接")
+            return
+
+        try:
+            config = self._build_live_config()
+        except Exception as exc:
+            messagebox.showerror("错误", f"配置错误: {exc}")
+            return
+
+        if config.mode == TradingMode.LIVE and config.broker != BrokerType.PAPER:
+            self.log_output("⚠️ 当前券商适配器为占位实现，需接入 SDK 才可真实交易。")
+
+        risk_manager = self._ensure_live_risk_manager() if config.enable_risk_check else None
+        self.live_gateway = TradingGateway(config, risk_manager=risk_manager)
+
+        ok = self.live_gateway.connect()
+        status = self.live_gateway.status.value if self.live_gateway else "error"
+        self.live_status_var.set(status)
+        if ok:
+            self.log_output(f"✅ 网关连接成功: {config.broker.value}")
+        else:
+            self.log_output("❌ 网关连接失败，请检查配置或适配器实现")
+
+    def disconnect_live_gateway(self):
+        if not self.live_gateway:
+            messagebox.showinfo("提示", "网关未初始化")
+            return
+        self.live_gateway.disconnect()
+        self.live_status_var.set("disconnected")
+        self.log_output("✅ 网关已断开")
+
+    def refresh_live_account(self):
+        if not self.live_gateway:
+            messagebox.showwarning("警告", "请先连接网关")
+            return
+        try:
+            account = self.live_gateway.get_account()
+            payload = asdict(account)
+            self.live_account_text.delete("1.0", tk.END)
+            self.live_account_text.insert("1.0", self._format_json(payload))
+        except Exception as exc:
+            messagebox.showerror("错误", f"获取账户失败: {exc}")
+
+    def refresh_live_positions(self):
+        if not self.live_gateway:
+            messagebox.showwarning("警告", "请先连接网关")
+            return
+        try:
+            positions = self.live_gateway.get_positions()
+            payload = {symbol: asdict(pos) for symbol, pos in positions.items()}
+            self.live_positions_text.delete("1.0", tk.END)
+            self.live_positions_text.insert("1.0", self._format_json(payload))
+        except Exception as exc:
+            messagebox.showerror("错误", f"获取持仓失败: {exc}")
+
+    def submit_live_order(self):
+        if not self.live_gateway:
+            messagebox.showwarning("警告", "请先连接网关")
+            return
+
+        symbol = self.live_order_symbol_var.get().strip()
+        if not symbol:
+            messagebox.showwarning("警告", "请输入标的代码")
+            return
+
+        try:
+            quantity = float(self.live_order_qty_var.get())
+            price_text = self.live_order_price_var.get().strip()
+            price = float(price_text) if price_text else None
+            order_type = OrderTypeEnum(self.live_order_type_var.get())
+        except Exception as exc:
+            messagebox.showerror("错误", f"订单参数错误: {exc}")
+            return
+
+        if order_type in (OrderTypeEnum.LIMIT, OrderTypeEnum.STOP_LIMIT) and price is None:
+            messagebox.showwarning("警告", "限价单/止损限价单必须填写价格")
+            return
+
+        side = self.live_order_side_var.get()
+        side_enum = Side.BUY if side == "buy" else Side.SELL
+
+        if self.live_enable_risk_var.get():
+            try:
+                if price is None:
+                    self.log_output("⚠️ 市价单未提供价格，跳过风控检查")
+                else:
+                    account = self.live_gateway.get_account()
+                    positions = self.live_gateway.get_positions()
+                    result = self._ensure_live_risk_manager().check_order(
+                        symbol=symbol,
+                        side=side_enum,
+                        quantity=quantity,
+                        price=price,
+                        account=account,
+                        positions=positions,
+                    )
+                    if not result.passed:
+                        messagebox.showwarning("风控拦截", result.reason)
+                        self.log_output(f"⚠️ 风控拦截: {result.reason}")
+                        return
+            except Exception as exc:
+                self.log_output(f"⚠️ 风控检查异常: {exc}")
+
+        try:
+            if side == "buy":
+                order_id = self.live_gateway.buy(symbol, quantity, price=price, order_type=order_type)
+            else:
+                order_id = self.live_gateway.sell(symbol, quantity, price=price, order_type=order_type)
+            self.log_output(f"✅ 订单已提交: {order_id}")
+        except Exception as exc:
+            messagebox.showerror("错误", f"下单失败: {exc}")
+
+    def cancel_live_order(self):
+        if not self.live_gateway:
+            messagebox.showwarning("警告", "请先连接网关")
+            return
+        order_id = self.live_cancel_order_id_var.get().strip()
+        if not order_id:
+            messagebox.showwarning("警告", "请输入撤单ID")
+            return
+        try:
+            ok = self.live_gateway.cancel(order_id)
+            if ok:
+                self.log_output(f"✅ 撤单成功: {order_id}")
+            else:
+                self.log_output(f"⚠️ 撤单失败: {order_id}")
+        except Exception as exc:
+            messagebox.showerror("错误", f"撤单失败: {exc}")
+
+    def update_paper_price(self):
+        if not self.live_gateway:
+            messagebox.showwarning("警告", "请先连接网关")
+            return
+        try:
+            symbol = self.live_price_symbol_var.get().strip()
+            price = float(self.live_price_value_var.get())
+        except Exception as exc:
+            messagebox.showerror("错误", f"价格参数错误: {exc}")
+            return
+        try:
+            self.live_gateway.update_price(symbol, price)
+            self.log_output(f"✅ 更新模拟价格: {symbol} -> {price}")
+        except Exception as exc:
+            messagebox.showerror("错误", f"更新价格失败: {exc}")
         
         strategies_text.config(state=tk.DISABLED)
         
@@ -1517,7 +1954,7 @@ class BacktestGUI:
         elif "组合优化" in current_tab:
             self.run_command_combo()
         else:
-            messagebox.showinfo("提示", "请切换到对应的功能标签页")
+            messagebox.showinfo("提示", "回测请切换到对应标签；实盘请使用“实盘/模拟交易”页内按钮")
     
     def run_command_run(self):
         """执行 RUN 命令"""

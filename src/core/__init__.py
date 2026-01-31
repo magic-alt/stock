@@ -66,6 +66,13 @@ from .paper_runner_v3 import (
     SimpleMovingAverageStrategy,
 )
 
+# V3.3.0: Live runner
+from .live_runner import (
+    LiveStrategyContext,
+    LiveRunResult,
+    run_live,
+)
+
 # V3.1.0: Unified exception handling
 from .exceptions import (
     QuantBaseError,
@@ -176,6 +183,9 @@ __all__ = [
     "run_paper_legacy",
     "SimpleBuyHoldStrategy",
     "SimpleMovingAverageStrategy",
+    "LiveStrategyContext",
+    "LiveRunResult",
+    "run_live",
     
     # Risk
     "RiskManagerProtocol",

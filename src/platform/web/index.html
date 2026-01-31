@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unified Quant Platform · Live Console</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+</head>
+<body>
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="grid-lines"></div>
+
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Unified Quant Platform</p>
+      <h1>实盘/模拟交易控制台</h1>
+      <p class="sub">连接交易网关，查看账户与持仓，直接提交订单。后端使用内置 Platform API。</p>
+    </div>
+    <div class="status-panel">
+      <span class="label">Gateway Status</span>
+      <span id="gateway-status" class="pill">disconnected</span>
+      <span id="gateway-meta" class="meta">mode: - · broker: -</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card">
+      <h2>连接配置</h2>
+      <form id="connect-form" class="form-grid">
+        <label>
+          模式
+          <select id="mode">
+            <option value="paper">paper</option>
+            <option value="live">live</option>
+          </select>
+        </label>
+        <label>
+          券商
+          <select id="broker">
+            <option value="paper">paper</option>
+            <option value="eastmoney">eastmoney</option>
+            <option value="futu">futu</option>
+            <option value="xueqiu">xueqiu</option>
+            <option value="ib">ib</option>
+            <option value="xtquant">xtquant</option>
+            <option value="xtp">xtp</option>
+            <option value="hundsun">hundsun</option>
+          </select>
+        </label>
+        <label>
+          Host
+          <input id="host" type="text" placeholder="127.0.0.1" value="127.0.0.1" />
+        </label>
+        <label>
+          Port
+          <input id="port" type="number" placeholder="11111" value="11111" />
+        </label>
+        <label>
+          账号
+          <input id="account_id" type="text" placeholder="account" />
+        </label>
+        <label>
+          密码
+          <input id="password" type="password" placeholder="password" />
+        </label>
+        <label>
+          API Key
+          <input id="api_key" type="text" placeholder="api_key" />
+        </label>
+        <label>
+          Secret
+          <input id="secret" type="password" placeholder="secret" />
+        </label>
+        <label>
+          初始资金
+          <input id="initial_cash" type="number" value="1000000" />
+        </label>
+        <label>
+          手续费
+          <input id="commission_rate" type="number" step="0.0001" value="0.0003" />
+        </label>
+        <label>
+          滑点
+          <input id="slippage" type="number" step="0.0001" value="0.0001" />
+        </label>
+        <label class="checkbox">
+          <input id="enable_risk_check" type="checkbox" checked />
+          启用前置风控
+        </label>
+        <label>
+          Terminal Type (QMT)
+          <input id="terminal_type" type="text" value="QMT" />
+        </label>
+        <label>
+          Terminal Path
+          <input id="terminal_path" type="text" placeholder="C:\\QMT\\bin" />
+        </label>
+        <label>
+          Trade Server
+          <input id="trade_server" type="text" placeholder="tcp://host:port" />
+        </label>
+        <label>
+          Quote Server
+          <input id="quote_server" type="text" placeholder="tcp://host:port" />
+        </label>
+        <label>
+          Client ID
+          <input id="client_id" type="number" value="1" />
+        </label>
+        <label>
+          TD Front
+          <input id="td_front" type="text" placeholder="tcp://host:port" />
+        </label>
+        <label>
+          MD Front
+          <input id="md_front" type="text" placeholder="tcp://host:port" />
+        </label>
+        <div class="actions">
+          <button type="submit">连接</button>
+          <button id="disconnect" type="button" class="ghost">断开</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>账户与持仓</h2>
+      <div class="split">
+        <div>
+          <div class="section-head">
+            <span>账户</span>
+            <button id="refresh-account" class="ghost" type="button">刷新</button>
+          </div>
+          <pre id="account" class="console">{}</pre>
+        </div>
+        <div>
+          <div class="section-head">
+            <span>持仓</span>
+            <button id="refresh-positions" class="ghost" type="button">刷新</button>
+          </div>
+          <pre id="positions" class="console">{}</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>订单操作</h2>
+      <form id="order-form" class="form-grid">
+        <label>
+          标的
+          <input id="order-symbol" type="text" value="600519.SH" />
+        </label>
+        <label>
+          方向
+          <select id="order-side">
+            <option value="buy">buy</option>
+            <option value="sell">sell</option>
+          </select>
+        </label>
+        <label>
+          数量
+          <input id="order-qty" type="number" value="100" />
+        </label>
+        <label>
+          价格
+          <input id="order-price" type="number" value="1800" />
+        </label>
+        <label>
+          类型
+          <select id="order-type">
+            <option value="limit">limit</option>
+            <option value="market">market</option>
+            <option value="stop">stop</option>
+            <option value="stop_limit">stop_limit</option>
+          </select>
+        </label>
+        <div class="actions">
+          <button type="submit">提交订单</button>
+        </div>
+      </form>
+      <form id="cancel-form" class="form-inline">
+        <label>
+          撤单ID
+          <input id="cancel-id" type="text" placeholder="order_id" />
+        </label>
+        <button type="submit" class="ghost">撤单</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>模拟行情（Paper）</h2>
+      <form id="price-form" class="form-inline">
+        <label>
+          标的
+          <input id="price-symbol" type="text" value="600519.SH" />
+        </label>
+        <label>
+          价格
+          <input id="price-value" type="number" value="1800" />
+        </label>
+        <button type="submit">更新价格</button>
+      </form>
+      <p class="note">提示：实盘券商适配器为占位实现，需接入 SDK 才可真实交易。</p>
+    </section>
+
+    <section class="card">
+      <h2>任务队列</h2>
+      <div class="section-head">
+        <span>Jobs</span>
+        <button id="refresh-jobs" class="ghost" type="button">刷新</button>
+      </div>
+      <pre id="jobs" class="console">[]</pre>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Platform API: /health · /jobs · /gateway/*</span>
+  </footer>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

@@ -4,6 +4,13 @@ Run the lightweight platform API server.
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+
+# Ensure repo root is on sys.path when running as a script.
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 from src.platform.api_server import run_api_server
 
