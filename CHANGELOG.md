@@ -2,13 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [Unreleased] - 2026-01-30
 
-### 🛠️ Improvements
-- GUI: batch log rendering to reduce UI stutter in `scripts/backtest_gui.py`.
-- Core: add heartbeat monitoring utilities and reuse them in `paper_runner_v3`.
+### Added
 - ML: add new strategy examples in `examples/` and expand the gallery.
-- Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.
 - MLOps: add AI signal schema and `AISignalStrategy` adapter for framework integration.
 - MLOps: add OHLCV normalization and calendar alignment utilities for AI feature pipelines.
 - MLOps: add JSON model registry and license policy checks for AI framework compliance.
@@ -19,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - MLOps: add training/export helpers and registry registration flow.
 - MLOps: add FinRL/Qlib trainer adapters for standardized registration.
 - MLOps: add FinRL/Qlib training scripts and integration modules.
+- MLOps: add Qlib dataset download helper script.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
@@ -27,10 +25,16 @@ All notable changes to this project will be documented in this file.
 - HA/DR: add snapshot/restore utilities and component registry for health checks.
 - Data: add lineage records to SQLite cache for compliance tracking.
 
-### 📝 Documentation
-- Added AI framework integration analysis and implementation plan in `docs/AI_FRAMEWORK_INTEGRATION.md`.
-- Expanded Phase 3.5 AI integration plan in `ROADMAP.md`.
-- Marked Phase 3.5 AI framework integration tasks as completed in `ROADMAP.md`.
+### Changed
+- GUI: batch log rendering to reduce UI stutter in `scripts/backtest_gui.py`.
+- GUI: refactor backtest GUI for full CLI coverage (calendar/fee/combo names), modern layout, and config persistence.
+- Core: add heartbeat monitoring utilities and reuse them in `paper_runner_v3`.
+- Docs: add AI framework integration analysis and implementation plan in `docs/AI_FRAMEWORK_INTEGRATION.md`.
+- Docs: expand Phase 3.5 AI integration plan in `ROADMAP.md`.
+- Docs: mark Phase 3.5 AI framework integration tasks as completed in `ROADMAP.md`.
+
+### Tests
+- Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.
 
 ## [V3.2.0] - 2026-01-11
 
@@ -5017,3 +5021,4 @@ Successfully modularized the monolithic `unified_backtest_framework.py` (2138 li
 - 📝 Documentation
 - 🧪 Testing
 - 📊 Metrics
+

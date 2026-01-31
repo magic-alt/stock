@@ -4,6 +4,12 @@ Train a FinRL agent and register the model.
 from __future__ import annotations
 
 import argparse
+import os
+import sys
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
 from src.mlops.finrl_training import FinRLTrainingConfig, train_and_register_finrl
 from src.mlops.model_registry import ModelRegistry

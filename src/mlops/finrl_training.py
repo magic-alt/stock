@@ -38,10 +38,9 @@ def build_finrl_training_frame(config: FinRLTrainingConfig) -> pd.DataFrame:
 
 def train_finrl_model(config: FinRLTrainingConfig) -> TrainingArtifact:
     try:
-        from finrl.preprocessing.preprocessors import FeatureEngineer
-        from finrl.preprocessing.data import data_split
-        from finrl.env.EnvMultipleStock_train import StockEnvTrain
-        from finrl.model.models import DRLAgent
+        from finrl.meta.preprocessor.preprocessors import FeatureEngineer, data_split
+        from finrl.meta.env_stock_trading.env_stocktrading import StockTradingEnv
+        from finrl.agents.stablebaselines3.models import DRLAgent
         from finrl import config as finrl_config
     except Exception as exc:
         raise ImportError(
@@ -52,35 +51,51 @@ def train_finrl_model(config: FinRLTrainingConfig) -> TrainingArtifact:
     if df.empty:
         raise ValueError("Training data is empty. Check symbols/date range.")
 
-    indicators = config.tech_indicator_list or getattr(finrl_config, "TECHNICAL_INDICATORS_LIST", [])
+    indicators = config.tech_indicator_list or getattr(finrl_config, "INDICATORS", [])
     fe = FeatureEngineer(
         use_technical_indicator=True,
         tech_indicator_list=indicators,
         use_turbulence=False,
         user_defined_feature=False,
     )
-    processed = fe.preprocess_data(df)
-    processed = processed.fillna(0)
+    processed = fe.preprocess_data(df).fillna(0)
 
-    train_df = data_split(processed, config.start, config.end)
-    stock_dim = len(config.symbols)
+    date_col = "date"
+    tic_col = "tic"
+    processed[date_col] = pd.to_datetime(processed[date_col]).dt.strftime("%Y-%m-%d")
+    list_ticker = processed[tic_col].unique().tolist()
+    list_date = list(pd.date_range(processed[date_col].min(), processed[date_col].max()).astype(str))
+    combo = pd.DataFrame([(d, t) for d in list_date for t in list_ticker], columns=[date_col, tic_col])
+    expanded = combo.merge(processed, on=[date_col, tic_col], how="left")
+    expanded = expanded[expanded[date_col].isin(processed[date_col])].sort_values([date_col, tic_col])
+    expanded = expanded.fillna(0)
+
+    train_df = data_split(expanded, config.start, config.end)
+    stock_dim = len(train_df[tic_col].unique())
+    state_space = 1 + 2 * stock_dim + len(indicators) * stock_dim
     env_kwargs = {
         "hmax": 100,
         "initial_amount": 100000,
-        "buy_cost_pct": 0.001,
-        "sell_cost_pct": 0.001,
-        "state_space": stock_dim * (len(indicators) + 2) + 1,
+        "num_stock_shares": [0] * stock_dim,
+        "buy_cost_pct": [0.001] * stock_dim,
+        "sell_cost_pct": [0.001] * stock_dim,
+        "state_space": state_space,
         "stock_dim": stock_dim,
         "tech_indicator_list": indicators,
         "action_space": stock_dim,
         "reward_scaling": 1e-4,
     }
     env_kwargs.update(config.env_kwargs)
-    env_train = StockEnvTrain(df=train_df, **env_kwargs)
+    env_train = StockTradingEnv(df=train_df, **env_kwargs)
+    env_train_sb, _ = env_train.get_sb_env()
 
-    agent = DRLAgent(env=env_train)
+    agent = DRLAgent(env=env_train_sb)
     model = agent.get_model(config.model_name)
-    trained = agent.train_model(model=model, total_timesteps=config.timesteps)
+    trained = agent.train_model(
+        model=model,
+        tb_log_name=config.model_name,
+        total_timesteps=config.timesteps,
+    )
 
     artifact_dir = config.artifact_dir
     artifact_path = build_artifact_path(artifact_dir or "./cache/mlops/artifacts", config.model_name, "zip")

@@ -155,6 +155,11 @@ python scripts/train_finrl.py --symbols 000001.SZ 600519.SH --start 2020-01-01 -
 python scripts/train_qlib.py --provider-uri ./qlib_data --region cn --market csi300
 ```
 
+### 8.4 Qlib 数据下载（示例）
+```
+python scripts/qlib_get_data.py --target-dir ./qlib_data --region cn --interval 1d
+```
+
 ---
 
 ## 参考来源
