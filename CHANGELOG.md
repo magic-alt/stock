@@ -19,6 +19,9 @@ All notable changes to this project will be documented in this file.
 - MLOps: add Qlib dataset download helper script.
 - MLOps: pin yfinance to a compatible version for FinRL imports.
 - Backtest: add registered Qlib model strategy and local Qlib data provider for registry-driven backtests.
+- Platform: add HTTP API server, job queue, workflow runner, and distributed backtest runner.
+- Platform: add local data lake registry for datasets and reports.
+- Platform: add Docker/K8s deployment scaffolding and API runner script.
 - Backtest: add run snapshots (config/data fingerprint/metrics), report signatures, and reproducible CLI command output.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
@@ -35,6 +38,7 @@ All notable changes to this project will be documented in this file.
 - Docs: document registered model backtest flow for Qlib in `docs/AI_FRAMEWORK_INTEGRATION.md`.
 - Docs: expand Phase 3.5 AI integration plan in `ROADMAP.md`.
 - Docs: mark Phase 3.5 AI framework integration tasks as completed in `ROADMAP.md`.
+- Docs: add platform guide for API, orchestration, and deployment.
 
 ### Fixed
 - CI: add required `pydantic` dependency to ensure config tests run.

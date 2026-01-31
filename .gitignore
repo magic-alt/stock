@@ -5,3 +5,4 @@ __pycache__
 report
 /qlib_data
 /mlruns
+/data_lake

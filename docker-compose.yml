@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  platform-api:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./cache:/app/cache
+      - ./report:/app/report
+      - ./data_lake:/app/data_lake
+    environment:
+      - QLIB_DATA=/app/qlib_data
