@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 - CI: add required `pydantic` dependency to ensure config tests run.
 - MLOps: avoid read-only PSI breakpoint mutation when computing feature drift.
 - ML: guard sklearn symbols and scaler fallback in `ml_enhanced_strategy`.
+- CLI: accept `list-strategies` as an alias for the `list` command.
 
 ### Tests
 - Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.

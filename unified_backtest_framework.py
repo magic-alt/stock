@@ -141,7 +141,7 @@ def parse_args() -> argparse.Namespace:
     combo_p.add_argument("--out", default=None, help="Optional path to save combined NAV csv")
 
     # ===== list command =====
-    sub.add_parser("list", help="List registered strategies")
+    sub.add_parser("list", help="List registered strategies", aliases=["list-strategies"])
 
     return parser.parse_args()
 
@@ -151,7 +151,7 @@ def main() -> None:
     args = parse_args()
     
     # ===== list command =====
-    if args.command == "list":
+    if args.command in {"list", "list-strategies"}:
         logger.info("Available strategies:")
         for name, module in STRATEGY_REGISTRY.items():
             logger.info(f"- {name}: {module.description}")
