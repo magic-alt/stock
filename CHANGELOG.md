@@ -22,6 +22,9 @@ All notable changes to this project will be documented in this file.
 - HA/DR: add snapshot/restore utilities and component registry for health checks.
 - Data: add lineage records to SQLite cache for compliance tracking.
 
+### 🐛 Fixes
+- Add required `pydantic` dependency to ensure config tests run in CI.
+
 ### 📝 Documentation
 - Added AI framework integration analysis and implementation plan in `docs/AI_FRAMEWORK_INTEGRATION.md`.
 - Expanded Phase 3.5 AI integration plan in `ROADMAP.md`.
