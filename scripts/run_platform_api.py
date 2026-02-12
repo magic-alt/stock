@@ -21,12 +21,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--jobs", default="./cache/platform/jobs.json")
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--api-token",
+        default=None,
+        help="Optional Bearer token for /api/v1 endpoints (fallback: PLATFORM_API_TOKEN env)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    run_api_server(host=args.host, port=args.port, job_store_path=args.jobs, max_workers=args.workers)
+    run_api_server(
+        host=args.host,
+        port=args.port,
+        job_store_path=args.jobs,
+        max_workers=args.workers,
+        api_token=args.api_token,
+    )
 
 
 if __name__ == "__main__":

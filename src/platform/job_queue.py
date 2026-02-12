@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import CancelledError, Future, ThreadPoolExecutor
+from collections import Counter
 import json
 import os
 import threading
@@ -26,6 +27,8 @@ class JobRecord:
     created_at: str = field(default_factory=_utc_now)
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
+    cancelled_at: Optional[str] = None
+    cancel_requested: bool = False
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
@@ -45,6 +48,9 @@ class JobStore:
         with open(self.path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         for item in data:
+            # Backward compatibility for historical records without new fields.
+            item.setdefault("cancelled_at", None)
+            item.setdefault("cancel_requested", False)
             self._jobs[item["job_id"]] = JobRecord(**item)
 
     def _save(self) -> None:
@@ -85,7 +91,9 @@ class JobQueue:
     def __init__(self, store: Optional[JobStore] = None, max_workers: int = 4) -> None:
         self.store = store or JobStore()
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
+        self._max_workers = max_workers
         self._futures: Dict[str, Future] = {}
+        self._futures_lock = threading.Lock()
 
     def submit(
         self,
@@ -108,14 +116,73 @@ class JobQueue:
                 raise
 
         future = self._executor.submit(_run)
-        self._futures[job_id] = future
+
+        def _forget_done(_fut: Future) -> None:
+            with self._futures_lock:
+                self._futures.pop(job_id, None)
+
+        with self._futures_lock:
+            self._futures[job_id] = future
+        future.add_done_callback(_forget_done)
         return job_id
 
     def wait(self, job_id: str, timeout: Optional[float] = None) -> Optional[JobRecord]:
-        future = self._futures.get(job_id)
+        with self._futures_lock:
+            future = self._futures.get(job_id)
         if future is not None:
-            future.result(timeout=timeout)
+            try:
+                future.result(timeout=timeout)
+            except CancelledError:
+                pass
         return self.store.get(job_id)
+
+    def cancel(self, job_id: str) -> JobRecord:
+        """
+        Cancel a pending job.
+
+        Python threads cannot be forcefully terminated. If a job is already
+        running, cancellation is rejected with RuntimeError.
+        """
+        record = self.store.get(job_id)
+        if record is None:
+            raise KeyError(f"Job not found: {job_id}")
+        if record.status in {"success", "failed", "cancelled"}:
+            return record
+
+        self.store.update(job_id, cancel_requested=True)
+        with self._futures_lock:
+            future = self._futures.get(job_id)
+        if future is None:
+            raise RuntimeError("Job has no active future to cancel")
+
+        if future.cancel():
+            now = _utc_now()
+            return self.store.update(
+                job_id,
+                status="cancelled",
+                cancelled_at=now,
+                finished_at=now,
+                error="cancelled_by_user",
+            )
+        raise RuntimeError("Job is already running and cannot be cancelled safely")
+
+    def metrics(self) -> Dict[str, Any]:
+        """Return lightweight queue metrics for operational monitoring."""
+        jobs = self.store.list()
+        status_counter = Counter(j.status for j in jobs)
+        with self._futures_lock:
+            in_flight = sum(1 for f in self._futures.values() if not f.done())
+        return {
+            "total_jobs": len(jobs),
+            "pending_jobs": status_counter.get("pending", 0),
+            "running_jobs": status_counter.get("running", 0),
+            "success_jobs": status_counter.get("success", 0),
+            "failed_jobs": status_counter.get("failed", 0),
+            "cancelled_jobs": status_counter.get("cancelled", 0),
+            "max_workers": self._max_workers,
+            "in_flight_futures": in_flight,
+        }
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False)
+

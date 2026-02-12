@@ -1,11 +1,20 @@
 """
-Minimal HTTP API server for platform job orchestration.
+HTTP API server for platform job orchestration.
+
+Provides:
+- Legacy endpoints (/jobs, /gateway/*) for backward compatibility
+- Versioned API endpoints (/api/v1/*) with unified response envelope
+- Optional Bearer token authentication for v1 endpoints
+- Health/readiness/metrics endpoints for operations
 """
 from __future__ import annotations
 
 import json
 import os
 import threading
+import time
+import uuid
+from collections import Counter
 from dataclasses import asdict, is_dataclass
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +28,7 @@ from src.platform.job_queue import JobQueue, JobStore
 from src.platform.orchestrator import run_workflow
 
 WEB_ROOT = os.path.join(os.path.dirname(__file__), "web")
+API_PREFIX = "/api/v1"
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -31,6 +41,66 @@ def _to_jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(v) for v in value]
     return value
+
+
+class APIMetrics:
+    """Thread-safe in-memory metrics for lightweight operations visibility."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._started_at = time.time()
+        self._total_requests = 0
+        self._status_counter: Counter[int] = Counter()
+        self._method_counter: Counter[str] = Counter()
+
+    def record(self, method: str, status_code: int) -> None:
+        with self._lock:
+            self._total_requests += 1
+            self._status_counter[status_code] += 1
+            self._method_counter[method] += 1
+
+    def snapshot(self, queue: Optional[JobQueue] = None) -> Dict[str, Any]:
+        with self._lock:
+            payload = {
+                "uptime_seconds": round(time.time() - self._started_at, 3),
+                "total_requests": self._total_requests,
+                "requests_by_status": {str(k): v for k, v in sorted(self._status_counter.items())},
+                "requests_by_method": dict(sorted(self._method_counter.items())),
+            }
+        if queue is not None:
+            payload["job_queue"] = queue.metrics()
+        return payload
+
+    def to_prometheus(self, queue: Optional[JobQueue] = None) -> str:
+        snap = self.snapshot(queue)
+        lines = [
+            "# HELP platform_api_uptime_seconds Process uptime in seconds",
+            "# TYPE platform_api_uptime_seconds gauge",
+            f"platform_api_uptime_seconds {snap['uptime_seconds']}",
+            "# HELP platform_api_requests_total Total HTTP requests handled",
+            "# TYPE platform_api_requests_total counter",
+            f"platform_api_requests_total {snap['total_requests']}",
+        ]
+        for method, count in sorted(snap.get("requests_by_method", {}).items()):
+            lines.append(f'platform_api_requests_by_method_total{{method="{method}"}} {count}')
+        for status, count in sorted(snap.get("requests_by_status", {}).items()):
+            lines.append(f'platform_api_requests_by_status_total{{status="{status}"}} {count}')
+
+        queue_metrics = snap.get("job_queue") or {}
+        if queue_metrics:
+            lines.extend([
+                "# HELP platform_job_queue_jobs_total Total jobs observed",
+                "# TYPE platform_job_queue_jobs_total gauge",
+                f"platform_job_queue_jobs_total {queue_metrics.get('total_jobs', 0)}",
+                f"platform_job_queue_pending_jobs {queue_metrics.get('pending_jobs', 0)}",
+                f"platform_job_queue_running_jobs {queue_metrics.get('running_jobs', 0)}",
+                f"platform_job_queue_success_jobs {queue_metrics.get('success_jobs', 0)}",
+                f"platform_job_queue_failed_jobs {queue_metrics.get('failed_jobs', 0)}",
+                f"platform_job_queue_cancelled_jobs {queue_metrics.get('cancelled_jobs', 0)}",
+                f"platform_job_queue_in_flight_futures {queue_metrics.get('in_flight_futures', 0)}",
+            ])
+
+        return "\n".join(lines) + "\n"
 
 
 class GatewayService:
@@ -140,14 +210,55 @@ class GatewayService:
 class PlatformAPIHandler(BaseHTTPRequestHandler):
     queue: JobQueue
     gateway_service: GatewayService
+    metrics: APIMetrics
+    api_token: Optional[str]
 
-    def _json(self, payload: Dict[str, Any], status: int = 200) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    def _request_id(self) -> str:
+        rid = self.headers.get("X-Request-ID", "").strip()
+        return rid if rid else str(uuid.uuid4())
+
+    def _json(
+        self,
+        payload: Any,
+        *,
+        status: int = 200,
+        content_type: str = "application/json; charset=utf-8",
+    ) -> None:
+        if content_type.startswith("application/json"):
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        else:
+            body = str(payload).encode("utf-8")
+
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+        if getattr(self, "metrics", None) is not None:
+            self.metrics.record(self.command, status)
+
+    def _json_v1(
+        self,
+        *,
+        request_id: str,
+        data: Any = None,
+        status: int = 200,
+        code: int = 0,
+        message: str = "ok",
+    ) -> None:
+        self._json(
+            {
+                "code": code,
+                "message": message,
+                "data": _to_jsonable(data),
+                "request_id": request_id,
+            },
+            status=status,
+        )
+
+    def _error_v1(self, *, request_id: str, status: int, code: int, message: str) -> None:
+        self._json_v1(request_id=request_id, status=status, code=code, message=message, data=None)
 
     def _serve_file(self, path: str) -> None:
         if not os.path.exists(path) or not os.path.isfile(path):
@@ -168,6 +279,9 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+        if getattr(self, "metrics", None) is not None:
+            self.metrics.record(self.command, 200)
+
     def _read_json(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or "0")
         raw = self.rfile.read(length) if length > 0 else b"{}"
@@ -176,88 +290,246 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return {}
 
+    def _is_authorized_v1(self, path: str) -> bool:
+        if not path.startswith(API_PREFIX):
+            return True
+        if path in {f"{API_PREFIX}/healthz", f"{API_PREFIX}/readyz", f"{API_PREFIX}/metrics"}:
+            return True
+        if not self.api_token:
+            return True
+        auth = self.headers.get("Authorization", "")
+        return auth == f"Bearer {self.api_token}"
+
+    def _ready_status(self) -> Dict[str, Any]:
+        checks = {
+            "job_queue": self.queue is not None,
+            "gateway_service": self.gateway_service is not None,
+        }
+        ready = all(checks.values())
+        return {"status": "ready" if ready else "not_ready", "checks": checks}
+
+    def _list_jobs(self) -> Any:
+        return [asdict(job) for job in self.queue.store.list()]
+
+    def _get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        record = self.queue.store.get(job_id)
+        if not record:
+            return None
+        return asdict(record)
+
+    def _handle_gateway_get_v1(self, path: str, request_id: str) -> bool:
+        try:
+            if path == f"{API_PREFIX}/gateway/status":
+                self._json_v1(request_id=request_id, data={"gateway": self.gateway_service.status()})
+                return True
+            if path == f"{API_PREFIX}/gateway/account":
+                self._json_v1(request_id=request_id, data={"account": self.gateway_service.account()})
+                return True
+            if path == f"{API_PREFIX}/gateway/positions":
+                self._json_v1(request_id=request_id, data={"positions": self.gateway_service.positions()})
+                return True
+        except Exception as exc:
+            self._error_v1(request_id=request_id, status=400, code=40001, message=str(exc))
+            return True
+        return False
+
+    def _handle_gateway_post_v1(self, path: str, payload: Dict[str, Any], request_id: str) -> bool:
+        try:
+            if path == f"{API_PREFIX}/gateway/connect":
+                status = self.gateway_service.connect(payload)
+                self._json_v1(request_id=request_id, data={"gateway": status})
+                return True
+            if path == f"{API_PREFIX}/gateway/disconnect":
+                status = self.gateway_service.disconnect()
+                self._json_v1(request_id=request_id, data={"gateway": status})
+                return True
+            if path == f"{API_PREFIX}/gateway/order":
+                result = self.gateway_service.submit_order(payload)
+                self._json_v1(request_id=request_id, data=result, status=202)
+                return True
+            if path == f"{API_PREFIX}/gateway/cancel":
+                result = self.gateway_service.cancel_order(payload)
+                self._json_v1(request_id=request_id, data=result)
+                return True
+            if path == f"{API_PREFIX}/gateway/price":
+                result = self.gateway_service.update_price(payload)
+                self._json_v1(request_id=request_id, data=result)
+                return True
+        except Exception as exc:
+            self._error_v1(request_id=request_id, status=400, code=40001, message=str(exc))
+            return True
+        return False
+
+    def _handle_get_v1(self, path: str, request_id: str) -> None:
+        if path == f"{API_PREFIX}/healthz":
+            self._json_v1(request_id=request_id, data={"status": "ok"})
+            return
+        if path == f"{API_PREFIX}/readyz":
+            self._json_v1(request_id=request_id, data=self._ready_status())
+            return
+        if path == f"{API_PREFIX}/metrics":
+            self._json_v1(request_id=request_id, data=self.metrics.snapshot(self.queue))
+            return
+
+        if self._handle_gateway_get_v1(path, request_id):
+            return
+
+        if path == f"{API_PREFIX}/jobs":
+            self._json_v1(request_id=request_id, data={"jobs": self._list_jobs()})
+            return
+
+        if path.startswith(f"{API_PREFIX}/jobs/"):
+            parts = [p for p in path.strip("/").split("/") if p]
+            if len(parts) == 4:
+                job_id = parts[3]
+                record = self._get_job(job_id)
+                if record is None:
+                    self._error_v1(request_id=request_id, status=404, code=40401, message="job not found")
+                    return
+                self._json_v1(request_id=request_id, data={"job": record})
+                return
+
+        self._error_v1(request_id=request_id, status=404, code=40400, message="not found")
+
+    def _handle_post_v1(self, path: str, payload: Dict[str, Any], request_id: str) -> None:
+        if path == f"{API_PREFIX}/jobs/backtest":
+            job_id = self.queue.submit("backtest", run_backtest_job, payload)
+            self._json_v1(request_id=request_id, data={"job_id": job_id}, status=202)
+            return
+        if path == f"{API_PREFIX}/jobs/workflow":
+            job_id = self.queue.submit("workflow", run_workflow, payload)
+            self._json_v1(request_id=request_id, data={"job_id": job_id}, status=202)
+            return
+
+        if path.startswith(f"{API_PREFIX}/jobs/") and path.endswith("/cancel"):
+            parts = [p for p in path.strip("/").split("/") if p]
+            if len(parts) == 5 and parts[4] == "cancel":
+                job_id = parts[3]
+                try:
+                    record = self.queue.cancel(job_id)
+                    self._json_v1(request_id=request_id, data={"job": asdict(record)})
+                except KeyError:
+                    self._error_v1(request_id=request_id, status=404, code=40401, message="job not found")
+                except RuntimeError as exc:
+                    self._error_v1(request_id=request_id, status=409, code=40901, message=str(exc))
+                return
+
+        if self._handle_gateway_post_v1(path, payload, request_id):
+            return
+
+        self._error_v1(request_id=request_id, status=404, code=40400, message="not found")
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path in ("/", "/index.html"):
+        path = parsed.path.rstrip("/") or "/"
+        request_id = self._request_id()
+
+        if path in ("/", "/index.html"):
             self._serve_file(os.path.join(WEB_ROOT, "index.html"))
             return
-        if parsed.path.startswith("/assets/"):
-            rel = parsed.path.replace("/assets/", "", 1).lstrip("/")
+        if path.startswith("/assets/"):
+            rel = path.replace("/assets/", "", 1).lstrip("/")
             safe_path = os.path.abspath(os.path.normpath(os.path.join(WEB_ROOT, rel)))
             if not safe_path.startswith(os.path.abspath(WEB_ROOT)):
                 self._json({"error": "not found"}, status=404)
                 return
             self._serve_file(safe_path)
             return
-        if parsed.path == "/health":
+
+        if path == "/health":
             self._json({"status": "ok"})
             return
-        if parsed.path == "/gateway/status":
+        if path == "/ready":
+            self._json(self._ready_status())
+            return
+        if path == "/metrics":
+            text = self.metrics.to_prometheus(self.queue)
+            self._json(text, content_type="text/plain; version=0.0.4; charset=utf-8")
+            return
+
+        if path.startswith(API_PREFIX):
+            if not self._is_authorized_v1(path):
+                self._error_v1(request_id=request_id, status=401, code=40101, message="unauthorized")
+                return
+            self._handle_get_v1(path, request_id)
+            return
+
+        if path == "/gateway/status":
             self._json({"gateway": self.gateway_service.status()})
             return
-        if parsed.path == "/gateway/account":
+        if path == "/gateway/account":
             try:
                 self._json({"account": self.gateway_service.account()})
             except Exception as exc:
                 self._json({"error": str(exc)}, status=400)
             return
-        if parsed.path == "/gateway/positions":
+        if path == "/gateway/positions":
             try:
                 self._json({"positions": self.gateway_service.positions()})
             except Exception as exc:
                 self._json({"error": str(exc)}, status=400)
             return
-        if parsed.path == "/jobs":
-            jobs = [job.__dict__ for job in self.queue.store.list()]
-            self._json({"jobs": jobs})
+        if path == "/jobs":
+            self._json({"jobs": self._list_jobs()})
             return
-        if parsed.path.startswith("/jobs/"):
-            job_id = parsed.path.split("/")[-1]
-            record = self.queue.store.get(job_id)
+        if path.startswith("/jobs/"):
+            job_id = path.split("/")[-1]
+            record = self._get_job(job_id)
             if not record:
                 self._json({"error": "job not found"}, status=404)
                 return
-            self._json({"job": record.__dict__})
+            self._json({"job": record})
             return
+
         self._json({"error": "not found"}, status=404)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
         payload = self._read_json()
-        if parsed.path == "/jobs/backtest":
+        request_id = self._request_id()
+
+        if path.startswith(API_PREFIX):
+            if not self._is_authorized_v1(path):
+                self._error_v1(request_id=request_id, status=401, code=40101, message="unauthorized")
+                return
+            self._handle_post_v1(path, payload, request_id)
+            return
+
+        if path == "/jobs/backtest":
             job_id = self.queue.submit("backtest", run_backtest_job, payload)
             self._json({"job_id": job_id}, status=202)
             return
-        if parsed.path == "/jobs/workflow":
+        if path == "/jobs/workflow":
             job_id = self.queue.submit("workflow", run_workflow, payload)
             self._json({"job_id": job_id}, status=202)
             return
-        if parsed.path == "/gateway/connect":
+        if path == "/gateway/connect":
             try:
                 status = self.gateway_service.connect(payload)
                 self._json({"gateway": status})
             except Exception as exc:
                 self._json({"error": str(exc)}, status=400)
             return
-        if parsed.path == "/gateway/disconnect":
+        if path == "/gateway/disconnect":
             status = self.gateway_service.disconnect()
             self._json({"gateway": status})
             return
-        if parsed.path == "/gateway/order":
+        if path == "/gateway/order":
             try:
                 result = self.gateway_service.submit_order(payload)
                 self._json(result, status=202)
             except Exception as exc:
                 self._json({"error": str(exc)}, status=400)
             return
-        if parsed.path == "/gateway/cancel":
+        if path == "/gateway/cancel":
             try:
                 result = self.gateway_service.cancel_order(payload)
                 self._json(result)
             except Exception as exc:
                 self._json({"error": str(exc)}, status=400)
             return
-        if parsed.path == "/gateway/price":
+        if path == "/gateway/price":
             try:
                 result = self.gateway_service.update_price(payload)
                 self._json(result)
@@ -267,28 +539,58 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, status=404)
 
 
-def run_api_server(
+def create_api_server(
     *,
     host: str = "0.0.0.0",
     port: int = 8080,
     job_store_path: Optional[str] = "./cache/platform/jobs.json",
     max_workers: int = 4,
-) -> None:
+    api_token: Optional[str] = None,
+) -> ThreadingHTTPServer:
+    """Create the API server instance with configured dependencies."""
     store = JobStore(path=job_store_path)
     queue = JobQueue(store=store, max_workers=max_workers)
     gateway_service = GatewayService()
+    metrics = APIMetrics()
 
     class _Handler(PlatformAPIHandler):
         pass
 
     _Handler.queue = queue
     _Handler.gateway_service = gateway_service
+    _Handler.metrics = metrics
+    _Handler.api_token = api_token if api_token is not None else os.environ.get("PLATFORM_API_TOKEN")
+
     server = ThreadingHTTPServer((host, port), _Handler)
-    print(f"[platform] API server listening on http://{host}:{port}")
+    # Attach runtime components for controlled shutdown/testing.
+    server.job_queue = queue  # type: ignore[attr-defined]
+    server.gateway_service = gateway_service  # type: ignore[attr-defined]
+    server.api_metrics = metrics  # type: ignore[attr-defined]
+    return server
+
+
+def run_api_server(
+    *,
+    host: str = "0.0.0.0",
+    port: int = 8080,
+    job_store_path: Optional[str] = "./cache/platform/jobs.json",
+    max_workers: int = 4,
+    api_token: Optional[str] = None,
+) -> None:
+    server = create_api_server(
+        host=host,
+        port=port,
+        job_store_path=job_store_path,
+        max_workers=max_workers,
+        api_token=api_token,
+    )
+    listen_host, listen_port = server.server_address
+    print(f"[platform] API server listening on http://{listen_host}:{listen_port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         server.server_close()
-        queue.shutdown()
+        server.job_queue.shutdown()  # type: ignore[attr-defined]
+
