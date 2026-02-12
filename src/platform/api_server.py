@@ -6,6 +6,7 @@ Provides:
 - Versioned API endpoints (/api/v1/*) with unified response envelope
 - Optional Bearer token authentication for v1 endpoints
 - Health/readiness/metrics endpoints for operations
+- Optional audit logging for key actions
 """
 from __future__ import annotations
 
@@ -21,7 +22,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from src.core.trading_gateway import TradingGateway, GatewayConfig, TradingMode, BrokerType
+from src.core.audit import AuditLogger, audit_event
+from src.core.logger import get_logger
+from src.core.trading_gateway import BrokerType, GatewayConfig, TradingGateway, TradingMode
 from src.core.interfaces import OrderTypeEnum
 from src.platform.backtest_task import run_backtest_job
 from src.platform.job_queue import JobQueue, JobStore
@@ -29,6 +32,8 @@ from src.platform.orchestrator import run_workflow
 
 WEB_ROOT = os.path.join(os.path.dirname(__file__), "web")
 API_PREFIX = "/api/v1"
+
+logger = get_logger("platform.api")
 
 
 def _to_jsonable(value: Any) -> Any:
@@ -88,17 +93,25 @@ class APIMetrics:
 
         queue_metrics = snap.get("job_queue") or {}
         if queue_metrics:
-            lines.extend([
-                "# HELP platform_job_queue_jobs_total Total jobs observed",
-                "# TYPE platform_job_queue_jobs_total gauge",
-                f"platform_job_queue_jobs_total {queue_metrics.get('total_jobs', 0)}",
-                f"platform_job_queue_pending_jobs {queue_metrics.get('pending_jobs', 0)}",
-                f"platform_job_queue_running_jobs {queue_metrics.get('running_jobs', 0)}",
-                f"platform_job_queue_success_jobs {queue_metrics.get('success_jobs', 0)}",
-                f"platform_job_queue_failed_jobs {queue_metrics.get('failed_jobs', 0)}",
-                f"platform_job_queue_cancelled_jobs {queue_metrics.get('cancelled_jobs', 0)}",
-                f"platform_job_queue_in_flight_futures {queue_metrics.get('in_flight_futures', 0)}",
-            ])
+            lines.extend(
+                [
+                    "# HELP platform_job_queue_jobs_total Total jobs observed",
+                    "# TYPE platform_job_queue_jobs_total gauge",
+                    f"platform_job_queue_jobs_total {queue_metrics.get('total_jobs', 0)}",
+                    f"platform_job_queue_pending_jobs {queue_metrics.get('pending_jobs', 0)}",
+                    f"platform_job_queue_running_jobs {queue_metrics.get('running_jobs', 0)}",
+                    f"platform_job_queue_success_jobs {queue_metrics.get('success_jobs', 0)}",
+                    f"platform_job_queue_failed_jobs {queue_metrics.get('failed_jobs', 0)}",
+                    f"platform_job_queue_cancelled_jobs {queue_metrics.get('cancelled_jobs', 0)}",
+                    f"platform_job_queue_in_flight_futures {queue_metrics.get('in_flight_futures', 0)}",
+                    f"platform_job_queue_delay_ms_p50 {queue_metrics.get('queue_delay_ms_p50', 0.0)}",
+                    f"platform_job_queue_delay_ms_p95 {queue_metrics.get('queue_delay_ms_p95', 0.0)}",
+                    f"platform_job_queue_delay_ms_p99 {queue_metrics.get('queue_delay_ms_p99', 0.0)}",
+                    f"platform_job_queue_run_ms_p50 {queue_metrics.get('run_duration_ms_p50', 0.0)}",
+                    f"platform_job_queue_run_ms_p95 {queue_metrics.get('run_duration_ms_p95', 0.0)}",
+                    f"platform_job_queue_run_ms_p99 {queue_metrics.get('run_duration_ms_p99', 0.0)}",
+                ]
+            )
 
         return "\n".join(lines) + "\n"
 
@@ -212,10 +225,60 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
     gateway_service: GatewayService
     metrics: APIMetrics
     api_token: Optional[str]
+    audit_logger: Optional[AuditLogger]
 
     def _request_id(self) -> str:
         rid = self.headers.get("X-Request-ID", "").strip()
         return rid if rid else str(uuid.uuid4())
+
+    def _actor(self) -> str:
+        actor = self.headers.get("X-Actor", "").strip()
+        return actor or "api"
+
+    def _idempotency_key(self, payload: Optional[Dict[str, Any]] = None) -> Optional[str]:
+        header_key = self.headers.get("X-Idempotency-Key", "").strip()
+        if header_key:
+            return header_key
+        if payload and payload.get("idempotency_key"):
+            return str(payload.get("idempotency_key")).strip()
+        return None
+
+    def _audit(
+        self,
+        *,
+        action: str,
+        resource: str,
+        result: str,
+        request_id: Optional[str],
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        audit_event(
+            getattr(self, "audit_logger", None),
+            actor=self._actor(),
+            action=action,
+            resource=resource,
+            result=result,
+            details={
+                "request_id": request_id,
+                "method": self.command,
+                "path": self.path,
+                **(details or {}),
+            },
+        )
+
+    def _log_response(self, status: int) -> None:
+        started = getattr(self, "_request_started_at", None)
+        duration_ms = 0.0
+        if isinstance(started, (float, int)):
+            duration_ms = (time.time() - float(started)) * 1000.0
+        logger.info(
+            "api.response",
+            method=self.command,
+            path=self.path,
+            status=status,
+            request_id=getattr(self, "_current_request_id", ""),
+            duration_ms=round(duration_ms, 3),
+        )
 
     def _json(
         self,
@@ -237,6 +300,7 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
 
         if getattr(self, "metrics", None) is not None:
             self.metrics.record(self.command, status)
+        self._log_response(status)
 
     def _json_v1(
         self,
@@ -281,6 +345,7 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
 
         if getattr(self, "metrics", None) is not None:
             self.metrics.record(self.command, 200)
+        self._log_response(200)
 
     def _read_json(self) -> Dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0") or "0")
@@ -338,18 +403,34 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             if path == f"{API_PREFIX}/gateway/connect":
                 status = self.gateway_service.connect(payload)
                 self._json_v1(request_id=request_id, data={"gateway": status})
+                self._audit(action="gateway.connect", resource="gateway", result="ok", request_id=request_id)
                 return True
             if path == f"{API_PREFIX}/gateway/disconnect":
                 status = self.gateway_service.disconnect()
                 self._json_v1(request_id=request_id, data={"gateway": status})
+                self._audit(action="gateway.disconnect", resource="gateway", result="ok", request_id=request_id)
                 return True
             if path == f"{API_PREFIX}/gateway/order":
                 result = self.gateway_service.submit_order(payload)
                 self._json_v1(request_id=request_id, data=result, status=202)
+                self._audit(
+                    action="order.submit",
+                    resource="gateway.order",
+                    result="ok",
+                    request_id=request_id,
+                    details={"order_id": result.get("order_id"), "symbol": payload.get("symbol")},
+                )
                 return True
             if path == f"{API_PREFIX}/gateway/cancel":
                 result = self.gateway_service.cancel_order(payload)
                 self._json_v1(request_id=request_id, data=result)
+                self._audit(
+                    action="order.cancel",
+                    resource="gateway.order",
+                    result="ok" if result.get("cancelled") else "noop",
+                    request_id=request_id,
+                    details={"order_id": payload.get("order_id")},
+                )
                 return True
             if path == f"{API_PREFIX}/gateway/price":
                 result = self.gateway_service.update_price(payload)
@@ -393,12 +474,29 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
 
     def _handle_post_v1(self, path: str, payload: Dict[str, Any], request_id: str) -> None:
         if path == f"{API_PREFIX}/jobs/backtest":
-            job_id = self.queue.submit("backtest", run_backtest_job, payload)
+            idem = self._idempotency_key(payload)
+            job_id = self.queue.submit("backtest", run_backtest_job, payload, idempotency_key=idem)
             self._json_v1(request_id=request_id, data={"job_id": job_id}, status=202)
+            self._audit(
+                action="job.submit",
+                resource="job.backtest",
+                result="ok",
+                request_id=request_id,
+                details={"job_id": job_id, "idempotency_key": idem},
+            )
             return
+
         if path == f"{API_PREFIX}/jobs/workflow":
-            job_id = self.queue.submit("workflow", run_workflow, payload)
+            idem = self._idempotency_key(payload)
+            job_id = self.queue.submit("workflow", run_workflow, payload, idempotency_key=idem)
             self._json_v1(request_id=request_id, data={"job_id": job_id}, status=202)
+            self._audit(
+                action="job.submit",
+                resource="job.workflow",
+                result="ok",
+                request_id=request_id,
+                details={"job_id": job_id, "idempotency_key": idem},
+            )
             return
 
         if path.startswith(f"{API_PREFIX}/jobs/") and path.endswith("/cancel"):
@@ -408,6 +506,13 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
                 try:
                     record = self.queue.cancel(job_id)
                     self._json_v1(request_id=request_id, data={"job": asdict(record)})
+                    self._audit(
+                        action="job.cancel",
+                        resource="job",
+                        result="ok",
+                        request_id=request_id,
+                        details={"job_id": job_id},
+                    )
                 except KeyError:
                     self._error_v1(request_id=request_id, status=404, code=40401, message="job not found")
                 except RuntimeError as exc:
@@ -420,9 +525,11 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         self._error_v1(request_id=request_id, status=404, code=40400, message="not found")
 
     def do_GET(self) -> None:
+        self._request_started_at = time.time()
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         request_id = self._request_id()
+        self._current_request_id = request_id
 
         if path in ("/", "/index.html"):
             self._serve_file(os.path.join(WEB_ROOT, "index.html"))
@@ -484,10 +591,12 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, status=404)
 
     def do_POST(self) -> None:
+        self._request_started_at = time.time()
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         payload = self._read_json()
         request_id = self._request_id()
+        self._current_request_id = request_id
 
         if path.startswith(API_PREFIX):
             if not self._is_authorized_v1(path):
@@ -497,11 +606,13 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/jobs/backtest":
-            job_id = self.queue.submit("backtest", run_backtest_job, payload)
+            idem = self._idempotency_key(payload)
+            job_id = self.queue.submit("backtest", run_backtest_job, payload, idempotency_key=idem)
             self._json({"job_id": job_id}, status=202)
             return
         if path == "/jobs/workflow":
-            job_id = self.queue.submit("workflow", run_workflow, payload)
+            idem = self._idempotency_key(payload)
+            job_id = self.queue.submit("workflow", run_workflow, payload, idempotency_key=idem)
             self._json({"job_id": job_id}, status=202)
             return
         if path == "/gateway/connect":
@@ -546,12 +657,18 @@ def create_api_server(
     job_store_path: Optional[str] = "./cache/platform/jobs.json",
     max_workers: int = 4,
     api_token: Optional[str] = None,
+    audit_log_path: Optional[str] = None,
 ) -> ThreadingHTTPServer:
     """Create the API server instance with configured dependencies."""
     store = JobStore(path=job_store_path)
     queue = JobQueue(store=store, max_workers=max_workers)
     gateway_service = GatewayService()
     metrics = APIMetrics()
+
+    resolved_audit_path = audit_log_path
+    if resolved_audit_path is None:
+        resolved_audit_path = os.environ.get("PLATFORM_AUDIT_LOG")
+    audit_logger = AuditLogger(path=resolved_audit_path) if resolved_audit_path else None
 
     class _Handler(PlatformAPIHandler):
         pass
@@ -560,12 +677,14 @@ def create_api_server(
     _Handler.gateway_service = gateway_service
     _Handler.metrics = metrics
     _Handler.api_token = api_token if api_token is not None else os.environ.get("PLATFORM_API_TOKEN")
+    _Handler.audit_logger = audit_logger
 
     server = ThreadingHTTPServer((host, port), _Handler)
     # Attach runtime components for controlled shutdown/testing.
     server.job_queue = queue  # type: ignore[attr-defined]
     server.gateway_service = gateway_service  # type: ignore[attr-defined]
     server.api_metrics = metrics  # type: ignore[attr-defined]
+    server.audit_logger = audit_logger  # type: ignore[attr-defined]
     return server
 
 
@@ -576,6 +695,7 @@ def run_api_server(
     job_store_path: Optional[str] = "./cache/platform/jobs.json",
     max_workers: int = 4,
     api_token: Optional[str] = None,
+    audit_log_path: Optional[str] = None,
 ) -> None:
     server = create_api_server(
         host=host,
@@ -583,6 +703,7 @@ def run_api_server(
         job_store_path=job_store_path,
         max_workers=max_workers,
         api_token=api_token,
+        audit_log_path=audit_log_path,
     )
     listen_host, listen_port = server.server_address
     print(f"[platform] API server listening on http://{listen_host}:{listen_port}")

@@ -85,5 +85,45 @@ def test_job_queue_metrics(tmp_path):
         assert metrics["total_jobs"] >= 1
         assert metrics["success_jobs"] >= 1
         assert metrics["max_workers"] == 1
+        assert "queue_delay_ms_p50" in metrics
+        assert "run_duration_ms_p50" in metrics
+    finally:
+        queue.shutdown()
+
+
+def test_job_store_sqlite_backend(tmp_path):
+    store = JobStore(path=str(tmp_path / "jobs.db"))
+    queue = JobQueue(store=store, max_workers=1)
+
+    try:
+        job_id = queue.submit("unit", lambda payload: {"ok": payload["ok"]}, {"ok": True})
+        queue.wait(job_id, timeout=5)
+        rec = store.get(job_id)
+        assert rec is not None
+        assert rec.status == "success"
+        assert store.backend_type == "sqlite"
+    finally:
+        queue.shutdown()
+
+
+def test_job_queue_submit_idempotency(tmp_path):
+    store = JobStore(path=str(tmp_path / "jobs.db"))
+    queue = JobQueue(store=store, max_workers=1)
+
+    try:
+        job_id_1 = queue.submit(
+            "unit",
+            lambda payload: {"v": payload["v"]},
+            {"v": 1},
+            idempotency_key="fixed-001",
+        )
+        job_id_2 = queue.submit(
+            "unit",
+            lambda payload: {"v": payload["v"]},
+            {"v": 1},
+            idempotency_key="fixed-001",
+        )
+        assert job_id_1 == job_id_2
+        queue.wait(job_id_1, timeout=5)
     finally:
         queue.shutdown()

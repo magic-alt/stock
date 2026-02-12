@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
 - Platform: add /readyz and /metrics operational endpoints plus in-memory API/queue metrics export.
 - Platform: add job cancellation capability (POST /api/v1/jobs/{id}/cancel) for pending jobs.
 - Docs: add commercial-grade assessment, roadmap, target architecture, security baseline, and performance benchmark specs under docs/.
+- Platform: add SQLite-backed JobStore option, idempotent job submission, and queue latency/runtime percentile metrics.
+- Orchestrator: add workflow timeout, retry, and failure policy controls with task registration APIs.
+- Scripts: add `scripts/audit_integrity_check.py` and `scripts/benchmark_platform.py` for compliance and performance baselining.
+- Docs: add `docs/OPERATIONS_RUNBOOK.md` and `docs/SRE_INCIDENT_RESPONSE.md` for rollout/rollback and on-call response.
 - ML: add new strategy examples in `examples/` and expand the gallery.
 - MLOps: add AI signal schema and `AISignalStrategy` adapter for framework integration.
 - MLOps: add OHLCV normalization and calendar alignment utilities for AI feature pipelines.
@@ -38,6 +42,8 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - Platform: keep legacy /jobs and /gateway/* endpoints while introducing v1 API for forward compatibility.
 - Platform: expose create_api_server(...) factory to support controlled lifecycle and integration testing.
+- Platform: include structured API response logging and optional audit trail for key actions (job submit/cancel, gateway ops).
+- Platform: support SQLite job store via `--jobs *.db` in API runner.
 - GUI: batch log rendering to reduce UI stutter in `scripts/backtest_gui.py`.
 - GUI: refactor backtest GUI for full CLI coverage (calendar/fee/combo names), modern layout, and config persistence.
 - Core: add heartbeat monitoring utilities and reuse them in `paper_runner_v3`.
@@ -56,6 +62,10 @@ All notable changes to this project will be documented in this file.
 ### Tests
 - Tests: add API server integration tests for auth, v1 job workflows, readiness/metrics, and legacy compatibility.
 - Tests: expand job queue tests to cover pending cancellation, running cancellation rejection, and queue metrics.
+- Tests: add workflow orchestrator tests for retry/timeout/continue-abort policies.
+- Tests: add API idempotency and audit log integration tests.
+- Tests: add consistency checks for order status mapping and cross-mode risk-rule behavior.
+- Tests: add audit integrity checker tests for normal and tampered logs.
 - Tests: raise ML strategy coverage to 90%+ and enforce via `pytest.ini`.
 - Tests: align CI coverage flags with `pytest.ini` to avoid full-src coverage failures.
 
