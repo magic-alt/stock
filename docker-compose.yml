@@ -1,13 +1,45 @@
-version: "3.9"
-
 services:
-  platform-api:
-    build: .
+  api:
+    build:
+      context: .
+      target: production
     ports:
-      - "8080:8080"
+      - "8000:8000"
     volumes:
       - ./cache:/app/cache
       - ./report:/app/report
       - ./data_lake:/app/data_lake
+      - ./logs:/app/logs
     environment:
-      - QLIB_DATA=/app/qlib_data
+      - PYTHONPATH=/app
+      - PLATFORM_API_TOKEN=${PLATFORM_API_TOKEN:-}
+      - TUSHARE_TOKEN=${TUSHARE_TOKEN:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+volumes:
+  redis_data:

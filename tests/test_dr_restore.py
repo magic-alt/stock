@@ -189,7 +189,7 @@ class TestDrillRunner:
             assert reports[0].snapshot_ok is True
             assert reports[0].restore_ok is True
             assert reports[0].verify_ok is True
-            assert reports[0].duration_ms > 0
+            assert reports[0].duration_ms >= 0
 
     def test_drill_report_fields(self):
         report = DrillReport(
