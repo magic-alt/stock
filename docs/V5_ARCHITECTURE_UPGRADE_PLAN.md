@@ -1,10 +1,10 @@
 # V5.0 架构升级计划 — 全方位对标评估与功能升级路线
 
 **日期**: 2026-03-01
-**当前版本**: V5.0（V5.0-D 已完成）
+**当前版本**: V5.0（V5.0-E 已完成）
 **目标版本**: V5.0-GA
-**代码规模**: 46,000+ 行 Python + Vue3 前端（112 个 .py 模块 + Vue3 SPA）
-**测试规模**: 63 个测试文件，959+ 测试用例
+**代码规模**: 48,000+ 行 Python + Vue3 前端（116 个 .py 模块 + Vue3 SPA）
+**测试规模**: 64 个测试文件，1024+ 测试用例
 
 ### 实施进度
 
@@ -14,6 +14,7 @@
 | **V5.0-B** 高性能回测引擎 | ✅ 完成 | 819 passed | DuckDB时序存储 + 向量化计算(Numba) + 多频率Bar链 + 流式行情分发器 |
 | **V5.0-C** 安全加固与合规升级 | ✅ 完成 | 922 passed | FastAPI(OpenAPI/Pydantic) + SecurityManager(加密/令牌) + Vault(多后端密钥) + InputSanitizer(OWASP) + pyproject.toml |
 | **V5.0-D** 开发者体验升级 | ✅ 完成 | 959 passed | Docker多阶段(Dockerfile+compose) + CLI v2(Click+Rich) + 脚手架生成器 + Jupyter集成(QuantHelper+magic) |
+| **V5.0-E** 可扩展性与生态建设 | ✅ 完成 | 1024 passed | 插件系统(PluginManager) + 消息总线(ZMQ/InProcess) + Repository(Memory/SQLite/DuckDB) + 策略热加载(沙箱) |
 
 ---
 
