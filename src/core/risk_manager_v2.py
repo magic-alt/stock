@@ -368,6 +368,9 @@ class RiskManagerV2:
         # State
         self._trading_halted = False
         self._halt_reason = ""
+
+        # Reference prices for deviation checks (updated via update_reference_price)
+        self._reference_prices: Dict[str, float] = {}
     
     # ---------------------------------------------------------------------------
     # Order Risk Checks
@@ -435,9 +438,19 @@ class RiskManagerV2:
         
         # Update rate limit
         self._last_order_time[symbol] = datetime.now()
-        
+
         return RiskCheckResult.success("all_checks")
-    
+
+    def update_reference_price(self, symbol: str, price: float) -> None:
+        """Update reference price for price-deviation checks (e.g. last close or VWAP)."""
+        if price > 0:
+            self._reference_prices[symbol] = price
+
+    def update_reference_prices(self, prices: Dict[str, float]) -> None:
+        """Bulk-update reference prices."""
+        for sym, px in prices.items():
+            self.update_reference_price(sym, px)
+
     def _check_order_value(
         self,
         symbol: str,
@@ -500,8 +513,26 @@ class RiskManagerV2:
         return RiskCheckResult.success("position_limit")
     
     def _check_price_deviation(self, symbol: str, price: float) -> RiskCheckResult:
-        """Check price deviation from reference."""
-        # TODO: Implement price deviation check with market data
+        """Check price deviation from reference (last known or VWAP)."""
+        ref = self._reference_prices.get(symbol)
+        if ref is None or ref <= 0:
+            # No reference price available yet – skip check
+            return RiskCheckResult.success("price_deviation")
+
+        deviation = abs(price - ref) / ref
+        limit = self.config.price_deviation_limit
+
+        if deviation > limit:
+            return RiskCheckResult.failure(
+                f"Price {price:.4f} deviates {deviation*100:.2f}% from reference "
+                f"{ref:.4f} (limit {limit*100:.1f}%)",
+                RiskLevel.WARNING,
+                "price_deviation",
+                price=price,
+                reference=ref,
+                deviation=deviation,
+                limit=limit,
+            )
         return RiskCheckResult.success("price_deviation")
     
     def _check_daily_loss(self, account: AccountInfo) -> RiskCheckResult:

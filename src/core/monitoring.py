@@ -77,6 +77,9 @@ class SystemMonitor:
         self._running = False
         self._thread: Optional[Thread] = None
         self._stop_event = ThreadEvent()
+
+        # External alert dispatcher (configure via set_alert_dispatcher)
+        self._alert_dispatcher: Optional[AlertDispatcher] = None
         
         # 数据库路径
         from src.core.defaults import PATHS
@@ -226,16 +229,23 @@ class SystemMonitor:
                 logger.error(f"Monitor loop error: {e}", exc_info=True)
                 time.sleep(self.check_interval)
     
+    def set_alert_dispatcher(self, dispatcher: "AlertDispatcher") -> None:
+        """Attach external alert dispatcher for email/webhook delivery."""
+        self._alert_dispatcher = dispatcher
+
     def _handle_alert(self, alert: Alert):
-        """处理告警"""
+        """处理告警 — log locally and dispatch to external channels."""
         if alert.level == "CRITICAL":
-            logger.critical(f"🚨 {alert.message}", **alert.details)
+            logger.critical(f"{alert.message}", **alert.details)
         elif alert.level == "ERROR":
-            logger.error(f"⚠️  {alert.message}", **alert.details)
+            logger.error(f"{alert.message}", **alert.details)
         elif alert.level == "WARNING":
-            logger.warning(f"⚠️  {alert.message}", **alert.details)
+            logger.warning(f"{alert.message}", **alert.details)
         else:
-            logger.info(f"ℹ️  {alert.message}", **alert.details)
+            logger.info(f"{alert.message}", **alert.details)
+
+        if self._alert_dispatcher:
+            self._alert_dispatcher.dispatch(alert)
     
     def get_current_metrics(self) -> Optional[SystemMetrics]:
         """获取当前指标"""
@@ -291,6 +301,122 @@ def stop_monitoring():
     """停止系统监控"""
     monitor = get_monitor()
     monitor.stop()
+
+
+# ---------------------------------------------------------------------------
+# External alert channels (email / WeCom / DingTalk webhook)
+# ---------------------------------------------------------------------------
+
+class AlertChannel:
+    """Base class for external alert delivery."""
+
+    def send(self, alert: Alert) -> bool:
+        raise NotImplementedError
+
+
+class WebhookAlertChannel(AlertChannel):
+    """Send alerts to a generic JSON webhook (WeCom / DingTalk / custom)."""
+
+    def __init__(self, url: str, *, secret: Optional[str] = None, platform: str = "generic"):
+        self.url = url
+        self.secret = secret
+        self.platform = platform
+
+    def _build_payload(self, alert: Alert) -> Dict[str, Any]:
+        text = f"[{alert.level}] {alert.message}"
+        if self.platform == "wecom":
+            return {"msgtype": "text", "text": {"content": text}}
+        if self.platform == "dingtalk":
+            return {"msgtype": "text", "text": {"content": text}}
+        return {"level": alert.level, "message": alert.message, "timestamp": alert.timestamp.isoformat(), "details": alert.details}
+
+    def send(self, alert: Alert) -> bool:
+        import json
+        try:
+            import urllib.request
+            payload = json.dumps(self._build_payload(alert), ensure_ascii=False).encode("utf-8")
+            req = urllib.request.Request(
+                self.url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return 200 <= resp.status < 300
+        except Exception as exc:
+            logger.error("webhook_alert_failed", url=self.url, error=str(exc))
+            return False
+
+
+class EmailAlertChannel(AlertChannel):
+    """Send alerts via SMTP email."""
+
+    def __init__(
+        self,
+        smtp_host: str,
+        smtp_port: int = 465,
+        username: str = "",
+        password: str = "",
+        sender: str = "",
+        recipients: Optional[List[str]] = None,
+        use_ssl: bool = True,
+    ):
+        self.smtp_host = smtp_host
+        self.smtp_port = smtp_port
+        self.username = username
+        self.password = password
+        self.sender = sender or username
+        self.recipients = recipients or []
+        self.use_ssl = use_ssl
+
+    def send(self, alert: Alert) -> bool:
+        import smtplib
+        from email.mime.text import MIMEText
+        try:
+            subject = f"[{alert.level}] Platform Alert"
+            body = f"{alert.message}\n\nTimestamp: {alert.timestamp.isoformat()}\nDetails: {alert.details}"
+            msg = MIMEText(body, "plain", "utf-8")
+            msg["Subject"] = subject
+            msg["From"] = self.sender
+            msg["To"] = ", ".join(self.recipients)
+
+            if self.use_ssl:
+                smtp = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=15)
+            else:
+                smtp = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=15)
+                smtp.starttls()
+            if self.username:
+                smtp.login(self.username, self.password)
+            smtp.sendmail(self.sender, self.recipients, msg.as_string())
+            smtp.quit()
+            return True
+        except Exception as exc:
+            logger.error("email_alert_failed", host=self.smtp_host, error=str(exc))
+            return False
+
+
+class AlertDispatcher:
+    """Dispatch alerts to multiple external channels based on level filter."""
+
+    def __init__(self) -> None:
+        self._channels: List[tuple[AlertChannel, Optional[set]]] = []
+
+    def add_channel(self, channel: AlertChannel, levels: Optional[set] = None) -> None:
+        """Register a channel. ``levels`` filters which alert levels are sent (None = all)."""
+        self._channels.append((channel, levels))
+
+    def dispatch(self, alert: Alert) -> int:
+        """Send alert to all matching channels. Returns number of successful deliveries."""
+        sent = 0
+        for ch, levels in self._channels:
+            if levels and alert.level not in levels:
+                continue
+            try:
+                if ch.send(alert):
+                    sent += 1
+            except Exception as exc:
+                logger.error("alert_dispatch_error", channel=type(ch).__name__, error=str(exc))
+        return sent
 
 
 # ---------------------------------------------------------------------------

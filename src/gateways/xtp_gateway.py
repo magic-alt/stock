@@ -60,6 +60,7 @@ References:
 from __future__ import annotations
 
 import os
+import logging
 import threading
 import time
 from ctypes import c_char_p, c_int, c_double, c_uint64, Structure, POINTER
@@ -84,11 +85,14 @@ from src.gateways.base_live_gateway import (
 )
 from src.gateways.mappers import SymbolMapper, OrderMapper, XTPExchange
 
+logger = logging.getLogger("gateways.xtp")
+
 
 # Check if XTP SDK is available
 # XTP uses C++ SDK, typically accessed via ctypes/cffi/SWIG bindings
 XTP_AVAILABLE = False
 xtp_api = None
+_XTP_IMPORT_ERROR: str = ""
 
 try:
     # Try importing common XTP Python wrapper packages
@@ -101,8 +105,13 @@ try:
         XTPQuoteSpi,
     )
     XTP_AVAILABLE = True
-except ImportError:
-    pass  # Use stub mode
+except ImportError as _exc:
+    _XTP_IMPORT_ERROR = (
+        f"XTP SDK not available: {_exc}. "
+        "Install the xtp_api package or set XTP_SDK_PATH. "
+        "Gateway will operate in stub mode."
+    )
+    logger.warning("xtp_sdk_unavailable: %s", _exc)
 
 
 # ---------------------------------------------------------------------------

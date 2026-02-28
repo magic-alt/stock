@@ -64,6 +64,7 @@ References:
 from __future__ import annotations
 
 import os
+import logging
 import threading
 import time
 from datetime import datetime
@@ -87,10 +88,13 @@ from src.gateways.base_live_gateway import (
 )
 from src.gateways.mappers import SymbolMapper, OrderMapper, UFTExchange
 
+logger = logging.getLogger("gateways.hundsun_uft")
+
 
 # Check if Hundsun SDK is available
 UFT_AVAILABLE = False
 hsuft_api = None
+_UFT_IMPORT_ERROR: str = ""
 
 try:
     # The actual import depends on how UFT SDK is packaged
@@ -103,8 +107,13 @@ try:
         CHSMdSpi,
     )
     UFT_AVAILABLE = True
-except ImportError:
-    pass  # Use stub mode
+except ImportError as _exc:
+    _UFT_IMPORT_ERROR = (
+        f"Hundsun UFT SDK not available: {_exc}. "
+        "Install the hsuft_api package or set UFT_SDK_PATH. "
+        "Gateway will operate in stub mode."
+    )
+    logger.warning("uft_sdk_unavailable: %s", _exc)
 
 
 # ---------------------------------------------------------------------------

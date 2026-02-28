@@ -710,6 +710,149 @@ def timed(name: str = "operation"):
 
 
 # ---------------------------------------------------------------------------
+# Tiered Cache (L1 Memory + L2 SQLite)
+# ---------------------------------------------------------------------------
+
+class TieredCache(Generic[T]):
+    """
+    Two-level cache: L1 in-memory (hot) + L2 SQLite on-disk (cold).
+
+    Access pattern:
+    - get(): L1 hit → return.  L1 miss → check L2 → promote to L1 → return.
+    - set(): write to both L1 and L2.
+    - Entries evicted from L1 (LRU) remain in L2 for later promotion.
+    - L2 uses its own TTL for long-term staleness cleanup.
+
+    Usage:
+        >>> cache = TieredCache[bytes](l1_max=100, l1_ttl=300, l2_path="cache/tiered.db", l2_ttl=86400)
+        >>> cache.set("key", data)
+        >>> val = cache.get("key")
+    """
+
+    def __init__(
+        self,
+        l1_max: int = 500,
+        l1_ttl: Optional[int] = 300,
+        l2_path: Optional[str] = None,
+        l2_ttl: Optional[int] = 86400,
+    ):
+        import sqlite3 as _sqlite3
+
+        self._l1 = TTLCache(max_size=l1_max, ttl=l1_ttl)
+        self._l2_ttl = l2_ttl
+
+        db_path = l2_path or os.path.join(
+            os.environ.get("CACHE_DIR", "cache"), "tiered_cache.db"
+        )
+        os.makedirs(os.path.dirname(db_path) or ".", exist_ok=True)
+        self._l2_conn = _sqlite3.connect(db_path, check_same_thread=False)
+        self._l2_lock = threading.Lock()
+        self._l2_conn.execute(
+            "CREATE TABLE IF NOT EXISTS tiered_cache "
+            "(key TEXT PRIMARY KEY, value BLOB, expires_at REAL)"
+        )
+        self._l2_conn.commit()
+
+        # stats
+        self._l1_hits = 0
+        self._l2_hits = 0
+        self._misses = 0
+
+    # -- public API ----------------------------------------------------------
+
+    def get(self, key: str, default: T = None) -> Optional[T]:
+        """Get value: L1 → L2 → miss."""
+        val = self._l1.get(key)
+        if val is not None:
+            self._l1_hits += 1
+            return val
+
+        val = self._l2_get(key)
+        if val is not None:
+            self._l2_hits += 1
+            # promote to L1
+            self._l1.set(key, val)
+            return val
+
+        self._misses += 1
+        return default
+
+    def set(self, key: str, value: T, ttl: Optional[int] = None) -> None:
+        """Write to L1 and L2."""
+        self._l1.set(key, value, ttl)
+        self._l2_set(key, value)
+
+    def delete(self, key: str) -> None:
+        self._l1.delete(key)
+        with self._l2_lock:
+            self._l2_conn.execute("DELETE FROM tiered_cache WHERE key=?", (key,))
+            self._l2_conn.commit()
+
+    def clear(self) -> None:
+        self._l1.clear()
+        with self._l2_lock:
+            self._l2_conn.execute("DELETE FROM tiered_cache")
+            self._l2_conn.commit()
+        self._l1_hits = 0
+        self._l2_hits = 0
+        self._misses = 0
+
+    def cleanup_expired(self) -> int:
+        """Remove expired entries from both levels."""
+        count = self._l1.cleanup_expired()
+        with self._l2_lock:
+            cur = self._l2_conn.execute(
+                "DELETE FROM tiered_cache WHERE expires_at IS NOT NULL AND expires_at < ?",
+                (time.time(),),
+            )
+            count += cur.rowcount
+            self._l2_conn.commit()
+        return count
+
+    @property
+    def stats(self) -> Dict[str, Any]:
+        total = self._l1_hits + self._l2_hits + self._misses
+        return {
+            "l1": self._l1.stats,
+            "l2_size": self._l2_size(),
+            "l1_hits": self._l1_hits,
+            "l2_hits": self._l2_hits,
+            "misses": self._misses,
+            "hit_rate": (self._l1_hits + self._l2_hits) / total if total else 0.0,
+        }
+
+    # -- L2 helpers ----------------------------------------------------------
+
+    def _l2_get(self, key: str) -> Optional[T]:
+        with self._l2_lock:
+            row = self._l2_conn.execute(
+                "SELECT value, expires_at FROM tiered_cache WHERE key=?", (key,)
+            ).fetchone()
+        if row is None:
+            return None
+        blob, expires_at = row
+        if expires_at is not None and time.time() > expires_at:
+            self.delete(key)
+            return None
+        return pickle.loads(blob)
+
+    def _l2_set(self, key: str, value: T) -> None:
+        expires_at = time.time() + self._l2_ttl if self._l2_ttl else None
+        blob = pickle.dumps(value)
+        with self._l2_lock:
+            self._l2_conn.execute(
+                "INSERT OR REPLACE INTO tiered_cache (key, value, expires_at) VALUES (?, ?, ?)",
+                (key, blob, expires_at),
+            )
+            self._l2_conn.commit()
+
+    def _l2_size(self) -> int:
+        with self._l2_lock:
+            row = self._l2_conn.execute("SELECT COUNT(*) FROM tiered_cache").fetchone()
+        return row[0] if row else 0
+
+
+# ---------------------------------------------------------------------------
 # Rate Limiting
 # ---------------------------------------------------------------------------
 
@@ -749,6 +892,7 @@ class RateLimiter:
 __all__ = [
     # Cache
     "TTLCache",
+    "TieredCache",
     "cached",
     # Profiling
     "profile",

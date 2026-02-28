@@ -574,10 +574,15 @@ class QlibProvider(DataProvider):
         try:
             import qlib  # type: ignore
         except Exception as exc:
+            logger.warning("Qlib is not installed or cannot be imported: %s", exc)
             raise DataProviderUnavailable("Qlib is not installed. Install pyqlib first.") from exc
         if self._init_state == (self.provider_uri, self.region):
             return
-        qlib.init(provider_uri=self.provider_uri, region=self.region)
+        try:
+            qlib.init(provider_uri=self.provider_uri, region=self.region)
+        except Exception as exc:
+            logger.warning("Qlib init failed (provider_uri=%s): %s", self.provider_uri, exc)
+            raise DataProviderUnavailable(f"Qlib init failed: {exc}") from exc
         self._init_state = (self.provider_uri, self.region)
 
     def load_stock_daily(

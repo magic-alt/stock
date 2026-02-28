@@ -150,11 +150,21 @@ class GatewayConfig:
     
     # Rate limiting
     max_orders_per_second: float = 10.0
-    
+
+    # SDK path configuration (XTP/UFT custom SDK location)
+    sdk_path: Optional[str] = None
+    sdk_log_path: Optional[str] = None
+
     def __post_init__(self):
         """Validate configuration."""
         if not self.account_id:
             raise ValueError("account_id is required")
+        if self.sdk_path:
+            import sys
+            from pathlib import Path
+            resolved = str(Path(self.sdk_path).resolve())
+            if resolved not in sys.path:
+                sys.path.insert(0, resolved)
 
 
 @dataclass
@@ -351,6 +361,46 @@ class GatewayEventType:
     TICK_DATA = "gateway.tick"
     BAR_DATA = "gateway.bar"
     DEPTH_DATA = "gateway.depth"
+
+
+# ---------------------------------------------------------------------------
+# Async Query Result Cache
+# ---------------------------------------------------------------------------
+
+
+class QueryResultCache:
+    """Thread-safe cache for async query results with Event synchronization.
+
+    Gateway subclasses call ``prepare(request_id)`` before issuing an async
+    query (e.g. ``QueryAsset``) and ``wait_result(request_id)`` to block until
+    the callback fires ``set_result``.
+    """
+
+    def __init__(self, timeout: float = 5.0):
+        self._results: Dict[str, Any] = {}
+        self._events: Dict[str, threading.Event] = {}
+        self._lock = threading.Lock()
+        self._timeout = timeout
+
+    def prepare(self, request_id: str) -> None:
+        with self._lock:
+            self._events[request_id] = threading.Event()
+
+    def set_result(self, request_id: str, result: Any) -> None:
+        with self._lock:
+            self._results[request_id] = result
+            ev = self._events.get(request_id)
+            if ev:
+                ev.set()
+
+    def wait_result(self, request_id: str, timeout: Optional[float] = None) -> Optional[Any]:
+        ev = self._events.get(request_id)
+        if ev is None:
+            return None
+        ev.wait(timeout=timeout or self._timeout)
+        with self._lock:
+            self._events.pop(request_id, None)
+            return self._results.pop(request_id, None)
 
 
 # ---------------------------------------------------------------------------

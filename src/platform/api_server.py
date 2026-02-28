@@ -29,6 +29,7 @@ from src.core.interfaces import OrderTypeEnum
 from src.platform.backtest_task import run_backtest_job
 from src.platform.job_queue import JobQueue, JobStore
 from src.platform.orchestrator import run_workflow
+from urllib.parse import parse_qs
 
 WEB_ROOT = os.path.join(os.path.dirname(__file__), "web")
 API_PREFIX = "/api/v1"
@@ -441,6 +442,36 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _handle_chart_data(self, request_id: str) -> None:
+        """Serve OHLCV chart data for the frontend K-line chart."""
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        symbol = (qs.get("symbol") or [""])[0].strip()
+        days = int((qs.get("days") or ["120"])[0])
+        if not symbol:
+            self._error_v1(request_id=request_id, status=400, code=40001, message="symbol is required")
+            return
+        days = max(10, min(days, 500))
+        try:
+            from datetime import datetime, timedelta
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
+            from src.data_sources.providers import AkshareProvider, DataProviderError
+            provider = AkshareProvider()
+            data_map = provider.load_stock_daily([symbol], start, end)
+            if symbol not in data_map or data_map[symbol].empty:
+                self._json_v1(request_id=request_id, data={"dates": [], "ohlc": [], "volumes": []})
+                return
+            df = data_map[symbol].tail(days)
+            dates = [str(d.date()) if hasattr(d, "date") else str(d) for d in df.index]
+            ohlc = []
+            for _, row in df.iterrows():
+                ohlc.append([float(row["open"]), float(row["close"]), float(row["low"]), float(row["high"])])
+            volumes = [float(row.get("volume", 0)) for _, row in df.iterrows()]
+            self._json_v1(request_id=request_id, data={"dates": dates, "ohlc": ohlc, "volumes": volumes})
+        except Exception as exc:
+            self._error_v1(request_id=request_id, status=500, code=50001, message=str(exc))
+
     def _handle_get_v1(self, path: str, request_id: str) -> None:
         if path == f"{API_PREFIX}/healthz":
             self._json_v1(request_id=request_id, data={"status": "ok"})
@@ -453,6 +484,10 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return
 
         if self._handle_gateway_get_v1(path, request_id):
+            return
+
+        if path == f"{API_PREFIX}/chart-data":
+            self._handle_chart_data(request_id)
             return
 
         if path == f"{API_PREFIX}/jobs":

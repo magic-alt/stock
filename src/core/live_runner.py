@@ -2,14 +2,16 @@
 Live Trading Runner
 
 Connects BaseStrategy + RealtimeDataManager + TradingGateway.
+Features: bar-driven execution, error recovery, periodic position sync, audit logging.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from threading import Event
 from typing import Any, Callable, Dict, List, Optional
 import time
+import traceback
 
 import pandas as pd
 
@@ -28,6 +30,8 @@ class LiveRunResult:
     started_at: str
     stopped_at: str
     bars: int
+    errors: int = 0
+    position_syncs: int = 0
 
 
 class LiveStrategyContext(StrategyContext):
@@ -184,10 +188,16 @@ def run_live(
     stop_event: Optional[Event] = None,
     poll_interval: float = 1.0,
     auto_connect: bool = True,
+    on_error: str = "skip",  # "skip" | "retry" | "halt"
+    max_bar_retries: int = 2,
+    position_sync_interval: float = 60.0,
+    audit_logger=None,
 ) -> LiveRunResult:
-    """Run a strategy in live mode using realtime data manager."""
+    """Run a strategy in live mode with error recovery and position sync."""
     started_at = datetime.now().isoformat(timespec="seconds")
     bar_count = 0
+    error_count = 0
+    sync_count = 0
 
     ctx = LiveStrategyContext(
         gateway=gateway,
@@ -199,21 +209,78 @@ def run_live(
     if auto_connect and not gateway.is_connected():
         gateway.connect()
 
+    if audit_logger:
+        audit_logger.log("live_runner.start", resource=f"strategy:{strategy.__class__.__name__}", details={"symbols": symbols})
+
     strategy.on_init(ctx)
     strategy.on_start(ctx)
 
+    last_sync_time = time.monotonic()
+
     def _handle_bar(bar: BarData) -> None:
-        nonlocal bar_count
+        nonlocal bar_count, error_count
+        attempts = 0
+        while attempts <= max_bar_retries:
+            try:
+                ctx.set_datetime(bar.timestamp)
+                ctx.set_current_bar(bar.symbol, bar)
+                ctx.append_bar(bar)
+                strategy.on_bar(ctx, bar)
+                if on_bar:
+                    on_bar(bar.symbol, bar)
+                bar_count += 1
+                return
+            except Exception as exc:
+                attempts += 1
+                error_count += 1
+                logger.error(
+                    "live_bar_error",
+                    symbol=bar.symbol,
+                    error=str(exc),
+                    attempt=attempts,
+                    traceback=traceback.format_exc(),
+                )
+                if audit_logger:
+                    audit_logger.log(
+                        "live_runner.bar_error",
+                        resource=f"bar:{bar.symbol}",
+                        details={"error": str(exc), "attempt": attempts},
+                    )
+                if on_error == "halt":
+                    raise
+                if on_error == "retry" and attempts <= max_bar_retries:
+                    time.sleep(0.1 * attempts)
+                    continue
+                # on_error == "skip" or retries exhausted
+                return
+
+    def _sync_positions() -> None:
+        nonlocal sync_count
         try:
-            ctx.set_datetime(bar.timestamp)
-            ctx.set_current_bar(bar.symbol, bar)
-            ctx.append_bar(bar)
-            strategy.on_bar(ctx, bar)
-            if on_bar:
-                on_bar(bar.symbol, bar)
-            bar_count += 1
+            gateway_positions = gateway.get_positions()
+            cached_positions = ctx.positions
+            mismatch = False
+            for sym in set(list(gateway_positions.keys()) + list(cached_positions.keys())):
+                gp = gateway_positions.get(sym)
+                cp = cached_positions.get(sym)
+                g_size = gp.size if gp else 0
+                c_size = cp.size if cp else 0
+                if g_size != c_size:
+                    mismatch = True
+                    logger.warning(
+                        "position_sync_mismatch",
+                        symbol=sym,
+                        gateway_size=g_size,
+                        cached_size=c_size,
+                    )
+            sync_count += 1
+            if mismatch and audit_logger:
+                audit_logger.log("live_runner.position_mismatch", resource="positions", details={
+                    "gateway": {s: p.size for s, p in gateway_positions.items()},
+                    "cached": {s: p.size for s, p in cached_positions.items()},
+                })
         except Exception as exc:
-            logger.error("live_bar_error", symbol=bar.symbol, error=str(exc))
+            logger.error("position_sync_error", error=str(exc))
 
     data_manager.on_bar(_handle_bar, interval=bar_interval)
     data_manager.subscribe(symbols, bar_intervals=[bar_interval])
@@ -223,12 +290,26 @@ def run_live(
         while True:
             if stop_event and stop_event.is_set():
                 break
+            # Periodic position sync
+            now = time.monotonic()
+            if now - last_sync_time >= position_sync_interval:
+                _sync_positions()
+                last_sync_time = now
             time.sleep(poll_interval)
     except KeyboardInterrupt:
         logger.warning("live_runner_interrupted")
+    except Exception as exc:
+        error_count += 1
+        logger.error("live_runner_fatal", error=str(exc), traceback=traceback.format_exc())
+        if audit_logger:
+            audit_logger.log("live_runner.fatal", resource="runner", details={"error": str(exc)})
     finally:
         data_manager.stop()
         strategy.on_stop(ctx)
+        if audit_logger:
+            audit_logger.log("live_runner.stop", resource=f"strategy:{strategy.__class__.__name__}", details={
+                "bars": bar_count, "errors": error_count, "syncs": sync_count
+            })
 
     stopped_at = datetime.now().isoformat(timespec="seconds")
     return LiveRunResult(
@@ -236,6 +317,8 @@ def run_live(
         started_at=started_at,
         stopped_at=stopped_at,
         bars=bar_count,
+        errors=error_count,
+        position_syncs=sync_count,
     )
 
 

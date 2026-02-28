@@ -2,9 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-01-31
+## [Unreleased] - 2026-02-28
 
 ### Added
+- Gateway: add `QueryResultCache` for thread-safe async-to-sync query result bridging in `base_live_gateway.py`.
+- Gateway: add `sdk_path` and `sdk_log_path` fields to `GatewayConfig` for dynamic SDK path injection.
+- Pipeline: add fundamental factor module (`fundamental_factors.py`) with PERatio, PBRatio, ROE, RevenueGrowth, DividendYield, EarningsYield, DebtToEquity factors.
+- Pipeline: add cross-factor correlation analysis (`factor_analysis.py`) with `compute_factor_correlation()`, `find_redundant_factors()`, and `factor_ic_analysis()`.
+- Web: add ECharts K-line candlestick chart with volume bars, dark theme, and dataZoom on live console.
+- API: add `/api/v1/chart-data` endpoint for OHLCV chart data retrieval.
+- Data: improve QLib provider error handling with explicit warnings on SDK unavailability.
+- Tests: add gateway mock SDK tests (`test_gateway_mock_sdk.py`) covering XTP/UFT stub mode, factory, QueryResultCache, events, edge cases.
+- Tests: add fault scenario tests (`test_fault_scenarios.py`) covering data provider faults, gateway faults, database faults, resource exhaustion.
+- Tests: add load tests (`test_load.py`) for job queue throughput and factor pipeline scalability.
+- Tests: add E2E workflow tests (`test_e2e_workflows.py`) covering backtest, paper trading, and factor pipeline workflows.
+- CI: add performance regression gate job to GitHub Actions with baseline caching and threshold checking.
+- Docs: add `GATEWAY_SDK_SETUP.md` for XTP/UFT/XtQuant SDK installation and configuration.
+- Docs: add `STRATEGY_REFERENCE.md` with parameter specs for all 41 registered strategies.
 - Platform: add versioned /api/v1 endpoints with unified response envelope (code/message/data/request_id).
 - Platform: add optional Bearer token auth for v1 API (--api-token / PLATFORM_API_TOKEN).
 - Platform: add /readyz and /metrics operational endpoints plus in-memory API/queue metrics export.
@@ -40,6 +54,8 @@ All notable changes to this project will be documented in this file.
 - Data: add lineage records to SQLite cache for compliance tracking.
 
 ### Changed
+- Config: add `load`, `fault`, and `e2e` pytest markers to `pytest.ini`.
+- CI: add `performance` job as release gate in GitHub Actions.
 - Platform: keep legacy /jobs and /gateway/* endpoints while introducing v1 API for forward compatibility.
 - Platform: expose create_api_server(...) factory to support controlled lifecycle and integration testing.
 - Platform: include structured API response logging and optional audit trail for key actions (job submit/cancel, gateway ops).

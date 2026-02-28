@@ -2,11 +2,12 @@
 Matching Engine Module
 
 Core simulation matching engine for paper trading.
+Supports A-share specific rules: T+1, price limits, suspension.
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Dict, Optional
+from datetime import datetime, date
+from typing import Dict, Optional, Set
 import pandas as pd
 
 from src.core.events import EventEngine, Event, EventType
@@ -14,6 +15,95 @@ from .order import Order, Trade, OrderStatus, OrderType, OrderDirection
 from .order_book import OrderBook
 from .slippage import SlippageModel, FixedSlippage
 from .execution_models import AlwaysFill, FillProbabilityModel, ExecutionDelayModel
+
+
+class AShareRules:
+    """
+    A-share market rules for simulation.
+
+    - T+1: shares bought today cannot be sold until next trading day.
+    - Price limits: stocks cannot trade beyond +/-10% of previous close
+      (ST stocks +/-5%).
+    - Suspension: suspended symbols cannot be traded.
+    - Lot size: orders must be multiples of 100 shares (except selling all).
+    """
+
+    def __init__(self, enabled: bool = True, st_symbols: Optional[Set[str]] = None):
+        self.enabled = enabled
+        self.st_symbols: Set[str] = st_symbols or set()
+        # {symbol: set of date} — dates on which shares were bought
+        self._buy_dates: Dict[str, Dict[date, float]] = {}
+        # {symbol: prev_close}
+        self._prev_close: Dict[str, float] = {}
+        # suspended symbols
+        self._suspended: Set[str] = set()
+
+    def set_prev_close(self, symbol: str, price: float) -> None:
+        if price > 0:
+            self._prev_close[symbol] = price
+
+    def set_prev_closes(self, prices: Dict[str, float]) -> None:
+        for sym, px in prices.items():
+            self.set_prev_close(sym, px)
+
+    def mark_suspended(self, symbol: str) -> None:
+        self._suspended.add(symbol)
+
+    def clear_suspended(self, symbol: str) -> None:
+        self._suspended.discard(symbol)
+
+    def record_buy(self, symbol: str, qty: float, trade_date: Optional[date] = None) -> None:
+        d = trade_date or date.today()
+        self._buy_dates.setdefault(symbol, {})
+        self._buy_dates[symbol][d] = self._buy_dates[symbol].get(d, 0) + qty
+
+    def sellable_qty(self, symbol: str, position_qty: float, current_date: Optional[date] = None) -> float:
+        """Return max qty sellable today (position minus T+1 locked shares)."""
+        if not self.enabled:
+            return position_qty
+        d = current_date or date.today()
+        locked = self._buy_dates.get(symbol, {}).get(d, 0)
+        return max(0.0, position_qty - locked)
+
+    def check_price_limit(self, symbol: str, price: float) -> Optional[str]:
+        """Return rejection reason if price violates limit, else None."""
+        if not self.enabled:
+            return None
+        prev = self._prev_close.get(symbol)
+        if prev is None or prev <= 0:
+            return None
+        limit_pct = 0.05 if symbol in self.st_symbols else 0.10
+        upper = round(prev * (1 + limit_pct), 2)
+        lower = round(prev * (1 - limit_pct), 2)
+        if price > upper:
+            return f"Price {price:.2f} exceeds upper limit {upper:.2f} ({limit_pct*100:.0f}%)"
+        if price < lower:
+            return f"Price {price:.2f} below lower limit {lower:.2f} ({limit_pct*100:.0f}%)"
+        return None
+
+    def check_suspension(self, symbol: str) -> Optional[str]:
+        if not self.enabled:
+            return None
+        if symbol in self._suspended:
+            return f"Symbol {symbol} is suspended"
+        return None
+
+    def check_lot_size(self, qty: float, is_close_all: bool = False) -> Optional[str]:
+        if not self.enabled:
+            return None
+        if is_close_all:
+            return None
+        if qty <= 0 or qty % 100 != 0:
+            return f"Quantity {qty} must be a positive multiple of 100"
+        return None
+
+    def cleanup_expired(self, current_date: Optional[date] = None) -> None:
+        """Remove buy records older than current_date (no longer locked)."""
+        d = current_date or date.today()
+        for sym in list(self._buy_dates):
+            self._buy_dates[sym] = {dt: q for dt, q in self._buy_dates[sym].items() if dt >= d}
+            if not self._buy_dates[sym]:
+                del self._buy_dates[sym]
 
 
 class MatchingEngine:
@@ -41,19 +131,22 @@ class MatchingEngine:
         fill_model: Optional[FillProbabilityModel] = None,
         delay_model: Optional[ExecutionDelayModel] = None,
         event_engine: Optional[EventEngine] = None,
+        ashare_rules: Optional[AShareRules] = None,
     ):
         """
         初始化撮合引擎
-        
+
         Args:
             slippage_model: 滑点模型（默认使用固定1跳滑点）
             event_engine: 事件引擎（可选）
+            ashare_rules: A股规则引擎（可选，默认禁用）
         """
         self.order_books: Dict[str, OrderBook] = {}
         self.slippage_model = slippage_model or FixedSlippage(slippage_ticks=1, tick_size=0.01)
         self.event_engine = event_engine
         self.fill_model = fill_model or AlwaysFill()
         self.delay_model = delay_model
+        self.ashare = ashare_rules or AShareRules(enabled=False)
         
         # 订单索引（快速查找）
         self.active_orders: Dict[str, Order] = {}
@@ -69,15 +162,45 @@ class MatchingEngine:
     def submit_order(self, order: Order) -> None:
         """
         提交订单到撮合引擎
-        
+
         根据订单类型分发：
         - 市价单：立即撮合
         - 限价单：加入订单簿
         - 止损单：加入止损队列
-        
+
+        A-share rules applied before routing (if enabled):
+        - Suspension check
+        - Price limit check (limit orders)
+        - Lot size validation
+        - T+1 sell restriction
+
         Args:
             order: 订单对象
         """
+        # --- A-share pre-checks ---
+        if self.ashare.enabled:
+            reason = self.ashare.check_suspension(order.symbol)
+            if reason:
+                order.status = OrderStatus.REJECTED
+                if self.event_engine:
+                    self.event_engine.put(Event(EventType.ORDER, order))
+                return
+
+            if order.price and order.order_type == OrderType.LIMIT:
+                reason = self.ashare.check_price_limit(order.symbol, order.price)
+                if reason:
+                    order.status = OrderStatus.REJECTED
+                    if self.event_engine:
+                        self.event_engine.put(Event(EventType.ORDER, order))
+                    return
+
+            lot_err = self.ashare.check_lot_size(order.quantity)
+            if lot_err:
+                order.status = OrderStatus.REJECTED
+                if self.event_engine:
+                    self.event_engine.put(Event(EventType.ORDER, order))
+                return
+
         # 1. 初始化订单簿（如果不存在）
         if order.symbol not in self.order_books:
             self.order_books[order.symbol] = OrderBook(order.symbol)
@@ -319,6 +442,10 @@ class MatchingEngine:
         if self.event_engine:
             self.event_engine.put(Event(EventType.TRADE, trade))
             self.event_engine.put(Event(EventType.ORDER, order))
+
+        # A-share T+1: record buy for sell-lock
+        if self.ashare.enabled and order.direction == OrderDirection.BUY:
+            self.ashare.record_buy(order.symbol, fill_qty)
     
     def get_order(self, order_id: str) -> Optional[Order]:
         """
