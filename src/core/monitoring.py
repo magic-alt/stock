@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 import inspect
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
+from contextlib import contextmanager
 from threading import Thread, Event as ThreadEvent
+import threading
 
 # Optional dependency: psutil
 try:
@@ -615,3 +618,188 @@ def run_with_heartbeat_monitor(
                 logger.error("heartbeat.supervisor.failed", retries=max_restarts, error=str(exc))
                 raise
             logger.warning("heartbeat.supervisor.restart", attempt=attempts, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# V4.0-C: Observability — Tracing & Metrics
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TraceContext:
+    """Distributed tracing context (OpenTelemetry-compatible)."""
+    trace_id: str
+    span_id: str
+    parent_span_id: str = ""
+    baggage: Dict[str, str] = field(default_factory=dict)
+
+
+class Span:
+    """A single operation span for tracing."""
+
+    def __init__(self, name: str, trace_id: str = "", parent_span_id: str = "") -> None:
+        self.name = name
+        self.span_id = uuid.uuid4().hex[:16]
+        self.trace_id = trace_id or uuid.uuid4().hex
+        self.parent_span_id = parent_span_id
+        self.start_time: float = time.time()
+        self.end_time: Optional[float] = None
+        self.attributes: Dict[str, Any] = {}
+        self.status: str = "ok"
+        self.children: List["Span"] = []
+        self._error: Optional[str] = None
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        self.attributes[key] = value
+
+    def end(self) -> None:
+        self.end_time = time.time()
+
+    @property
+    def duration_ms(self) -> float:
+        if self.end_time is None:
+            return (time.time() - self.start_time) * 1000
+        return (self.end_time - self.start_time) * 1000
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "span_id": self.span_id,
+            "trace_id": self.trace_id,
+            "parent_span_id": self.parent_span_id,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "duration_ms": self.duration_ms,
+            "attributes": dict(self.attributes),
+            "status": self.status,
+            "error": self._error,
+            "children": [c.to_dict() for c in self.children],
+        }
+
+
+class Tracer:
+    """Lightweight tracer for creating nested spans."""
+
+    def __init__(self) -> None:
+        self._spans: List[Span] = []
+        self._active_span: Optional[Span] = None
+        self._lock = threading.Lock()
+
+    def start_span(self, name: str) -> Span:
+        with self._lock:
+            parent_id = self._active_span.span_id if self._active_span else ""
+            trace_id = self._active_span.trace_id if self._active_span else ""
+            span = Span(name, trace_id=trace_id, parent_span_id=parent_id)
+            if self._active_span:
+                self._active_span.children.append(span)
+            self._spans.append(span)
+            self._active_span = span
+            return span
+
+    def end_span(self) -> None:
+        with self._lock:
+            if self._active_span:
+                self._active_span.end()
+                parent_id = self._active_span.parent_span_id
+                self._active_span = None
+                if parent_id:
+                    for s in reversed(self._spans):
+                        if s.span_id == parent_id:
+                            self._active_span = s
+                            break
+
+    def current_span(self) -> Optional[Span]:
+        return self._active_span
+
+    @contextmanager
+    def trace(self, name: str):
+        span = self.start_span(name)
+        try:
+            yield span
+        except Exception as exc:
+            span.status = "error"
+            span._error = str(exc)
+            raise
+        finally:
+            self.end_span()
+
+    def get_completed_spans(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [s.to_dict() for s in self._spans if s.end_time is not None]
+
+    def reset(self) -> None:
+        with self._lock:
+            self._spans.clear()
+            self._active_span = None
+
+
+class MetricCollector:
+    """Pluggable metric collector with counters, gauges, and histograms."""
+
+    def __init__(self) -> None:
+        self._counters: Dict[str, float] = {}
+        self._gauges: Dict[str, float] = {}
+        self._histograms: Dict[str, List[float]] = {}
+        self._lock = threading.Lock()
+
+    def counter(self, name: str, delta: float = 1.0) -> None:
+        with self._lock:
+            self._counters[name] = self._counters.get(name, 0.0) + delta
+
+    def gauge(self, name: str, value: float) -> None:
+        with self._lock:
+            self._gauges[name] = value
+
+    def histogram(self, name: str, value: float) -> None:
+        with self._lock:
+            if name not in self._histograms:
+                self._histograms[name] = []
+            self._histograms[name].append(value)
+
+    def export(self) -> Dict[str, Any]:
+        with self._lock:
+            result: Dict[str, Any] = {
+                "counters": dict(self._counters),
+                "gauges": dict(self._gauges),
+                "histograms": {},
+            }
+            for name, values in self._histograms.items():
+                if values:
+                    sv = sorted(values)
+                    result["histograms"][name] = {
+                        "count": len(sv),
+                        "min": sv[0],
+                        "max": sv[-1],
+                        "mean": sum(sv) / len(sv),
+                        "p50": sv[len(sv) // 2],
+                        "p99": sv[int(len(sv) * 0.99)],
+                    }
+            return result
+
+    def reset(self) -> None:
+        with self._lock:
+            self._counters.clear()
+            self._gauges.clear()
+            self._histograms.clear()
+
+
+# Module-level singletons
+_tracer_instance: Optional[Tracer] = None
+_metric_collector_instance: Optional[MetricCollector] = None
+_lock = threading.Lock()
+
+
+def get_tracer() -> Tracer:
+    global _tracer_instance
+    with _lock:
+        if _tracer_instance is None:
+            _tracer_instance = Tracer()
+        return _tracer_instance
+
+
+def get_metric_collector() -> MetricCollector:
+    global _metric_collector_instance
+    with _lock:
+        if _metric_collector_instance is None:
+            _metric_collector_instance = MetricCollector()
+        return _metric_collector_instance

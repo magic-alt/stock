@@ -149,3 +149,154 @@ def run_workflow(payload: Dict[str, Any]) -> Dict[str, Any]:
         "failed_steps": failed_count,
         "results": results,
     }
+
+
+# ---------------------------------------------------------------------------
+# V4.0-C: DAG Workflow
+# ---------------------------------------------------------------------------
+
+
+def _topological_sort(steps: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """Sort DAG steps into execution layers (Kahn's algorithm).
+
+    Returns a list of layers, where steps in the same layer can run in parallel.
+    Raises ValueError on cycle or missing dependencies.
+    """
+    name_map: Dict[str, Dict[str, Any]] = {}
+    for step in steps:
+        name = str(step.get("name", ""))
+        if not name:
+            raise ValueError("DAG step missing 'name'")
+        name_map[name] = step
+
+    in_degree: Dict[str, int] = {name: 0 for name in name_map}
+    dependents: Dict[str, List[str]] = {name: [] for name in name_map}
+
+    for name, step in name_map.items():
+        deps = step.get("depends_on") or []
+        for dep in deps:
+            if dep not in name_map:
+                raise ValueError(f"DAG step '{name}' depends on unknown step '{dep}'")
+            dependents[dep].append(name)
+            in_degree[name] += 1
+
+    layers: List[List[Dict[str, Any]]] = []
+    ready = [name for name, deg in in_degree.items() if deg == 0]
+
+    visited = 0
+    while ready:
+        layer = [name_map[n] for n in sorted(ready)]
+        layers.append(layer)
+        visited += len(ready)
+        next_ready: List[str] = []
+        for n in ready:
+            for dep in dependents[n]:
+                in_degree[dep] -= 1
+                if in_degree[dep] == 0:
+                    next_ready.append(dep)
+        ready = next_ready
+
+    if visited != len(name_map):
+        raise ValueError("DAG contains a cycle")
+
+    return layers
+
+
+def run_dag_workflow(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Run a DAG workflow with dependency-aware parallel execution.
+
+    Example payload::
+
+        {
+          "max_workers": 4,
+          "on_failure": "abort",
+          "steps": [
+            {"name": "A", "task_type": "backtest", "payload": {...}},
+            {"name": "B", "task_type": "backtest", "payload": {...}, "depends_on": ["A"]},
+            {"name": "C", "task_type": "backtest", "payload": {...}, "depends_on": ["A"]},
+            {"name": "D", "task_type": "backtest", "payload": {...}, "depends_on": ["B", "C"]},
+          ]
+        }
+    """
+    steps = payload.get("steps") or []
+    max_workers = int(payload.get("max_workers", 4) or 4)
+    on_failure = str(payload.get("on_failure", "abort") or "abort").lower()
+
+    layers = _topological_sort(steps)
+
+    results: List[Dict[str, Any]] = []
+    success_count = 0
+    failed_count = 0
+    aborted = False
+
+    for layer in layers:
+        if aborted:
+            for step in layer:
+                results.append({
+                    "name": str(step.get("name", "")),
+                    "task_type": str(step.get("task_type", "")),
+                    "status": "skipped",
+                    "error": "skipped due to earlier failure",
+                })
+            continue
+
+        if len(layer) == 1:
+            step = layer[0]
+            r = _run_dag_step(step)
+            results.append(r)
+            if r["status"] == "success":
+                success_count += 1
+            else:
+                failed_count += 1
+                if on_failure != "continue":
+                    aborted = True
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {pool.submit(_run_dag_step, step): step for step in layer}
+                for future in futures:
+                    r = future.result()
+                    results.append(r)
+                    if r["status"] == "success":
+                        success_count += 1
+                    else:
+                        failed_count += 1
+                        if on_failure != "continue":
+                            aborted = True
+
+    return {
+        "steps": len(steps),
+        "success_steps": success_count,
+        "failed_steps": failed_count,
+        "results": results,
+    }
+
+
+def _run_dag_step(step: Dict[str, Any]) -> Dict[str, Any]:
+    task_type = str(step.get("task_type", "")).strip()
+    step_payload = dict(step.get("payload", {}) or {})
+    step_name = str(step.get("name", ""))
+
+    if task_type not in _TASK_RUNNERS:
+        return {
+            "name": step_name,
+            "task_type": task_type,
+            "status": "failed",
+            "error": f"Unknown task_type: {task_type}",
+        }
+
+    try:
+        runner = _TASK_RUNNERS[task_type]
+        result = runner(step_payload)
+        return {
+            "name": step_name,
+            "task_type": task_type,
+            "status": "success",
+            "result": result,
+        }
+    except Exception as exc:
+        return {
+            "name": step_name,
+            "task_type": task_type,
+            "status": "failed",
+            "error": str(exc),
+        }

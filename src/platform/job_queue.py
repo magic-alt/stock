@@ -309,10 +309,16 @@ class JobStore:
         self.path = path
         self.backend_type = "json"
 
-        if path and (path.startswith("sqlite:///") or path.endswith(".db") or ".sqlite" in path):
+        if path and path.startswith("redis://"):
+            self.backend_type = "redis"
+            backend = _RedisJobStoreBackend(path)
+            if backend.is_fallback:
+                self.backend_type = "redis_fallback_json"
+            self._backend: _StoreBackend = backend
+        elif path and (path.startswith("sqlite:///") or path.endswith(".db") or ".sqlite" in path):
             db_path = path.removeprefix("sqlite:///") if path.startswith("sqlite:///") else path
             self.backend_type = "sqlite"
-            self._backend: _StoreBackend = _SqliteJobStoreBackend(db_path)
+            self._backend = _SqliteJobStoreBackend(db_path)
         else:
             self._backend = _JsonJobStoreBackend(path)
 
@@ -473,3 +479,84 @@ class JobQueue:
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False)
+
+
+# ---------------------------------------------------------------------------
+# V4.0-C: Redis-compatible job store backend
+# ---------------------------------------------------------------------------
+
+
+class _RedisJobStoreBackend:
+    """Redis-backed job store. Falls back to in-memory dict if redis is unavailable."""
+
+    def __init__(self, url: str, ttl_seconds: int = 86400 * 7) -> None:
+        self.url = url
+        self.ttl_seconds = ttl_seconds
+        self._redis = None
+        self._fallback = _JsonJobStoreBackend(None)
+        self._using_fallback = True
+        try:
+            import redis as redis_mod
+            self._redis = redis_mod.Redis.from_url(url, decode_responses=True)
+            self._redis.ping()
+            self._using_fallback = False
+        except Exception:
+            self._redis = None
+            self._using_fallback = True
+
+    @property
+    def is_fallback(self) -> bool:
+        return self._using_fallback
+
+    def add(self, record: JobRecord) -> None:
+        if self._using_fallback:
+            self._fallback.add(record)
+            return
+        data = json.dumps(asdict(record), ensure_ascii=False)
+        self._redis.set(f"job:{record.job_id}", data, ex=self.ttl_seconds)
+        self._redis.sadd("job:ids", record.job_id)
+        if record.idempotency_key:
+            self._redis.set(
+                f"job:idem:{record.task_type}:{record.idempotency_key}",
+                record.job_id,
+                ex=self.ttl_seconds,
+            )
+
+    def update(self, job_id: str, **changes: Any) -> JobRecord:
+        if self._using_fallback:
+            return self._fallback.update(job_id, **changes)
+        raw = self._redis.get(f"job:{job_id}")
+        if raw is None:
+            raise KeyError(f"Job not found: {job_id}")
+        data = json.loads(raw)
+        for key, value in changes.items():
+            data[key] = value
+        self._redis.set(f"job:{job_id}", json.dumps(data, ensure_ascii=False), ex=self.ttl_seconds)
+        return JobRecord(**data)
+
+    def get(self, job_id: str) -> Optional[JobRecord]:
+        if self._using_fallback:
+            return self._fallback.get(job_id)
+        raw = self._redis.get(f"job:{job_id}")
+        if raw is None:
+            return None
+        return JobRecord(**json.loads(raw))
+
+    def list(self) -> List[JobRecord]:
+        if self._using_fallback:
+            return self._fallback.list()
+        ids = self._redis.smembers("job:ids") or set()
+        records = []
+        for jid in ids:
+            raw = self._redis.get(f"job:{jid}")
+            if raw:
+                records.append(JobRecord(**json.loads(raw)))
+        return sorted(records, key=lambda r: r.created_at)
+
+    def find_by_idempotency(self, task_type: str, idempotency_key: str) -> Optional[JobRecord]:
+        if self._using_fallback:
+            return self._fallback.find_by_idempotency(task_type, idempotency_key)
+        jid = self._redis.get(f"job:idem:{task_type}:{idempotency_key}")
+        if jid:
+            return self.get(jid)
+        return None

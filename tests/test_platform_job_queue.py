@@ -127,3 +127,50 @@ def test_job_queue_submit_idempotency(tmp_path):
         queue.wait(job_id_1, timeout=5)
     finally:
         queue.shutdown()
+
+
+# ---------------------------------------------------------------------------
+# Redis backend tests (V4.0-C)
+# ---------------------------------------------------------------------------
+
+
+def test_redis_backend_fallback_to_json(tmp_path):
+    """When redis is unavailable, JobStore falls back to in-memory JSON."""
+    store = JobStore(path="redis://localhost:19999/0")
+    assert store.backend_type == "redis_fallback_json"
+
+    queue = JobQueue(store=store, max_workers=1)
+    try:
+        job_id = queue.submit("unit", lambda p: {"v": p["v"]}, {"v": 42})
+        queue.wait(job_id, timeout=5)
+        rec = store.get(job_id)
+        assert rec is not None
+        assert rec.status == "success"
+    finally:
+        queue.shutdown()
+
+
+def test_redis_backend_idempotency_via_fallback():
+    """Idempotency works through the fallback backend."""
+    store = JobStore(path="redis://localhost:19999/0")
+    queue = JobQueue(store=store, max_workers=1)
+    try:
+        id1 = queue.submit("unit", lambda p: {"ok": True}, {}, idempotency_key="dup")
+        id2 = queue.submit("unit", lambda p: {"ok": True}, {}, idempotency_key="dup")
+        assert id1 == id2
+        queue.wait(id1, timeout=5)
+    finally:
+        queue.shutdown()
+
+
+def test_redis_backend_list_via_fallback():
+    """List works through the fallback backend."""
+    store = JobStore(path="redis://localhost:19999/0")
+    queue = JobQueue(store=store, max_workers=1)
+    try:
+        queue.submit("unit", lambda p: {"ok": True}, {})
+        queue.submit("unit", lambda p: {"ok": True}, {})
+        jobs = store.list()
+        assert len(jobs) >= 2
+    finally:
+        queue.shutdown()

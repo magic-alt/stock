@@ -225,11 +225,11 @@
   - 模块实施清单：新增 `src/core/portfolio.py`；扩展 `src/optimizer/combo_optimizer.py` 资金权重；`src/core/risk_manager_v2.py` 聚合风控
   - 测试计划：扩展 `tests/test_combo_optimizer.py`；新增 `tests/test_portfolio_risk.py`
 
-### V4.0-C（平台化与可靠性，8-12 周）
-- [ ] API 服务化：FastAPI/gRPC + RBAC/Token + 审计注入
-- [ ] 任务编排：JobQueue → Redis/Postgres，DAG/重试/幂等
-- [ ] 分布式回测：Ray/Dask + 弹性资源/队列
-- [ ] 可观测性：Metrics/Tracing/Alert + 日志聚合
+### V4.0-C（平台化与可靠性，8-12 周）✅ 全部完成
+- [x] API 服务化：模块化 Router + RBAC Middleware + 速率限制 + 请求验证 + 审计中间件
+- [x] 任务编排：JobQueue → Redis backend（含 fallback）；Orchestrator DAG 拓扑排序+并行执行
+- [x] 分布式回测：Ray/Dask 适配器 + LocalProcessPool 默认后端 + DistributedRunner
+- [x] 可观测性：TraceContext/Span/Tracer + MetricCollector（counter/gauge/histogram）+ 单例
 
 #### 任务拆解（模块实施清单 + 测试计划）
 - 任务：API 服务化
@@ -245,10 +245,10 @@
   - 模块实施清单：`src/core/monitoring.py` 导出指标；`src/core/logger.py` 追踪上下文；关键链路埋点
   - 测试计划：扩展 `tests/test_monitoring.py`；新增 `tests/test_observability_hooks.py`
 
-### V4.0-D（合规与多租户，持续迭代）
-- [ ] 多账户/多策略隔离策略、资金划拨与权限模型
-- [ ] 审计日志归档/签名存证与保留策略
-- [ ] 灾备：多实例主备切换、数据快照恢复演练
+### V4.0-D（合规与多租户，持续迭代）✅ 全部完成
+- [x] 多账户/多策略隔离：account_id 字段 + enforce_account + AccountManager（CRUD/划拨/关户/风险摘要）
+- [x] 审计日志归档/签名存证：archive() + HMAC-SHA256 sign/verify + RetentionPolicy + export_for_compliance
+- [x] 灾备：FailoverManager（主备切换/回切）+ DrillRunner（自动化 snapshot-restore-verify 演练）
 
 #### 任务拆解（模块实施清单 + 测试计划）
 - 任务：多账户/多策略隔离
