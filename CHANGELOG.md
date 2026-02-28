@@ -2,9 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - 2026-03-01
+
+### Added — V5.0-F Engineering Efficiency Upgrade (1054 tests)
+- Docs: add MkDocs Material documentation site config (mkdocs.yml) with Chinese language, dark/light themes, full nav structure
+- CI: enhanced GitHub Actions CI pipeline with 9 jobs (test, code-quality, security-scan, build-docs, frontend-check, docker-validate, performance, integration-test, release)
+- CI: add frontend build check job (Node.js 20 + vue-tsc + vite build)
+- CI: add Docker build validation job (multi-stage production target + compose config)
+- CI: add Ruff linter + formatter and pip-audit dependency scanner
+- Tests: add V5.0-F engineering tests (test_v5_engineering.py) — exception hierarchy, performance module, MkDocs config, CI workflow validation
+
+### Added — V5.0-E Extensibility & Ecosystem (1024 tests)
+- Core: add PluginManager system (src/core/plugin.py) with discover/load/unload lifecycle, hook system, file-based discovery
+- Core: add MessageBus (src/core/message_bus.py) with InProcess and ZMQ backends, wildcard PUB/SUB, thread-safe
+- Core: add Repository pattern (src/core/repository.py) — Memory, SQLite, DuckDB backends with factory
+- Core: add StrategyHotLoader (src/core/strategy_loader.py) with AST-based sandbox, restricted imports, file watcher
+- Tests: add V5.0-E extensibility tests (test_v5_extensibility.py) — 65 tests
+
+### Added — V5.0-D Developer Experience Upgrade (959 tests)
+- Docker: multi-stage Dockerfile (base→data→full→production), docker-compose.yml with api/frontend/redis services
+- CLI: add Click+Rich CLI v2 (src/cli/main.py) with backtest, strategy, data, trading, monitor command groups
+- CLI: add scaffold generator (src/cli/scaffold.py) with 6 templates (trend_following, mean_reversion, ml_factor, momentum, breakout, fundamental)
+- Notebook: add Jupyter integration (src/notebook/magic.py) with QuantHelper class and IPython magic commands
+- Tests: add V5.0-D developer experience tests (test_v5_devex_upgrade.py) — 37 tests
+
+### Added — V5.0-C Security Hardening & Compliance (922 tests)
+- API: add FastAPI v2 server (src/platform/api_v2.py) with Pydantic models, OpenAPI/Swagger, security headers
+- Core: add SecurityManager (src/core/security.py) with encryption, token lifecycle, TLS config, secret masking
+- Core: add Vault system (src/core/vault.py) — Memory, Env, LocalFile, Composite backends with factory
+- Core: add InputSanitizer (src/core/input_sanitizer.py) — OWASP protections (SQL injection, XSS, path traversal)
+- Build: add pyproject.toml with optional dependency groups (api, perf, ml, dev, security)
+- Tests: add V5.0-C security compliance tests (test_v5_security_compliance.py) — 103 tests
+
 ## [Unreleased] - 2026-02-28
 
 ### Added
+- CI: add `scripts/local_ci.ps1` to run GitHub Actions-equivalent local checks with per-job segmented output and summary.
 - Gateway: add `QueryResultCache` for thread-safe async-to-sync query result bridging in `base_live_gateway.py`.
 - Gateway: add `sdk_path` and `sdk_log_path` fields to `GatewayConfig` for dynamic SDK path injection.
 - Pipeline: add fundamental factor module (`fundamental_factors.py`) with PERatio, PBRatio, ROE, RevenueGrowth, DividendYield, EarningsYield, DebtToEquity factors.

@@ -1,10 +1,10 @@
 # V5.0 架构升级计划 — 全方位对标评估与功能升级路线
 
 **日期**: 2026-03-01
-**当前版本**: V5.0（V5.0-E 已完成）
+**当前版本**: V5.0（V5.0-F 已完成，V5.0-GA 就绪）
 **目标版本**: V5.0-GA
-**代码规模**: 48,000+ 行 Python + Vue3 前端（116 个 .py 模块 + Vue3 SPA）
-**测试规模**: 64 个测试文件，1024+ 测试用例
+**代码规模**: 50,000+ 行 Python + Vue3 前端（120+ 个 .py 模块 + Vue3 SPA）
+**测试规模**: 67 个测试文件，1054+ 测试用例
 
 ### 实施进度
 
@@ -15,6 +15,7 @@
 | **V5.0-C** 安全加固与合规升级 | ✅ 完成 | 922 passed | FastAPI(OpenAPI/Pydantic) + SecurityManager(加密/令牌) + Vault(多后端密钥) + InputSanitizer(OWASP) + pyproject.toml |
 | **V5.0-D** 开发者体验升级 | ✅ 完成 | 959 passed | Docker多阶段(Dockerfile+compose) + CLI v2(Click+Rich) + 脚手架生成器 + Jupyter集成(QuantHelper+magic) |
 | **V5.0-E** 可扩展性与生态建设 | ✅ 完成 | 1024 passed | 插件系统(PluginManager) + 消息总线(ZMQ/InProcess) + Repository(Memory/SQLite/DuckDB) + 策略热加载(沙箱) |
+| **V5.0-F** 工程效率升级 | ✅ 完成 | 1054 passed | MkDocs文档站(Material主题) + GitHub Actions CI(9 jobs) + 异常体系验证 + 性能模块验证 |
 
 ---
 

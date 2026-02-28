@@ -1,0 +1,90 @@
+site_name: Unified Quant Platform
+site_description: A-share quantitative trading platform with backtesting, live trading, and MLOps
+site_url: https://quant-platform.readthedocs.io
+repo_url: https://github.com/quant-platform/stock
+repo_name: quant-platform/stock
+
+theme:
+  name: material
+  language: zh
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quick-start.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - Strategy Development: guides/strategy-dev.md
+    - Backtesting: guides/backtesting.md
+    - Live Trading: guides/live-trading.md
+    - Factor Research: guides/factor-research.md
+    - ML Pipeline: guides/ml-pipeline.md
+  - API Reference:
+    - REST API: api/rest-api.md
+    - Python SDK: api/python-sdk.md
+    - Strategy API: api/strategy-api.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Security: architecture/security.md
+    - V5.0 Upgrade Plan: architecture/v5-upgrade.md
+  - Operations:
+    - Deployment: operations/deployment.md
+    - Monitoring: operations/monitoring.md
+    - Troubleshooting: operations/troubleshooting.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/quant-platform/stock
+  version:
+    provider: mike
+
+copyright: Copyright &copy; 2024-2026 Unified Quant Platform
