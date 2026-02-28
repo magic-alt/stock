@@ -164,13 +164,13 @@ class TestRateLimiter:
 
     def test_refill_after_interval(self):
         import time
-        limiter = RateLimiter(max_tokens=1, refill_rate=1000)
+        limiter = RateLimiter(max_tokens=1, refill_rate=100)
         handler = lambda req: ResponseContext(body={"ok": True})
         wrapped = limiter(handler)
 
         resp = wrapped(RequestContext(method="GET", path="/"))
         assert resp.status_code == 200
-        time.sleep(0.01)
+        time.sleep(0.05)
         resp = wrapped(RequestContext(method="GET", path="/"))
         assert resp.status_code == 200
 

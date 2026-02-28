@@ -6,3 +6,4 @@ report
 /qlib_data
 /mlruns
 /data_lake
+node_modules/
