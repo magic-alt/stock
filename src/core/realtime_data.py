@@ -58,6 +58,7 @@ class DataSource(str, Enum):
     IB = "ib"               # Interactive Brokers
     BINANCE = "binance"     # 币安 (Crypto)
     SIMULATION = "simulation"  # 模拟数据
+    AKSHARE = "akshare"        # AKShare HTTP 轮询
 
 
 class DataType(str, Enum):
@@ -454,6 +455,119 @@ class SinaDataProvider(BaseDataProvider):
     def unsubscribe(self, symbols: List[str]) -> None:
         for symbol in symbols:
             self._subscribed_symbols.discard(symbol)
+
+
+# ---------------------------------------------------------------------------
+# AKShare Data Provider (HTTP polling)
+# ---------------------------------------------------------------------------
+
+class AKShareDataProvider(BaseDataProvider):
+    """
+    AKShare 实时行情 HTTP 轮询提供者.
+
+    使用 akshare 库的 stock_bid_ask_em() 接口每隔 interval 秒拉取买卖盘行情，
+    转换为 TickData 推送给注册的回调。
+
+    连接/断开线程安全；网络错误仅 warning，不崩溃。
+    """
+
+    def __init__(
+        self,
+        interval: float = 3.0,
+        event_engine: Optional[EventEngine] = None,
+    ) -> None:
+        super().__init__(event_engine)
+        self.interval = interval
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    def connect(self) -> bool:
+        """启动后台轮询线程."""
+        if self._connected:
+            return True
+        try:
+            import akshare  # noqa: F401 — validate package available
+        except ImportError as exc:
+            logger.warning("akshare not installed; AKShareDataProvider unavailable", error=str(exc))
+            return False
+        self._connected = True
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._poll_loop, daemon=True, name="akshare-poll")
+        self._thread.start()
+        logger.info("AKShareDataProvider connected, polling every %.1fs", self.interval)
+        return True
+
+    def disconnect(self) -> None:
+        """停止轮询线程."""
+        self._connected = False
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=max(self.interval * 2, 5))
+        self._thread = None
+        logger.info("AKShareDataProvider disconnected")
+
+    def subscribe(self, symbols: List[str]) -> None:
+        for symbol in symbols:
+            self._subscribed_symbols.add(symbol)
+
+    def unsubscribe(self, symbols: List[str]) -> None:
+        for symbol in symbols:
+            self._subscribed_symbols.discard(symbol)
+
+    def _poll_loop(self) -> None:
+        """轮询主循环（后台线程）."""
+        while not self._stop_event.is_set():
+            for symbol in list(self._subscribed_symbols):
+                try:
+                    tick = self._fetch_tick(symbol)
+                    if tick is not None:
+                        self._emit_tick(tick)
+                except Exception as exc:
+                    logger.warning("AKShareDataProvider poll error", symbol=symbol, error=str(exc))
+            self._stop_event.wait(timeout=self.interval)
+
+    def _fetch_tick(self, symbol: str) -> Optional[TickData]:
+        """获取单只股票实时行情并转换为 TickData."""
+        import akshare as ak  # lazy import
+
+        # 标准化代码：去除交易所后缀，保留纯数字代码
+        raw_code = symbol.split(".")[0]
+        try:
+            df = ak.stock_bid_ask_em(symbol=raw_code)
+        except Exception as exc:
+            logger.warning("akshare fetch failed", symbol=symbol, error=str(exc))
+            return None
+
+        if df is None or df.empty:
+            return None
+
+        # stock_bid_ask_em 返回 item/value 两列
+        try:
+            row = df.set_index("item")["value"]
+
+            def _safe_float(key: str) -> float:
+                try:
+                    return float(row.get(key, 0) or 0)
+                except (ValueError, TypeError):
+                    return 0.0
+
+            last_price = _safe_float("最新")
+            if last_price == 0.0:
+                last_price = _safe_float("现价")
+
+            return TickData(
+                symbol=symbol,
+                timestamp=datetime.now(),
+                last_price=last_price,
+                volume=_safe_float("总手"),
+                bid_price=_safe_float("买一价"),
+                ask_price=_safe_float("卖一价"),
+                bid_volume=_safe_float("买一量"),
+                ask_volume=_safe_float("卖一量"),
+            )
+        except Exception as exc:
+            logger.warning("AKShareDataProvider parse error", symbol=symbol, error=str(exc))
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -1015,6 +1129,7 @@ __all__ = [
     'BaseDataProvider',
     'SimulationDataProvider',
     'SinaDataProvider',
+    'AKShareDataProvider',
     'WebSocketDataProvider',
     
     # Signal generation

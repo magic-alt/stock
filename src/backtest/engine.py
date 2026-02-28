@@ -62,6 +62,87 @@ from src.core.logger import get_logger
 logger = get_logger("backtest.engine")
 
 
+# ---------------------------------------------------------------------------
+# Vectorized metrics computation (B-1 Performance Optimization)
+# ---------------------------------------------------------------------------
+
+def _compute_metrics_vectorized(
+    nav_series: pd.Series,
+    risk_free: float = 0.0,
+    ann_factor: float = 252.0,
+) -> Dict[str, float]:
+    """Compute key performance metrics using vectorized numpy operations.
+
+    Args:
+        nav_series: NAV series starting at 1.0 (or any base value).
+        risk_free:  Annual risk-free rate (default 0.0).
+        ann_factor: Annualisation factor (252 for daily).
+
+    Returns:
+        Dict with sharpe, sortino, max_drawdown, cagr, var_95, es_95, vol.
+    """
+    _nan = float("nan")
+    empty: Dict[str, float] = {
+        "sharpe": _nan, "sortino": _nan, "max_drawdown": _nan,
+        "cagr": _nan, "var_95": _nan, "es_95": _nan, "vol": _nan,
+    }
+
+    if nav_series is None or len(nav_series) < 2:
+        return empty
+
+    nav = np.asarray(nav_series.ffill().values, dtype=np.float64)
+    nav = nav[np.isfinite(nav)]
+    if len(nav) < 2:
+        return empty
+
+    returns = np.diff(nav) / np.where(nav[:-1] != 0, nav[:-1], np.nan)
+    returns = returns[np.isfinite(returns)]
+    if len(returns) == 0:
+        return empty
+
+    rf_daily = (1 + risk_free) ** (1.0 / ann_factor) - 1
+    excess = returns - rf_daily
+
+    # Sharpe
+    std = float(np.std(returns, ddof=1))
+    vol = float(std * np.sqrt(ann_factor)) if std > 0 else _nan
+    sharpe = (float(np.mean(excess)) / std * np.sqrt(ann_factor)) if std > 0 else _nan
+
+    # Sortino (downside std)
+    neg = excess[excess < 0]
+    d_std = float(np.std(neg, ddof=1)) if len(neg) > 1 else 0.0
+    sortino = (float(np.mean(excess)) / d_std * np.sqrt(ann_factor)) if d_std > 0 else _nan
+
+    # Max drawdown
+    cum = np.cumprod(1 + returns)
+    peak = np.maximum.accumulate(cum)
+    dd = (peak - cum) / np.where(peak != 0, peak, np.nan)
+    max_dd = float(np.nanmax(dd)) if len(dd) else _nan
+
+    # CAGR
+    if nav[0] > 0 and np.isfinite(nav[-1]):
+        total_return = nav[-1] / nav[0] - 1
+        n_years = len(returns) / ann_factor
+        cagr = float((1 + total_return) ** (1.0 / max(n_years, 1e-9)) - 1) if (1 + total_return) > 0 else _nan
+    else:
+        cagr = _nan
+
+    # VaR and ES at 95%
+    var_95 = float(np.percentile(returns, 5))
+    tail = returns[returns <= var_95]
+    es_95 = float(np.mean(tail)) if len(tail) else var_95
+
+    return {
+        "sharpe": sharpe,
+        "sortino": sortino,
+        "max_drawdown": max_dd,
+        "cagr": cagr,
+        "var_95": var_95,
+        "es_95": es_95,
+        "vol": vol,
+    }
+
+
 # --- Custom KDJ Indicator for Plotting ---
 class KDJ(bt.Indicator):
     """
@@ -169,6 +250,9 @@ class BacktestEngine:
         
         # Track if we created the event engine (for cleanup)
         self._owns_events = event_engine is None
+
+        # B-1: Metrics cache for grid-search result reuse
+        self._metrics_cache: Dict[str, Dict[str, float]] = {}
 
     def _load_data(
         self,

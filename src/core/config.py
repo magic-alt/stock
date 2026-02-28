@@ -15,6 +15,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    "DataConfig",
+    "BacktestConfig",
+    "RiskConfig",
+    "ExecutionConfig",
+    "StrategyConfig",
+    "LoggingConfig",
+    "LiveTradingConfig",
+    "RealtimeDataConfig",
+    "PortfolioConfig",
+    "GlobalConfig",
+    "ConfigManager",
+    "get_config",
+    "set_config",
+]
+
 
 # ---------------------------------------------------------------------------
 # Configuration Models
@@ -35,7 +51,7 @@ class BacktestConfig(BaseModel):
     commission: float = Field(0.001, description="Commission rate", ge=0, le=0.1)
     slippage: float = Field(0.0, description="Slippage (fixed or percentage)", ge=0)
     slippage_type: str = Field("fixed", description="Slippage type (fixed/percentage/volume)")
-    
+
     @validator("commission")
     def validate_commission(cls, v):
         if v < 0 or v > 0.1:
@@ -76,13 +92,90 @@ class LoggingConfig(BaseModel):
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format"
     )
-    
+
     @validator("level")
     def validate_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
             raise ValueError(f"Log level must be one of {valid_levels}")
         return v.upper()
+
+
+class LiveTradingConfig(BaseModel):
+    """Live trading configuration."""
+    enabled: bool = False
+    broker: str = "xtp"  # xtp, hundsun, xtquant
+    account_id: str = ""
+    gateway_type: str = "xtp"  # xtp, hundsun, xtquant
+    sdk_path: str = ""
+    sdk_log_path: str = ""
+    auto_reconnect: bool = True
+    max_orders_per_second: float = 10.0
+
+    @validator("broker")
+    def broker_must_be_valid(cls, v):
+        valid = {"xtp", "hundsun", "xtquant", "paper"}
+        if v not in valid:
+            raise ValueError(f"broker must be one of {valid}")
+        return v
+
+    @validator("max_orders_per_second")
+    def max_orders_positive(cls, v):
+        if v <= 0:
+            raise ValueError("max_orders_per_second must be positive")
+        return v
+
+    class Config:
+        extra = "forbid"
+
+
+class RealtimeDataConfig(BaseModel):
+    """Real-time data configuration."""
+    provider: str = "simulation"  # simulation, akshare, sina
+    symbols: List[str] = Field(default_factory=list)
+    interval_seconds: float = 3.0
+    bar_intervals: List[int] = Field(default_factory=lambda: [1, 5])
+
+    @validator("provider")
+    def provider_must_be_valid(cls, v):
+        valid = {"simulation", "akshare", "sina"}
+        if v not in valid:
+            raise ValueError(f"provider must be one of {valid}")
+        return v
+
+    @validator("interval_seconds")
+    def interval_positive(cls, v):
+        if v <= 0:
+            raise ValueError("interval_seconds must be positive")
+        return v
+
+    class Config:
+        extra = "forbid"
+
+
+class PortfolioConfig(BaseModel):
+    """Portfolio-level configuration."""
+    strategies: List[str] = Field(default_factory=list)
+    rebalance_interval_days: int = 21
+    max_weight_per_strategy: float = 0.4
+    min_weight_per_strategy: float = 0.05
+    optimization_objective: str = "sharpe"  # sharpe, min_vol, equal_risk
+
+    @validator("max_weight_per_strategy")
+    def max_weight_valid(cls, v):
+        if not 0 < v <= 1.0:
+            raise ValueError("max_weight_per_strategy must be between 0 and 1")
+        return v
+
+    @validator("optimization_objective")
+    def objective_must_be_valid(cls, v):
+        valid = {"sharpe", "min_vol", "equal_risk"}
+        if v not in valid:
+            raise ValueError(f"optimization_objective must be one of {valid}")
+        return v
+
+    class Config:
+        extra = "forbid"
 
 
 class GlobalConfig(BaseModel):
@@ -93,11 +186,49 @@ class GlobalConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     strategy: StrategyConfig = Field(default_factory=StrategyConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    
+    # New V4.0 fields
+    live_trading: LiveTradingConfig = Field(default_factory=LiveTradingConfig)
+    realtime_data: RealtimeDataConfig = Field(default_factory=RealtimeDataConfig)
+    portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
+
     class Config:
         """Pydantic config."""
         validate_assignment = True  # Validate on attribute assignment
         extra = "forbid"  # Forbid extra fields
+
+    def validate_all(self) -> List[str]:
+        """
+        Validate cross-field consistency.
+
+        Returns:
+            List of warning/error messages (empty if all OK)
+        """
+        warnings = []
+
+        # Check: live trading enabled requires account_id
+        if self.live_trading.enabled and not self.live_trading.account_id:
+            warnings.append("live_trading.enabled=True but account_id is empty")
+
+        # Check: commission rate sanity
+        if self.backtest.commission > 0.01:
+            warnings.append(
+                f"commission_rate={self.backtest.commission} seems high (>1%)"
+            )
+
+        # Check: initial cash > 0
+        if self.backtest.initial_cash <= 0:
+            warnings.append(
+                f"backtest.initial_cash={self.backtest.initial_cash} must be positive"
+            )
+
+        # Check: portfolio max weight consistency
+        if (
+            self.portfolio.strategies
+            and len(self.portfolio.strategies) * self.portfolio.min_weight_per_strategy > 1.0
+        ):
+            warnings.append("portfolio: min_weight_per_strategy * num_strategies > 1.0")
+
+        return warnings
 
 
 # ---------------------------------------------------------------------------
@@ -107,123 +238,186 @@ class GlobalConfig(BaseModel):
 class ConfigManager:
     """
     Configuration manager with YAML support.
-    
+
     Usage:
-        >>> # Load from YAML
-        >>> config = ConfigManager.load_from_file("config.yaml")
-        >>> 
-        >>> # Or from environment variables
-        >>> config = ConfigManager.load_from_env()
-        >>> 
+        >>> # Load from YAML file
+        >>> manager = ConfigManager("config.yaml")
+        >>> config = manager.load()
+        >>>
+        >>> # Load from environment variables
+        >>> manager = ConfigManager()
+        >>> config = manager.load()
+        >>>
         >>> # Access settings
         >>> print(config.backtest.initial_cash)
         >>> print(config.data.provider)
-        >>> 
+        >>>
         >>> # Update settings
         >>> config.backtest.initial_cash = 200000.0
-        >>> 
-        >>> # Save to YAML
-        >>> config.save_to_file("config_updated.yaml")
+        >>>
+        >>> # Save config to the path used at construction
+        >>> manager.save(config)
     """
-    
-    def __init__(self, config: Optional[GlobalConfig] = None):
+
+    def __init__(
+        self,
+        config_path: Optional[str] = None,
+        config: Optional[GlobalConfig] = None,
+    ):
         """
         Initialize config manager.
-        
+
         Args:
-            config: GlobalConfig instance (None for defaults)
+            config_path: Optional path to a YAML config file.
+            config: Optional pre-built GlobalConfig instance.
         """
-        self.config = config or GlobalConfig()
-    
+        self._config_path = config_path
+        self._config = config
+
+    # ------------------------------------------------------------------
+    # Instance-based API (new V4.0)
+    # ------------------------------------------------------------------
+
+    def load(self) -> GlobalConfig:
+        """
+        Load configuration.
+
+        If a config_path was provided at construction and the file exists,
+        load from that file.  Otherwise apply environment-variable overrides
+        on top of the defaults.
+
+        Returns:
+            GlobalConfig instance
+        """
+        if self._config_path is not None:
+            loaded = self.__class__.load_from_file(self._config_path)
+            # Use the .config property so that a missing file still yields defaults
+            self._config = loaded.config
+            return self._config
+
+        # No path: build from env vars (falls back to defaults automatically)
+        loaded = self.__class__.load_from_env()
+        self._config = loaded._config
+        return self._config
+
+    def save(self, config: GlobalConfig) -> None:
+        """
+        Persist *config* to the path supplied at construction.
+
+        Args:
+            config: GlobalConfig instance to save.
+
+        Raises:
+            ValueError: if no config_path was provided at construction.
+        """
+        self._config = config
+        if self._config_path is None:
+            raise ValueError("No config_path was set; cannot save without a target path.")
+        self.save_to_file(self._config_path)
+
+    @property
+    def config(self) -> GlobalConfig:
+        """Return the current GlobalConfig, initialising to defaults if needed."""
+        if self._config is None:
+            self._config = GlobalConfig()
+        return self._config
+
+    # ------------------------------------------------------------------
+    # Class-method API (original)
+    # ------------------------------------------------------------------
+
     @classmethod
-    def load_from_file(cls, path: str) -> ConfigManager:
+    def load_from_file(cls, path: str) -> "ConfigManager":
         """
         Load configuration from YAML file.
-        
+
         Args:
             path: Path to YAML file
-        
+
         Returns:
             ConfigManager instance
         """
         path_obj = Path(path)
-        
+
         if not path_obj.exists():
             logger.warning(f"Config file not found: {path}, using defaults")
             return cls()
-        
+
         try:
             with open(path_obj, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
-            
+
             if data is None:
                 data = {}
-            
+
             config = GlobalConfig(**data)
             logger.info(f"Loaded configuration from {path}")
-            
-            return cls(config)
-        
+
+            return cls(config_path=path, config=config)
+
         except Exception as e:
             logger.error(f"Error loading config from {path}: {e}")
             raise
-    
+
     @classmethod
-    def load_from_env(cls, prefix: str = "BACKTEST_") -> ConfigManager:
+    def load_from_env(cls, prefix: str = "BACKTEST_") -> "ConfigManager":
         """
         Load configuration from environment variables.
-        
+
         Args:
             prefix: Environment variable prefix
-        
+
         Returns:
             ConfigManager instance
         """
-        config_data = {}
-        
+        config_data: Dict[str, Any] = {}
+
         # Map environment variables to config structure
         env_mapping = {
             f"{prefix}DATA_PROVIDER": ("data", "provider"),
             f"{prefix}DATA_CACHE_DIR": ("data", "cache_dir"),
+            f"{prefix}INITIAL_CASH": ("backtest", "initial_cash"),
             f"{prefix}BACKTEST_CASH": ("backtest", "initial_cash"),
             f"{prefix}BACKTEST_COMMISSION": ("backtest", "commission"),
             f"{prefix}RISK_MAX_POSITION": ("risk", "max_position_pct"),
             f"{prefix}EXECUTION_GATEWAY": ("execution", "gateway"),
             f"{prefix}LOG_LEVEL": ("logging", "level"),
         }
-        
+
         for env_var, (section, key) in env_mapping.items():
             value = os.getenv(env_var)
             if value is not None:
                 if section not in config_data:
                     config_data[section] = {}
-                
+
                 # Type conversion
                 if key in ["initial_cash", "commission", "max_position_pct"]:
-                    value = float(value)
-                
-                config_data[section][key] = value
-        
+                    value = float(value)  # type: ignore[assignment]
+
+                # Later entries in the dict win; avoid overwriting once set
+                if key not in config_data[section]:
+                    config_data[section][key] = value
+
         if config_data:
             logger.info(f"Loaded {len(config_data)} config sections from environment")
-        
+
         try:
             config = GlobalConfig(**config_data)
-            return cls(config)
+            return cls(config=config)
         except Exception as e:
             logger.error(f"Error loading config from environment: {e}")
             raise
-    
+
     def save_to_file(self, path: str) -> None:
         """
         Save configuration to YAML file.
-        
+
         Args:
             path: Output file path
         """
         path_obj = Path(path)
         path_obj.parent.mkdir(parents=True, exist_ok=True)
-        
+
         try:
             with open(path_obj, "w", encoding="utf-8") as f:
                 yaml.dump(
@@ -231,22 +425,22 @@ class ConfigManager:
                     f,
                     default_flow_style=False,
                     allow_unicode=True,
-                    sort_keys=False
+                    sort_keys=False,
                 )
-            
+
             logger.info(f"Saved configuration to {path}")
-        
+
         except Exception as e:
             logger.error(f"Error saving config to {path}: {e}")
             raise
-    
+
     def update(self, **kwargs) -> None:
         """
         Update configuration values.
-        
+
         Args:
             **kwargs: Nested dictionary of updates
-        
+
         Example:
             >>> manager.update(backtest={"initial_cash": 200000.0})
             >>> manager.update(risk={"max_position_pct": 0.4})
@@ -258,15 +452,15 @@ class ConfigManager:
                     if hasattr(section_config, key):
                         setattr(section_config, key, value)
                         logger.info(f"Updated {section}.{key} = {value}")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
         return self.config.dict()
-    
+
     def __getattr__(self, name: str):
         """Delegate attribute access to config."""
-        if name == "config":
-            return object.__getattribute__(self, "config")
+        if name in ("_config", "_config_path"):
+            raise AttributeError(name)
         return getattr(self.config, name)
 
 
@@ -281,12 +475,12 @@ _global_config: Optional[ConfigManager] = None
 def get_config() -> ConfigManager:
     """
     Get global configuration instance.
-    
+
     Returns:
         ConfigManager instance
     """
     global _global_config
-    
+
     if _global_config is None:
         # Try to load from default paths
         default_paths = [
@@ -294,17 +488,17 @@ def get_config() -> ConfigManager:
             "config/config.yaml",
             os.path.expanduser("~/.backtest/config.yaml"),
         ]
-        
+
         for path in default_paths:
             if os.path.exists(path):
                 _global_config = ConfigManager.load_from_file(path)
                 break
-        
+
         # If no file found, use defaults
         if _global_config is None:
             _global_config = ConfigManager()
             logger.info("Using default configuration")
-    
+
     return _global_config
 
 
@@ -372,5 +566,5 @@ def create_example_config(path: str = "config_example.yaml") -> None:
     """Create example configuration file."""
     with open(path, "w", encoding="utf-8") as f:
         f.write(EXAMPLE_CONFIG_YAML)
-    
+
     logger.info("Created example configuration", path=path)

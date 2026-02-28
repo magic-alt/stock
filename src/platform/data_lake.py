@@ -23,6 +23,11 @@ class DataLakeEntry:
     path: str
     created_at: str = field(default_factory=_utc_now)
     metadata: Dict[str, Any] = field(default_factory=dict)
+    # B-2: versioning and checksum fields
+    version: int = 1
+    checksum: str = ""
+    schema: Dict[str, Any] = field(default_factory=dict)
+    is_production: bool = False
 
 
 class DataLake:

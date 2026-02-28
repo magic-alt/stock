@@ -39,6 +39,13 @@ try:
 except ImportError:
     _SIMULATION_AVAILABLE = False
 
+# Risk manager (optional, avoids circular dependency via try/except)
+try:
+    from src.core.risk_manager_v2 import RiskManagerV2 as _RiskManagerV2
+    _RISK_MANAGER_AVAILABLE = True
+except ImportError:
+    _RISK_MANAGER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -97,16 +104,20 @@ class PaperGateway(TradeGateway):
         initial_cash: float = 200_000.0,
         slippage_model: Optional["SlippageModel"] = None,
         commission_rate: float = 0.0003,
+        risk_manager: Optional[Any] = None,
     ):
         """
         Initialize paper trading gateway.
-        
+
         Args:
             events: EventEngine for order/trade event publishing
             initial_cash: Starting cash balance
             slippage_model: Slippage model (default: FixedSlippage(1, 0.01))
             commission_rate: Commission rate (default: 0.03%)
-        
+            risk_manager: Optional RiskManagerV2 instance for pre-order risk checks.
+                          When provided, every send_order call is validated against
+                          the risk manager before being submitted to the matching engine.
+
         Raises:
             ImportError: If simulation module is not available
         """
@@ -127,6 +138,7 @@ class PaperGateway(TradeGateway):
         self._oid_counter = 0
         self._tid_counter = 0
         self._commission_rate = commission_rate
+        self._risk_manager = risk_manager
         
         # Initialize Matching Engine with slippage
         if slippage_model is None:
@@ -254,7 +266,51 @@ class PaperGateway(TradeGateway):
             raise ValueError("Limit orders require a price")
         if order_type_lower == "stop" and price is None:
             raise ValueError("Stop orders require a price")
-        
+
+        # Risk pre-check (executed before order ID generation so rejected orders
+        # never enter the order book or affect state)
+        if self._risk_manager is not None:
+            acc_dict = self.query_account()
+            account_info = AccountInfo(
+                account_id=acc_dict.get("account_id", "PAPER"),
+                cash=acc_dict.get("balance", 0.0),
+                total_value=acc_dict.get("equity", 0.0),
+                available=acc_dict.get("available", 0.0),
+                unrealized_pnl=acc_dict.get("unrealized_pnl", 0.0),
+                realized_pnl=acc_dict.get("realized_pnl", 0.0),
+            )
+            positions_info: Dict[str, PositionInfo] = {}
+            for sym, pos in self._positions.items():
+                if pos.size != 0:
+                    market_price = self._last_prices.get(sym, pos.avg_price)
+                    positions_info[sym] = PositionInfo(
+                        symbol=sym,
+                        size=pos.size,
+                        avg_price=pos.avg_price,
+                        market_value=pos.size * market_price,
+                        unrealized_pnl=pos.size * (market_price - pos.avg_price),
+                        realized_pnl=pos.realized_pnl,
+                    )
+
+            order_price = price if price is not None else self._last_prices.get(symbol, 0.0)
+            risk_result = self._risk_manager.check_order(
+                symbol=symbol,
+                side=side_enum,
+                quantity=size,
+                price=order_price,
+                account=account_info,
+                positions=positions_info,
+            )
+            if not risk_result:
+                self.events.put(Event(EventType.RISK_WARNING, {
+                    "symbol": symbol,
+                    "reason": risk_result.reason,
+                    "rule": risk_result.rule_name,
+                }))
+                raise ValueError(
+                    f"Order rejected by risk check [{risk_result.rule_name}]: {risk_result.reason}"
+                )
+
         # Generate order ID
         oid = self._next_order_id()
         

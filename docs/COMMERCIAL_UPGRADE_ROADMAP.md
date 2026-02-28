@@ -288,7 +288,7 @@
 - P4：数据管道与前端工程化（实时数据 + 因子扩展 + Web 前端 + 性能自动化）。 ✅ 大部分完成（因子管道扩展、ECharts 图表、QLib 改进已完成，待实时数据源/策略配置界面）。
 - P5：测试工程化与质量门禁（负载/故障/E2E 测试 + CI 门禁）。 ✅ 大部分完成（测试套件/CI 门禁/策略文档已完成，待策略性能基准报告）。
 
-## 已实施状态总览（2026-02-28 P3/P4/P5 升级完成）
+## 已实施状态总览（2026-02-28 V4.0-A/B 升级完成）
 
 | 阶段 | 状态 | 已完成 | 未完成 |
 |------|------|--------|--------|
@@ -298,3 +298,5 @@
 | P3 | ✅ 大部分完成 | SDK import 明确报错、**实盘运行器加固**、**仿真 A 股规则**、**监控告警外发**、**QueryResultCache**、**SDK 路径配置**、**Mock SDK 测试**、**SDK 安装文档** | 网关真实 SDK 对接（XTP/恒生 UFT 仍为 stub 模式） |
 | P4 | ✅ 大部分完成 | **L1/L2 冷热缓存**、**Web 前端 JS**、**性能基线自动化**、**基本面因子模块（7 因子）**、**跨因子相关性分析**、**ECharts K 线图表**、**QLib 错误处理改进** | 实时数据源适配、QLib provider 真实化、策略配置界面 |
 | P5 | ✅ 大部分完成 | **故障场景测试（4 类）**、**负载测试（队列+因子管道）**、**E2E 工作流测试（3 类）**、**CI 性能回归门禁**、**pytest marker 更新**、**策略参考文档（41 策略）** | 策略性能基准报告 |
+| V4.0-A | ✅ 全部完成 | 网关协议统一测试（test_gateway_unification）、PaperGateway 前置风控集成（test_risk_precheck）、AKShare HTTP 轮询实时行情（AKShareDataProvider）、配置 Schema 扩展（LiveTrading/RealtimeData/Portfolio） | — |
+| V4.0-B | ✅ 全部完成 | 向量化 BacktestEngine 指标+网格搜索缓存（test_backtest_performance）、Parquet 数据湖+版本/校验和/Schema（test_data_lake_versioning）、回测/实盘对账（Reconciler+test_reconciliation）、组合风险聚合（PortfolioManager+test_portfolio_risk） | — |
