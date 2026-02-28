@@ -1124,25 +1124,154 @@ __all__ = [
     'RealtimeDataManager',
     'RealtimeQuote',
     'BarBuilder',
-    
+    'MultiFreqBarChain',
+    'StreamDispatcher',
+
     # Providers
     'BaseDataProvider',
     'SimulationDataProvider',
     'SinaDataProvider',
     'AKShareDataProvider',
     'WebSocketDataProvider',
-    
+
     # Signal generation
     'RealtimeSignalGenerator',
     'Signal',
     'SignalType',
-    
+
     # Signal rules
     'create_ma_cross_rule',
     'create_price_breakout_rule',
-    
+
     # Enums
     'DataSource',
     'DataType',
     'DataEvent',
 ]
+
+
+# ---------------------------------------------------------------------------
+# V5.0-B-4: Multi-frequency bar chain
+# ---------------------------------------------------------------------------
+
+class MultiFreqBarChain:
+    """Chain of BarBuilders that aggregate ticks into multiple frequencies.
+
+    Example usage:
+        chain = MultiFreqBarChain("600519.SH", [1, 5, 15, 60])
+        chain.on_bar(1, lambda bar: print("1min bar", bar))
+        chain.on_bar(5, lambda bar: print("5min bar", bar))
+        for tick in tick_stream:
+            chain.update(tick)
+    """
+
+    def __init__(self, symbol: str, intervals: Optional[List[int]] = None) -> None:
+        self.symbol = symbol
+        self.intervals = intervals or [1, 5, 15, 60]
+        self._builders: Dict[int, BarBuilder] = {}
+        self._callbacks: Dict[int, List[Callable]] = defaultdict(list)
+        for iv in self.intervals:
+            self._builders[iv] = BarBuilder(symbol, interval_minutes=iv)
+
+    def on_bar(self, interval: int, callback: Callable[[BarData], None]) -> None:
+        """Register a callback for a specific bar interval."""
+        self._callbacks[interval].append(callback)
+
+    def update(self, tick: TickData) -> Dict[int, Optional[BarData]]:
+        """Feed a tick through all builders, fire callbacks for completed bars."""
+        results: Dict[int, Optional[BarData]] = {}
+        for iv, builder in self._builders.items():
+            bar = builder.update(tick)
+            results[iv] = bar
+            if bar:
+                for cb in self._callbacks.get(iv, []):
+                    try:
+                        cb(bar)
+                    except Exception as e:
+                        logger.error("bar_callback_error", interval=iv, error=str(e))
+        return results
+
+    @property
+    def current_bars(self) -> Dict[int, Optional[BarData]]:
+        """Get the current (incomplete) bar for each interval."""
+        return {iv: b._current_bar for iv, b in self._builders.items()}
+
+    def get_history(self, interval: int, limit: int = 100) -> List[BarData]:
+        """Get completed bar history for a given interval."""
+        builder = self._builders.get(interval)
+        if not builder:
+            return []
+        return builder._bars[-limit:]
+
+
+# ---------------------------------------------------------------------------
+# V5.0-B-4: Stream dispatcher (pub/sub for market data)
+# ---------------------------------------------------------------------------
+
+class StreamDispatcher:
+    """Pub/sub dispatcher for real-time market data streams.
+
+    Decouples data producers (providers) from consumers (strategies, UI, storage).
+    Supports topic-based routing: 'tick.{symbol}', 'bar.{interval}.{symbol}'.
+    """
+
+    def __init__(self) -> None:
+        self._subscribers: Dict[str, List[Callable]] = defaultdict(list)
+        self._lock = threading.Lock()
+        self._stats: Dict[str, int] = defaultdict(int)
+
+    def subscribe(self, topic: str, callback: Callable) -> None:
+        """Subscribe to a topic pattern."""
+        with self._lock:
+            self._subscribers[topic].append(callback)
+
+    def unsubscribe(self, topic: str, callback: Callable) -> None:
+        """Unsubscribe from a topic."""
+        with self._lock:
+            subs = self._subscribers.get(topic, [])
+            if callback in subs:
+                subs.remove(callback)
+
+    def publish(self, topic: str, data: Any) -> int:
+        """Publish data to a topic and all matching subscribers.
+
+        Returns:
+            Number of subscribers notified.
+        """
+        with self._lock:
+            direct = list(self._subscribers.get(topic, []))
+            # Wildcard matching: 'tick.*' matches 'tick.600519.SH'
+            wildcard_matches = []
+            for pat, subs in self._subscribers.items():
+                if pat.endswith("*") and topic.startswith(pat[:-1]):
+                    wildcard_matches.extend(subs)
+
+        count = 0
+        for cb in direct + wildcard_matches:
+            try:
+                cb(data)
+                count += 1
+            except Exception as e:
+                logger.error("dispatch_error", topic=topic, error=str(e))
+        self._stats[topic] += 1
+        return count
+
+    def publish_tick(self, tick: TickData) -> int:
+        """Convenience: publish a tick event."""
+        return self.publish(f"tick.{tick.symbol}", tick)
+
+    def publish_bar(self, bar: BarData, interval: int) -> int:
+        """Convenience: publish a bar event."""
+        return self.publish(f"bar.{interval}.{bar.symbol}", bar)
+
+    @property
+    def stats(self) -> Dict[str, int]:
+        """Message counts per topic."""
+        return dict(self._stats)
+
+    @property
+    def subscriber_count(self) -> int:
+        """Total number of subscriptions."""
+        with self._lock:
+            return sum(len(s) for s in self._subscribers.values())
+
