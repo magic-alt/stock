@@ -1,9 +1,9 @@
 # 项目路线图 | Project Roadmap
 
-**项目**: 量化回测与实盘系统（Unified Quant Platform）  
-**当前版本**: V3.2.0（Phase 3.x 完成）  
-**更新日期**: 2026-01-31  
-**状态**: 🟢 生产可用 | V4.0 技术路线规划中
+**项目**: 量化回测与实盘系统（Unified Quant Platform）
+**当前版本**: V3.2.0（Phase 3.x 完成）
+**更新日期**: 2026-02-28
+**状态**: 🟢 生产可用 | 商业化升级 P0-P5 大部分完成 | V4.0 技术路线规划中
 
 ---
 
@@ -102,10 +102,13 @@
 
 ### 平台 / API / 分布式
 - ✅ JobQueue / Orchestrator / Distributed（本地线程/进程）
-- ✅ Minimal API Server（HTTP）
+- ✅ Minimal API Server（HTTP）+ 版本化 `/api/v1/*` 路由
 - ✅ DataLake（manifest）
-- 🟡 任务编排 DAG、持久队列与多租户
-- 🟡 API 认证、限流、审计注入、版本化
+- ✅ API Bearer Token 鉴权 + `request_id` 透传 + 审计注入
+- ✅ SQLite JobStore（幂等提交、事务恢复）+ 队列分位指标
+- ✅ 工作流超时/重试/失败策略
+- ✅ `/readyz` 健康探针 + `/metrics`（JSON + Prometheus）指标端点
+- 🟡 任务编排 DAG、持久队列与多租户（Redis/Postgres backend）
 
 ### GUI / CLI / Examples
 - ✅ CLI：`run/grid/auto/combo/list`
@@ -151,6 +154,25 @@
 - [x] 增加 Heartbeat 事件
 - [x] 实现自动重启监控
 - [x] 完善英文文档
+- [x] **P0** API 版本化（`/api/v1/*`）+ Bearer Token 鉴权 + 统一响应信封
+- [x] **P0** `/readyz` 健康探针 + `/metrics`（JSON + Prometheus）双格式
+- [x] **P0** JobQueue 任务取消（pending 状态）+ 契约测试
+- [x] **P1** SQLite JobStore（幂等提交、事务恢复）+ 队列分位指标（P50/P95/P99）
+- [x] **P1** 工作流超时/重试/失败策略（abort/continue）
+- [x] **P1** 压测脚本（`benchmark_platform.py`）+ 阈值代码化断言 + 回归基线检测
+- [x] **P2** 审计哈希链 + 关键动作覆盖 + 完整性巡检脚本
+- [x] **P2** 订单状态机一致性测试 + 风控一致性测试（跨三种模式）
+- [x] **P2** 运维文档（`OPERATIONS_RUNBOOK.md` / `SRE_INCIDENT_RESPONSE.md`）
+- [x] **P3** 网关异步查询结果缓存（`QueryResultCache`）+ SDK 路径动态配置
+- [x] **P3** 实盘运行器加固（错误恢复/仓位校验/审计日志）
+- [x] **P3** 仿真 A 股规则（T+1/涨跌停/整手）+ 告警外发（邮件/企业微信/钉钉）
+- [x] **P3** 网关 Mock SDK 测试（`test_gateway_mock_sdk.py`）+ SDK 安装文档
+- [x] **P4** 基本面因子模块（7 因子）+ 跨因子相关性分析
+- [x] **P4** ECharts K 线图可视化（暗色主题 + 成交量 + 缩放）+ `/api/v1/chart-data`
+- [x] **P4** L1/L2 冷热缓存（`TieredCache`）+ QLib Provider 错误处理改进
+- [x] **P5** 负载测试（`test_load.py`）+ 故障场景测试（`test_fault_scenarios.py`）+ E2E 测试
+- [x] **P5** CI 性能回归门禁（`performance` job，基线缓存 + 阈值断言 + 回归检测）
+- [x] **P5** 策略参考文档（41 个策略，`docs/STRATEGY_REFERENCE.md`）
 
 ---
 

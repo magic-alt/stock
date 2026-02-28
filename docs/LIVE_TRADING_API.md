@@ -1,8 +1,8 @@
 # A股实盘交易接口实现文档
 
-**版本**: V3.2.0  
-**更新日期**: 2026-01-11  
-**状态**: ✅ 已实现（桩模式 + SDK接口预留）
+**版本**: V3.2.0+（P3 加固完成）
+**更新日期**: 2026-02-28
+**状态**: ✅ 已实现（桩模式 + SDK接口预留 + P3 生产加固）
 
 ---
 
@@ -637,3 +637,14 @@ gateway.send_order("600519.SH", "buy", 100, price=1800.0)
 - ✅ 实现 `SymbolMapper` 和 `OrderMapper`
 - ✅ 支持桩模式开发
 - ✅ 完整API文档
+
+### V3.2.0+ / P3（2026-02-28）
+
+- ✅ **QueryResultCache**：`base_live_gateway.py` 新增线程安全的异步查询结果缓存，使用 `threading.Event` 实现同步等待，彻底替代轮询/sleep 模式
+- ✅ **SDK 路径动态配置**：`GatewayConfig` 新增 `sdk_path` / `sdk_log_path` 字段，`__post_init__` 自动注入 `sys.path`，支持多环境 SDK 部署
+- ✅ **SDK import 明确报错**：XTP / 恒生 UFT 在 SDK 不可用时抛出明确 `ImportError`，替代静默 `try/except pass`
+- ✅ **实盘运行器加固**（`src/core/live_runner.py`）：策略执行异常捕获 + skip/retry/halt 策略、仓位定期同步校验、启动/停止/异常事件审计日志
+- ✅ **仿真 A 股规则**（`src/simulation/matching_engine.py`）：T+1 限制、涨跌停判断、停牌处理、整手限制（100股/手）
+- ✅ **监控告警外发**（`src/core/monitoring.py`）：邮件/企业微信/钉钉 webhook 告警通道，阈值触发自动告警
+- ✅ **Mock SDK 测试**（`tests/test_gateway_mock_sdk.py`）：12 个测试类覆盖 XTP/UFT stub 模式全生命周期、QueryResultCache、工厂函数、事件流
+- ✅ **SDK 安装文档**（`docs/GATEWAY_SDK_SETUP.md`）：XTP/UFT/XtQuant SDK 安装、配置示例、故障排查
