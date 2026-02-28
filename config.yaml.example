@@ -93,3 +93,29 @@ performance:
   max_workers: 4  # 最大并行工作进程数
   cache_enabled: true  # 启用数据缓存
   cache_expire_days: 1  # 缓存过期天数
+
+# Live Trading Configuration (V4.0)
+live_trading:
+  enabled: false
+  broker: "xtp"
+  account_id: ""
+  gateway_type: "xtp"
+  sdk_path: ""
+  sdk_log_path: ""
+  auto_reconnect: true
+  max_orders_per_second: 10.0
+
+# Real-time Data Configuration (V4.0)
+realtime_data:
+  provider: "simulation"  # simulation, akshare, sina
+  symbols: []
+  interval_seconds: 3.0
+  bar_intervals: [1, 5]
+
+# Portfolio Configuration (V4.0)
+portfolio:
+  strategies: []
+  rebalance_interval_days: 21
+  max_weight_per_strategy: 0.4
+  min_weight_per_strategy: 0.05
+  optimization_objective: "sharpe"  # sharpe, min_vol, equal_risk
