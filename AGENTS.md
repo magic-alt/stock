@@ -32,6 +32,15 @@
 - For every optimization, update the relevant documentation and record the change in `CHANGELOG.md`.
 - PRs should include: short summary, tests run (or reason not run), and doc/CHANGELOG updates for user-facing changes. Add screenshots or sample reports when GUI or visualization output changes.
 
+## Local CI/CD Validation (Mandatory Before Commit)
+- **Before every git commit, you MUST run the local CI/CD validation and ensure it passes.**
+- Quick test validation: `python -m pytest tests/ -v --tb=short`
+- Full local CI pipeline: `powershell -ExecutionPolicy Bypass -File scripts/local_ci.ps1 -Jobs test -SkipInstall`
+- Full CI with all jobs: `powershell -ExecutionPolicy Bypass -File scripts/local_ci.ps1 -SkipInstall`
+- The local CI script mirrors the GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`).
+- If local CI fails, fix the issues before committing. Never push code that fails local CI.
+- When adding tests that depend on optional packages (e.g., `duckdb`, `scipy`, `pyarrow`, `jinja2`), use `pytest.importorskip` or `@pytest.mark.skipif` to skip gracefully when the package is not installed.
+
 ## CHANGELOG.md (Mandatory)
 - Follow Keep a Changelog + Semantic Versioning; format is `## [Vx.y.z] - YYYY-MM-DD`.
 - Always keep `Unreleased` at the top with the latest date; add entries there until a release is cut.

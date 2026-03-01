@@ -12,11 +12,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
+try:
+    import duckdb  # noqa: F401
+    _HAS_DUCKDB = True
+except ImportError:
+    _HAS_DUCKDB = False
+
 
 # ===========================================================================
 # B-2: DuckDB Time Series Store
 # ===========================================================================
 
+@pytest.mark.skipif(not _HAS_DUCKDB, reason="duckdb not installed")
 class TestDuckDBTimeSeriesStore:
     """Tests for src/data_sources/duckdb_store.py."""
 

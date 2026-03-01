@@ -17,6 +17,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+try:
+    import scipy  # noqa: F401
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
 
 # ---------------------------------------------------------------------------
 # Backtest Workflow Tests
@@ -309,6 +315,7 @@ class TestFactorPipelineWorkflow:
         assert "pb_ratio" in result.columns
         assert "roe" in result.columns
 
+    @pytest.mark.skipif(not _HAS_SCIPY, reason="scipy not installed")
     def test_ic_analysis_workflow(self, enriched_data):
         """Information Coefficient analysis end-to-end."""
         from src.pipeline.factor_engine import RSI

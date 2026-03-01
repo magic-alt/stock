@@ -246,7 +246,7 @@ class HundsunUftGateway(BaseLiveGateway):
         if self._stub_mode:
             self.log.warning(
                 "uft_gateway_stub_mode",
-                msg="Hundsun UFT SDK not available, running in stub mode"
+                detail="Hundsun UFT SDK not available, running in stub mode"
             )
         
         # API instances

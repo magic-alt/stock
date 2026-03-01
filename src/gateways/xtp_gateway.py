@@ -252,7 +252,7 @@ class XtpGateway(BaseLiveGateway):
         if self._stub_mode:
             self.log.warning(
                 "xtp_gateway_stub_mode",
-                msg="XTP SDK not available, running in stub mode"
+                detail="XTP SDK not available, running in stub mode"
             )
         
         # XTP API instances

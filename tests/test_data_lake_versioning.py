@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytest.importorskip("pyarrow", reason="pyarrow required for parquet tests")
+
 from src.platform.data_lake_parquet import ParquetDataLake, VersionInfo
 
 

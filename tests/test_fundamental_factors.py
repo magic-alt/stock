@@ -5,6 +5,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+try:
+    import scipy  # noqa: F401
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
 from src.pipeline.fundamental_factors import (
     PERatio,
     PBRatio,
@@ -231,6 +237,7 @@ class TestFindRedundantFactors:
         assert find_redundant_factors(pd.DataFrame()) == []
 
 
+@pytest.mark.skipif(not _HAS_SCIPY, reason="scipy not installed")
 class TestFactorICAnalysis:
     def test_known_ic(self):
         # Factor perfectly predicts returns

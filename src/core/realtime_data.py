@@ -678,7 +678,7 @@ class WebSocketDataProvider(BaseDataProvider):
     
     def _on_ws_close(self, ws, close_status, close_msg):
         """Handle WebSocket close."""
-        logger.warning("WebSocket closed", status=close_status, msg=close_msg)
+        logger.warning("WebSocket closed", status=close_status, close_msg=close_msg)
         self._connected = False
 
 

@@ -11,11 +11,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
+try:
+    import jinja2  # noqa: F401
+    _HAS_JINJA2 = True
+except ImportError:
+    _HAS_JINJA2 = False
+
 
 # ---------------------------------------------------------------------------
 # A-2: InteractiveReportGenerator tests
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not _HAS_JINJA2, reason="jinja2 not installed")
 class TestReportGenerator:
     """Tests for src/backtest/report_generator.py."""
 
