@@ -219,6 +219,8 @@ jobs:
           perf-baseline-
 
     - name: Run performance benchmark
+      env:
+        PYTHONPATH: .
       run: |
         mkdir -p benchmark_baselines
         python scripts/benchmark_platform.py \
@@ -253,7 +255,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install httpx
+        pip install httpx click rich
 
     - name: Run integration tests
       run: |
