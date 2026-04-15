@@ -51,6 +51,19 @@ class TestFastAPIApp:
         app = create_app(enable_cors=False)
         assert app is not None
 
+    def test_cors_origins_can_be_loaded_from_environment(self, monkeypatch):
+        from src.platform.api_v2 import create_app
+        monkeypatch.setenv(
+            "PLATFORM_ALLOWED_ORIGINS",
+            "http://localhost:3000,https://stock-web.onrender.com",
+        )
+        app = create_app(enable_cors=True)
+        cors = next(m for m in app.user_middleware if m.cls.__name__ == "CORSMiddleware")
+        assert cors.kwargs["allow_origins"] == [
+            "http://localhost:3000",
+            "https://stock-web.onrender.com",
+        ]
+
     def test_pydantic_models_exist(self):
         from src.platform.api_v2 import (
             ApiEnvelope,
@@ -186,6 +199,110 @@ class TestFastAPIEndpoints:
         schema = resp.json()
         assert "openapi" in schema
         assert schema["info"]["title"] == "Unified Quant Platform"
+
+    def test_strategy_run_endpoint(self, client, monkeypatch):
+        from src.backtest.engine import BacktestEngine
+
+        def fake_run_strategy(self, **kwargs):
+            assert kwargs["strategy"] == "macd"
+            return {
+                "strategy": "macd",
+                "cum_return": 0.12,
+                "sharpe": 1.8,
+                "trades": 8,
+                "nav": [1, 2, 3],
+            }
+
+        monkeypatch.setattr(BacktestEngine, "run_strategy", fake_run_strategy)
+
+        resp = client.post(
+            "/api/v2/strategies/run",
+            json={
+                "strategy": "macd",
+                "symbols": ["600519.SH"],
+                "start": "2024-01-01",
+                "end": "2024-12-31",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["data"]["metrics"]["cum_return"] == 0.12
+
+    def test_gateway_and_monitor_endpoints(self, client):
+        resp = client.post(
+            "/api/v2/gateway/connect",
+            json={
+                "mode": "paper",
+                "broker": "paper",
+                "account": "paper",
+                "initial_cash": 100000,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["gateway"]["connected"] is True
+
+        resp = client.post(
+            "/api/v2/gateway/order",
+            json={
+                "symbol": "600519.SH",
+                "side": "buy",
+                "quantity": 100,
+                "price": 1800,
+                "order_type": "limit",
+            },
+        )
+        assert resp.status_code == 200
+        order_id = resp.json()["data"]["order_id"]
+
+        resp = client.post(
+            "/api/v2/gateway/price",
+            json={"symbol": "600519.SH", "price": 1799},
+        )
+        assert resp.status_code == 200
+
+        resp = client.get("/api/v2/gateway/snapshot?limit=5")
+        assert resp.status_code == 200
+        snapshot = resp.json()["data"]["gateway"]
+        assert snapshot["status"]["broker"] == "paper"
+        assert any(order["order_id"] == order_id for order in snapshot["orders"])
+
+        resp = client.get("/api/v2/monitor/summary?limit=5")
+        assert resp.status_code == 200
+        monitor = resp.json()["data"]["monitor"]
+        assert monitor["system"] is not None
+
+    def test_frontend_dist_can_be_served(self, monkeypatch, tmp_path):
+        try:
+            from fastapi.testclient import TestClient
+            from src.platform.api_v2 import create_app
+        except ImportError:
+            pytest.skip("fastapi or httpx not installed")
+
+        (tmp_path / "index.html").write_text("<html><body>release-ui</body></html>", encoding="utf-8")
+        assets_dir = tmp_path / "assets"
+        assets_dir.mkdir()
+        (assets_dir / "app.js").write_text("console.log('release-ui')", encoding="utf-8")
+
+        monkeypatch.setenv("PLATFORM_FRONTEND_DIST", str(tmp_path))
+        app = create_app(enable_cors=False)
+        client = TestClient(app)
+
+        root = client.get("/")
+        assert root.status_code == 200
+        assert "release-ui" in root.text
+
+        asset = client.get("/assets/app.js")
+        assert asset.status_code == 200
+        assert "release-ui" in asset.text
+
+        spa = client.get("/trading")
+        assert spa.status_code == 200
+        assert "release-ui" in spa.text
+
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["status"] == "healthy"
 
 
 # ===========================================================================

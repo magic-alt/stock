@@ -17,19 +17,20 @@ import time
 import uuid
 from collections import Counter
 from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
 from enum import Enum
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 
 from src.core.audit import AuditLogger, audit_event
 from src.core.logger import get_logger
+from src.core.monitoring import SystemMonitor
 from src.core.trading_gateway import BrokerType, GatewayConfig, TradingGateway, TradingMode
 from src.core.interfaces import OrderTypeEnum
 from src.platform.backtest_task import run_backtest_job
 from src.platform.job_queue import JobQueue, JobStore
 from src.platform.orchestrator import run_workflow
-from urllib.parse import parse_qs
 
 WEB_ROOT = os.path.join(os.path.dirname(__file__), "web")
 API_PREFIX = "/api/v1"
@@ -42,9 +43,11 @@ def _to_jsonable(value: Any) -> Any:
         return {k: _to_jsonable(v) for k, v in asdict(value).items()}
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, dict):
         return {k: _to_jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple, set)):
         return [_to_jsonable(v) for v in value]
     return value
 
@@ -117,6 +120,95 @@ class APIMetrics:
         return "\n".join(lines) + "\n"
 
 
+class MonitorService:
+    """On-demand monitor snapshots for the web console and API consumers."""
+
+    def __init__(self, *, refresh_interval: float = 5.0, history_limit: int = 120) -> None:
+        self._lock = threading.Lock()
+        self._refresh_interval = refresh_interval
+        self._history_limit = history_limit
+        self._monitor = SystemMonitor(check_interval=refresh_interval)
+        self._last_refresh_at = 0.0
+
+    def summary(
+        self,
+        *,
+        queue: JobQueue,
+        gateway_service: "GatewayService",
+        metrics: APIMetrics,
+        jobs_limit: int = 10,
+        orders_limit: int = 20,
+        trades_limit: int = 20,
+    ) -> Dict[str, Any]:
+        with self._lock:
+            self._refresh_locked()
+            system = _to_jsonable(self._monitor.get_current_metrics())
+            alerts = _to_jsonable(self._monitor.get_recent_alerts(10))
+
+        gateway = gateway_service.snapshot(orders_limit=orders_limit, trades_limit=trades_limit)
+        jobs = self._recent_jobs(queue, jobs_limit)
+        queue_metrics = queue.metrics()
+        api_metrics = metrics.snapshot(queue)
+
+        return {
+            "status": self._overall_status(gateway=gateway, alerts=alerts),
+            "timestamp": datetime.now().isoformat(),
+            "system": system,
+            "alerts": alerts,
+            "gateway": gateway,
+            "job_queue": queue_metrics,
+            "api": api_metrics,
+            "jobs": jobs,
+        }
+
+    def history(self, *, limit: int = 30) -> List[Dict[str, Any]]:
+        with self._lock:
+            self._refresh_locked()
+            entries = list(self._monitor.metrics_history)
+        return _to_jsonable(entries[-limit:][::-1])
+
+    def alerts(self, *, limit: int = 20) -> List[Dict[str, Any]]:
+        with self._lock:
+            self._refresh_locked()
+            alerts = self._monitor.get_recent_alerts(limit)
+        return _to_jsonable(list(reversed(alerts)))
+
+    def _refresh_locked(self) -> None:
+        now = time.monotonic()
+        if self._monitor.metrics_history and (now - self._last_refresh_at) < self._refresh_interval:
+            return
+
+        metrics = self._monitor.collect_metrics()
+        self._monitor.metrics_history.append(metrics)
+        if len(self._monitor.metrics_history) > self._history_limit:
+            self._monitor.metrics_history = self._monitor.metrics_history[-self._history_limit :]
+
+        alerts = self._monitor.check_thresholds(metrics)
+        for alert in alerts:
+            self._monitor.alerts.append(alert)
+            self._monitor._handle_alert(alert)
+        if len(self._monitor.alerts) > self._history_limit:
+            self._monitor.alerts = self._monitor.alerts[-self._history_limit :]
+
+        self._last_refresh_at = now
+
+    @staticmethod
+    def _recent_jobs(queue: JobQueue, limit: int) -> List[Dict[str, Any]]:
+        jobs = sorted(queue.store.list(), key=lambda job: job.created_at, reverse=True)
+        return [_to_jsonable(asdict(job)) for job in jobs[:limit]]
+
+    @staticmethod
+    def _overall_status(gateway: Dict[str, Any], alerts: List[Dict[str, Any]]) -> str:
+        if any(alert.get("level") in {"ERROR", "CRITICAL"} for alert in alerts):
+            return "critical"
+        if alerts:
+            return "warning"
+        gateway_status = gateway.get("status", {})
+        if gateway_status.get("connected"):
+            return "healthy"
+        return "degraded"
+
+
 class GatewayService:
     """Thread-safe wrapper for a singleton trading gateway instance."""
 
@@ -124,32 +216,50 @@ class GatewayService:
         self._lock = threading.Lock()
         self._gateway: Optional[TradingGateway] = None
         self._last_error: Optional[str] = None
+        self._connected_at: Optional[str] = None
 
     def connect(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         config = self._build_config(payload)
         gateway = TradingGateway(config)
         ok = gateway.connect()
+        previous_gateway: Optional[TradingGateway] = None
         with self._lock:
-            self._gateway = gateway
+            previous_gateway = self._gateway
+            if ok or previous_gateway is None:
+                self._gateway = gateway
             self._last_error = None if ok else "connect_failed"
+            if ok:
+                self._connected_at = datetime.now().isoformat()
+        if ok and previous_gateway and previous_gateway is not gateway:
+            try:
+                previous_gateway.disconnect()
+            except Exception:
+                logger.warning("gateway.previous_disconnect_failed")
         return self.status()
 
     def disconnect(self) -> Dict[str, Any]:
+        gateway: Optional[TradingGateway] = None
         with self._lock:
             if not self._gateway:
                 return {"status": "disconnected"}
-            self._gateway.disconnect()
+            gateway = self._gateway
+        if gateway is not None:
+            gateway.disconnect()
+        with self._lock:
+            self._connected_at = None
             return self.status()
 
     def status(self) -> Dict[str, Any]:
         with self._lock:
             if not self._gateway:
-                return {"status": "disconnected"}
+                return {"status": "disconnected", "connected": False, "mode": "-", "broker": "-", "last_error": self._last_error}
             return {
                 "status": self._gateway.status.value,
                 "connected": self._gateway.is_connected(),
                 "mode": self._gateway.config.mode.value,
                 "broker": self._gateway.config.broker.value,
+                "account": self._gateway.config.account,
+                "connected_at": self._connected_at,
                 "last_error": self._last_error,
             }
 
@@ -160,6 +270,66 @@ class GatewayService:
     def positions(self) -> Dict[str, Any]:
         gateway = self._require_gateway()
         return _to_jsonable(gateway.get_positions())
+
+    def positions_list(self) -> List[Dict[str, Any]]:
+        gateway = self._require_gateway()
+        return self._positions_list(gateway)
+
+    def orders(self, *, symbol: Optional[str] = None) -> List[Dict[str, Any]]:
+        gateway = self._require_gateway()
+        return _to_jsonable(gateway.get_orders(symbol=symbol))
+
+    def trades(self, *, symbol: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        gateway = self._require_gateway()
+        return _to_jsonable(gateway.get_trades(symbol=symbol, limit=limit))
+
+    def safe_account(self) -> Optional[Dict[str, Any]]:
+        gateway = self._optional_gateway()
+        if gateway is None:
+            return None
+        try:
+            return _to_jsonable(gateway.get_account())
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    def safe_positions(self) -> List[Dict[str, Any]]:
+        gateway = self._optional_gateway()
+        if gateway is None:
+            return []
+        try:
+            return self._positions_list(gateway)
+        except Exception as exc:
+            return [{"error": str(exc)}]
+
+    def safe_orders(self, *, symbol: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        gateway = self._optional_gateway()
+        if gateway is None:
+            return []
+        try:
+            orders = gateway.get_orders(symbol=symbol)
+            if limit is not None and limit >= 0:
+                orders = orders[:limit]
+            return _to_jsonable(orders)
+        except Exception as exc:
+            return [{"error": str(exc)}]
+
+    def safe_trades(self, *, symbol: Optional[str] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+        gateway = self._optional_gateway()
+        if gateway is None:
+            return []
+        try:
+            return _to_jsonable(gateway.get_trades(symbol=symbol, limit=limit))
+        except Exception as exc:
+            return [{"error": str(exc)}]
+
+    def snapshot(self, *, orders_limit: int = 20, trades_limit: int = 20) -> Dict[str, Any]:
+        return {
+            "status": self.status(),
+            "account": self.safe_account(),
+            "positions": self.safe_positions(),
+            "orders": self.safe_orders(limit=orders_limit),
+            "trades": self.safe_trades(limit=trades_limit),
+        }
 
     def submit_order(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         gateway = self._require_gateway()
@@ -194,6 +364,15 @@ class GatewayService:
                 raise RuntimeError("gateway not connected")
             return self._gateway
 
+    def _optional_gateway(self) -> Optional[TradingGateway]:
+        with self._lock:
+            return self._gateway
+
+    @staticmethod
+    def _positions_list(gateway: TradingGateway) -> List[Dict[str, Any]]:
+        positions = gateway.get_positions()
+        return _to_jsonable(list(positions.values()))
+
     def _build_config(self, payload: Dict[str, Any]) -> GatewayConfig:
         mode = TradingMode(payload.get("mode", "paper"))
         broker = BrokerType(payload.get("broker", "paper"))
@@ -224,6 +403,7 @@ class GatewayService:
 class PlatformAPIHandler(BaseHTTPRequestHandler):
     queue: JobQueue
     gateway_service: GatewayService
+    monitor_service: MonitorService
     metrics: APIMetrics
     api_token: Optional[str]
     audit_logger: Optional[AuditLogger]
@@ -289,7 +469,7 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         content_type: str = "application/json; charset=utf-8",
     ) -> None:
         if content_type.startswith("application/json"):
-            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            body = json.dumps(_to_jsonable(payload), ensure_ascii=False).encode("utf-8")
         else:
             body = str(payload).encode("utf-8")
 
@@ -383,7 +563,21 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return None
         return asdict(record)
 
+    def _query_params(self) -> Dict[str, List[str]]:
+        return parse_qs(urlparse(self.path).query)
+
+    def _query_int(self, name: str, default: int, *, minimum: int = 0, maximum: int = 1000) -> int:
+        raw = (self._query_params().get(name) or [str(default)])[0]
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = default
+        return max(minimum, min(maximum, value))
+
     def _handle_gateway_get_v1(self, path: str, request_id: str) -> bool:
+        query = self._query_params()
+        symbol = ((query.get("symbol") or [""])[0] or "").strip() or None
+        limit = self._query_int("limit", 20, minimum=1, maximum=500)
         try:
             if path == f"{API_PREFIX}/gateway/status":
                 self._json_v1(request_id=request_id, data={"gateway": self.gateway_service.status()})
@@ -394,8 +588,52 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             if path == f"{API_PREFIX}/gateway/positions":
                 self._json_v1(request_id=request_id, data={"positions": self.gateway_service.positions()})
                 return True
+            if path == f"{API_PREFIX}/gateway/orders":
+                self._json_v1(request_id=request_id, data={"orders": self.gateway_service.orders(symbol=symbol)})
+                return True
+            if path == f"{API_PREFIX}/gateway/trades":
+                self._json_v1(
+                    request_id=request_id,
+                    data={"trades": self.gateway_service.trades(symbol=symbol, limit=limit)},
+                )
+                return True
+            if path == f"{API_PREFIX}/gateway/snapshot":
+                self._json_v1(
+                    request_id=request_id,
+                    data={"gateway": self.gateway_service.snapshot(orders_limit=limit, trades_limit=limit)},
+                )
+                return True
         except Exception as exc:
             self._error_v1(request_id=request_id, status=400, code=40001, message=str(exc))
+            return True
+        return False
+
+    def _handle_monitor_get_v1(self, path: str, request_id: str) -> bool:
+        limit = self._query_int("limit", 20, minimum=1, maximum=500)
+        try:
+            if path == f"{API_PREFIX}/monitor/summary":
+                self._json_v1(
+                    request_id=request_id,
+                    data={
+                        "monitor": self.monitor_service.summary(
+                            queue=self.queue,
+                            gateway_service=self.gateway_service,
+                            metrics=self.metrics,
+                            jobs_limit=min(limit, 50),
+                            orders_limit=limit,
+                            trades_limit=limit,
+                        )
+                    },
+                )
+                return True
+            if path == f"{API_PREFIX}/monitor/history":
+                self._json_v1(request_id=request_id, data={"history": self.monitor_service.history(limit=limit)})
+                return True
+            if path == f"{API_PREFIX}/monitor/alerts":
+                self._json_v1(request_id=request_id, data={"alerts": self.monitor_service.alerts(limit=limit)})
+                return True
+        except Exception as exc:
+            self._error_v1(request_id=request_id, status=500, code=50001, message=str(exc))
             return True
         return False
 
@@ -484,6 +722,9 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return
 
         if self._handle_gateway_get_v1(path, request_id):
+            return
+
+        if self._handle_monitor_get_v1(path, request_id):
             return
 
         if path == f"{API_PREFIX}/chart-data":
@@ -611,6 +852,48 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             except Exception as exc:
                 self._json({"error": str(exc)}, status=400)
             return
+        if path == "/gateway/orders":
+            symbol = ((self._query_params().get("symbol") or [""])[0] or "").strip() or None
+            try:
+                self._json({"orders": self.gateway_service.orders(symbol=symbol)})
+            except Exception as exc:
+                self._json({"error": str(exc)}, status=400)
+            return
+        if path == "/gateway/trades":
+            symbol = ((self._query_params().get("symbol") or [""])[0] or "").strip() or None
+            limit = self._query_int("limit", 20, minimum=1, maximum=500)
+            try:
+                self._json({"trades": self.gateway_service.trades(symbol=symbol, limit=limit)})
+            except Exception as exc:
+                self._json({"error": str(exc)}, status=400)
+            return
+        if path == "/gateway/snapshot":
+            limit = self._query_int("limit", 20, minimum=1, maximum=500)
+            self._json({"gateway": self.gateway_service.snapshot(orders_limit=limit, trades_limit=limit)})
+            return
+        if path == "/monitor/summary":
+            limit = self._query_int("limit", 20, minimum=1, maximum=500)
+            self._json(
+                {
+                    "monitor": self.monitor_service.summary(
+                        queue=self.queue,
+                        gateway_service=self.gateway_service,
+                        metrics=self.metrics,
+                        jobs_limit=min(limit, 50),
+                        orders_limit=limit,
+                        trades_limit=limit,
+                    )
+                }
+            )
+            return
+        if path == "/monitor/history":
+            limit = self._query_int("limit", 20, minimum=1, maximum=500)
+            self._json({"history": self.monitor_service.history(limit=limit)})
+            return
+        if path == "/monitor/alerts":
+            limit = self._query_int("limit", 20, minimum=1, maximum=500)
+            self._json({"alerts": self.monitor_service.alerts(limit=limit)})
+            return
         if path == "/jobs":
             self._json({"jobs": self._list_jobs()})
             return
@@ -698,6 +981,7 @@ def create_api_server(
     store = JobStore(path=job_store_path)
     queue = JobQueue(store=store, max_workers=max_workers)
     gateway_service = GatewayService()
+    monitor_service = MonitorService()
     metrics = APIMetrics()
 
     resolved_audit_path = audit_log_path
@@ -710,6 +994,7 @@ def create_api_server(
 
     _Handler.queue = queue
     _Handler.gateway_service = gateway_service
+    _Handler.monitor_service = monitor_service
     _Handler.metrics = metrics
     _Handler.api_token = api_token if api_token is not None else os.environ.get("PLATFORM_API_TOKEN")
     _Handler.audit_logger = audit_logger
@@ -718,6 +1003,7 @@ def create_api_server(
     # Attach runtime components for controlled shutdown/testing.
     server.job_queue = queue  # type: ignore[attr-defined]
     server.gateway_service = gateway_service  # type: ignore[attr-defined]
+    server.monitor_service = monitor_service  # type: ignore[attr-defined]
     server.api_metrics = metrics  # type: ignore[attr-defined]
     server.audit_logger = audit_logger  # type: ignore[attr-defined]
     return server
@@ -749,4 +1035,3 @@ def run_api_server(
     finally:
         server.server_close()
         server.job_queue.shutdown()  # type: ignore[attr-defined]
-

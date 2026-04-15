@@ -117,13 +117,24 @@ class SystemMonitor:
         memory_available_mb = memory.available / 1024 / 1024
         
         # 磁盘使用
+        disk_path = "/"
+        if os.name == "nt":
+            disk_path = os.environ.get("SystemDrive", "C:") + "\\"
         try:
-            disk = psutil.disk_usage("/")
+            disk = psutil.disk_usage(disk_path)
         except Exception:
-            # Windows可能使用不同路径
-            disk = psutil.disk_usage(os.path.expanduser("~"))
-        disk_usage_percent = disk.percent
-        disk_free_gb = disk.free / 1024 / 1024 / 1024
+            fallback_drive = os.path.splitdrive(os.getcwd())[0]
+            fallback_path = f"{fallback_drive}\\" if fallback_drive else os.path.expanduser("~")
+            try:
+                disk = psutil.disk_usage(fallback_path)
+            except Exception:
+                disk = None
+        if disk is not None:
+            disk_usage_percent = disk.percent
+            disk_free_gb = disk.free / 1024 / 1024 / 1024
+        else:
+            disk_usage_percent = 0.0
+            disk_free_gb = 0.0
         
         # 数据库大小
         database_size_mb = 0.0
@@ -239,13 +250,13 @@ class SystemMonitor:
     def _handle_alert(self, alert: Alert):
         """处理告警 — log locally and dispatch to external channels."""
         if alert.level == "CRITICAL":
-            logger.critical(f"{alert.message}", **alert.details)
+            logger.critical("monitor.alert", level=alert.level, message=alert.message, **alert.details)
         elif alert.level == "ERROR":
-            logger.error(f"{alert.message}", **alert.details)
+            logger.error("monitor.alert", level=alert.level, message=alert.message, **alert.details)
         elif alert.level == "WARNING":
-            logger.warning(f"{alert.message}", **alert.details)
+            logger.warning("monitor.alert", level=alert.level, message=alert.message, **alert.details)
         else:
-            logger.info(f"{alert.message}", **alert.details)
+            logger.info("monitor.alert", level=alert.level, message=alert.message, **alert.details)
 
         if self._alert_dispatcher:
             self._alert_dispatcher.dispatch(alert)

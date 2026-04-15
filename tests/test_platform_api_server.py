@@ -181,3 +181,94 @@ def test_api_v1_writes_audit_records(api_runtime):
 
     assert "job.submit" in content
     assert "tester" in content
+
+
+def test_api_v1_gateway_snapshot_and_monitor_summary(api_runtime):
+    base_url = api_runtime["base_url"]
+
+    status, payload = _http_request(
+        base_url,
+        "POST",
+        "/api/v1/gateway/connect",
+        payload={"mode": "paper", "broker": "paper", "account": "paper", "initial_cash": 100000},
+        token="test-token",
+    )
+    assert status == 200
+    assert payload["data"]["gateway"]["connected"] is True
+
+    status, payload = _http_request(
+        base_url,
+        "POST",
+        "/api/v1/gateway/order",
+        payload={
+            "symbol": "600519.SH",
+            "side": "buy",
+            "quantity": 100,
+            "price": 1800,
+            "order_type": "limit",
+        },
+        token="test-token",
+    )
+    assert status == 202
+    order_id = payload["data"]["order_id"]
+
+    status, payload = _http_request(
+        base_url,
+        "GET",
+        "/api/v1/gateway/orders?limit=5",
+        token="test-token",
+    )
+    assert status == 200
+    assert any(order["order_id"] == order_id for order in payload["data"]["orders"])
+
+    status, payload = _http_request(
+        base_url,
+        "POST",
+        "/api/v1/gateway/price",
+        payload={"symbol": "600519.SH", "price": 1799},
+        token="test-token",
+    )
+    assert status == 200
+    assert payload["data"]["symbol"] == "600519.SH"
+
+    status, payload = _http_request(
+        base_url,
+        "GET",
+        "/api/v1/gateway/trades?limit=5",
+        token="test-token",
+    )
+    assert status == 200
+    assert any(trade["order_id"] == order_id for trade in payload["data"]["trades"])
+
+    status, payload = _http_request(
+        base_url,
+        "GET",
+        "/api/v1/gateway/snapshot?limit=5",
+        token="test-token",
+    )
+    assert status == 200
+    snapshot = payload["data"]["gateway"]
+    assert snapshot["status"]["broker"] == "paper"
+    assert snapshot["positions"]
+    assert any(order["order_id"] == order_id for order in snapshot["orders"])
+
+    status, payload = _http_request(
+        base_url,
+        "GET",
+        "/api/v1/monitor/summary?limit=5",
+        token="test-token",
+    )
+    assert status == 200
+    monitor = payload["data"]["monitor"]
+    assert monitor["system"] is not None
+    assert monitor["gateway"]["status"]["broker"] == "paper"
+    assert any(order["order_id"] == order_id for order in monitor["gateway"]["orders"])
+
+    status, payload = _http_request(
+        base_url,
+        "GET",
+        "/api/v1/monitor/history?limit=3",
+        token="test-token",
+    )
+    assert status == 200
+    assert isinstance(payload["data"]["history"], list)

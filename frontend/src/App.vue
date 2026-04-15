@@ -66,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTradingStore } from '@/stores/trading'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -91,6 +91,10 @@ const pageNames: Record<string, string> = {
 }
 
 const currentPageName = computed(() => pageNames[route.path] || route.path)
+
+onMounted(() => {
+  void tradingStore.fetchStatus()
+})
 </script>
 
 <style>

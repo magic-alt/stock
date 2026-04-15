@@ -467,7 +467,8 @@ class BaseLiveGateway(ABC):
         self._client_to_broker: Dict[str, str] = {}
         self._broker_to_client: Dict[str, str] = {}
         self._orders: Dict[str, OrderUpdate] = {}  # client_order_id -> OrderUpdate
-        
+        self._trades: List[TradeUpdate] = []
+
         # Trade deduplication
         self._processed_trades: Set[str] = set()
         
@@ -511,6 +512,16 @@ class BaseLiveGateway(ABC):
     def gateway_name(self) -> str:
         """Gateway identifier."""
         return f"{self.config.broker}_{self.config.account_id}"
+
+    @property
+    def is_stub_mode(self) -> bool:
+        """Whether the gateway is running without a real broker SDK."""
+        return bool(getattr(self, "_stub_mode", False))
+
+    @property
+    def sdk_available(self) -> bool:
+        """Whether the gateway has a real SDK/runtime behind it."""
+        return not self.is_stub_mode
     
     # ---------------------------------------------------------------------------
     # Connection Management
@@ -956,6 +967,114 @@ class BaseLiveGateway(ABC):
                 if symbol is None or order.symbol == symbol:
                     orders.append(order)
         return orders
+
+    def get_orders(self, symbol: Optional[str] = None) -> List[OrderUpdate]:
+        """Get cached orders, optionally filtered by symbol."""
+        orders = list(self._orders.values())
+        if symbol is not None:
+            orders = [order for order in orders if order.symbol == symbol]
+        orders.sort(key=lambda order: order.update_time or order.create_time or datetime.min, reverse=True)
+        return orders
+
+    def get_recent_trades(
+        self,
+        *,
+        symbol: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[TradeUpdate]:
+        """Get cached trades in reverse chronological order."""
+        trades = self._trades
+        if symbol is not None:
+            trades = [trade for trade in trades if trade.symbol == symbol]
+        trades = sorted(trades, key=lambda trade: trade.trade_time, reverse=True)
+        if limit is not None and limit >= 0:
+            return trades[:limit]
+        return trades
+
+    def run_smoke_test(
+        self,
+        *,
+        symbol: str = "600519.SH",
+        quantity: float = 100,
+        price: float = 100.0,
+        side: OrderSide = OrderSide.BUY,
+        order_type: OrderType = OrderType.LIMIT,
+        allow_order_submission: Optional[bool] = None,
+        settle_delay: float = 0.25,
+    ) -> Dict[str, Any]:
+        """
+        Run a minimal readiness check against the gateway.
+
+        In real-SDK mode this defaults to a non-trading smoke unless
+        ``allow_order_submission`` is explicitly enabled. In stub mode the
+        order path is exercised by default so tests can validate lifecycle
+        transitions without touching a broker.
+        """
+        result: Dict[str, Any] = {
+            "gateway": self.gateway_name,
+            "broker": self.config.broker,
+            "account_id": self.config.account_id,
+            "sdk_available": self.sdk_available,
+            "stub_mode": self.is_stub_mode,
+            "connected": self.is_connected,
+            "account_ok": False,
+            "positions_ok": False,
+            "positions_count": 0,
+            "order_path_executed": False,
+            "order_ok": False,
+            "cancel_ok": False,
+        }
+
+        if not self.is_connected:
+            result["connected"] = self.connect()
+        else:
+            result["connected"] = True
+
+        if not result["connected"]:
+            return result
+
+        account = self.query_account()
+        positions = self.query_positions()
+        result["account_ok"] = account is not None
+        result["positions_ok"] = positions is not None
+        result["positions_count"] = len(positions)
+
+        should_submit = allow_order_submission
+        if should_submit is None:
+            should_submit = self.is_stub_mode
+
+        if not should_submit:
+            return result
+
+        result["order_path_executed"] = True
+        client_order_id = self.send_order(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            price=price,
+            order_type=order_type,
+        )
+        time.sleep(settle_delay)
+
+        order = self.get_order(client_order_id)
+        if order is not None:
+            result["order_status"] = order.status.value
+            result["broker_order_id"] = order.broker_order_id
+            result["order_ok"] = order.status in {
+                OrderStatus.SUBMITTED,
+                OrderStatus.PARTIALLY_FILLED,
+                OrderStatus.FILLED,
+                OrderStatus.CANCELLED,
+            }
+
+        if order is not None and order.status in (OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED):
+            result["cancel_ok"] = self.cancel_order(client_order_id)
+            time.sleep(settle_delay)
+            cancelled = self.get_order(client_order_id)
+            if cancelled is not None:
+                result["final_order_status"] = cancelled.status.value
+
+        return result
     
     # ---------------------------------------------------------------------------
     # Query Methods
@@ -1072,7 +1191,10 @@ class BaseLiveGateway(ABC):
             self.log.debug("trade_duplicate_ignored", trade_id=update.trade_id)
             return
         self._processed_trades.add(update.trade_id)
-        
+        self._trades.append(update)
+        if len(self._trades) > 1000:
+            self._trades = self._trades[-1000:]
+
         # Map broker order ID to client order ID
         if not update.client_order_id and update.broker_order_id:
             update.client_order_id = self._broker_to_client.get(

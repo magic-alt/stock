@@ -131,22 +131,37 @@ class LiveTradingConfig(BaseModel):
 
 class RealtimeDataConfig(BaseModel):
     """Real-time data configuration."""
-    provider: str = "simulation"  # simulation, akshare, sina
+    provider: str = "simulation"  # simulation, akshare, sina, eastmoney, tencent
     symbols: List[str] = Field(default_factory=list)
+    fallback_providers: List[str] = Field(default_factory=list)
     interval_seconds: float = 3.0
+    request_timeout_seconds: float = 5.0
     bar_intervals: List[int] = Field(default_factory=lambda: [1, 5])
 
     @validator("provider")
     def provider_must_be_valid(cls, v):
-        valid = {"simulation", "akshare", "sina"}
+        valid = {"simulation", "akshare", "sina", "eastmoney", "tencent"}
         if v not in valid:
             raise ValueError(f"provider must be one of {valid}")
+        return v
+
+    @validator("fallback_providers", each_item=True)
+    def fallback_provider_must_be_valid(cls, v):
+        valid = {"simulation", "akshare", "sina", "eastmoney", "tencent"}
+        if v not in valid:
+            raise ValueError(f"fallback provider must be one of {valid}")
         return v
 
     @validator("interval_seconds")
     def interval_positive(cls, v):
         if v <= 0:
             raise ValueError("interval_seconds must be positive")
+        return v
+
+    @validator("request_timeout_seconds")
+    def timeout_positive(cls, v):
+        if v <= 0:
+            raise ValueError("request_timeout_seconds must be positive")
         return v
 
     class Config:

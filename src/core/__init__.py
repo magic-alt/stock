@@ -66,13 +66,6 @@ from .paper_runner_v3 import (
     SimpleMovingAverageStrategy,
 )
 
-# V3.3.0: Live runner
-from .live_runner import (
-    LiveStrategyContext,
-    LiveRunResult,
-    run_live,
-)
-
 # V3.1.0: Unified exception handling
 from .exceptions import (
     QuantBaseError,
@@ -133,6 +126,21 @@ from .monitoring import (
 from .audit import AuditLogger
 from .auth import Authorizer, Subject, Role, Permission, ResourceScope
 from .ha import SnapshotStore, ComponentRegistry, HealthCheckResult
+
+
+def __getattr__(name):
+    """Lazily resolve heavy optional exports to avoid import cycles."""
+    if name in {"LiveStrategyContext", "LiveRunResult", "run_live"}:
+        from .live_runner import LiveStrategyContext, LiveRunResult, run_live
+
+        live_exports = {
+            "LiveStrategyContext": LiveStrategyContext,
+            "LiveRunResult": LiveRunResult,
+            "run_live": run_live,
+        }
+        return live_exports[name]
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     # Events

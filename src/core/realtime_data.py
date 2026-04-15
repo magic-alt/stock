@@ -37,6 +37,9 @@ from datetime import datetime, timedelta
 from enum import Enum
 from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Set
+from urllib.error import URLError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 from src.core.interfaces import BarData, TickData
 from src.core.events import EventEngine, Event
@@ -266,6 +269,7 @@ class BaseDataProvider(ABC):
         # Callbacks
         self._tick_callbacks: List[Callable[[TickData], None]] = []
         self._quote_callbacks: List[Callable[[RealtimeQuote], None]] = []
+        self._error_callbacks: List[Callable[[Exception], None]] = []
     
     @abstractmethod
     def connect(self) -> bool:
@@ -297,6 +301,10 @@ class BaseDataProvider(ABC):
     def on_quote(self, callback: Callable[[RealtimeQuote], None]) -> None:
         """Register quote callback."""
         self._quote_callbacks.append(callback)
+
+    def on_error(self, callback: Callable[[Exception], None]) -> None:
+        """Register provider error callback."""
+        self._error_callbacks.append(callback)
     
     def _emit_tick(self, tick: TickData) -> None:
         """Emit tick to callbacks."""
@@ -316,6 +324,121 @@ class BaseDataProvider(ABC):
                 callback(quote)
             except Exception as e:
                 logger.error("Quote callback error", error=str(e))
+
+    def _emit_error(self, error: Exception) -> None:
+        """Emit provider error to callbacks and the event engine."""
+        for callback in self._error_callbacks:
+            try:
+                callback(error)
+            except Exception as callback_error:
+                logger.error("Provider error callback failed", error=str(callback_error))
+
+        if self.event_engine:
+            self.event_engine.put(
+                Event(
+                    DataEvent.ERROR.value,
+                    {
+                        "provider": self.__class__.__name__,
+                        "error": str(error),
+                    },
+                )
+            )
+
+
+class HTTPPollingDataProvider(BaseDataProvider):
+    """Simple HTTP polling provider with background retry loop."""
+
+    def __init__(
+        self,
+        interval: float = 3.0,
+        event_engine: Optional[EventEngine] = None,
+        timeout: float = 5.0,
+    ) -> None:
+        super().__init__(event_engine)
+        self.interval = interval
+        self.timeout = timeout
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+    def connect(self) -> bool:
+        if self._connected:
+            return True
+        self._connected = True
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._poll_loop,
+            daemon=True,
+            name=f"{self.__class__.__name__}-poll",
+        )
+        self._thread.start()
+        logger.info("HTTP polling provider connected", provider=self.__class__.__name__)
+        return True
+
+    def disconnect(self) -> None:
+        self._connected = False
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=max(self.interval * 2, 2))
+        self._thread = None
+        logger.info("HTTP polling provider disconnected", provider=self.__class__.__name__)
+
+    def subscribe(self, symbols: List[str]) -> None:
+        for symbol in symbols:
+            self._subscribed_symbols.add(symbol)
+
+    def unsubscribe(self, symbols: List[str]) -> None:
+        for symbol in symbols:
+            self._subscribed_symbols.discard(symbol)
+
+    @abstractmethod
+    def _fetch_tick(self, symbol: str) -> Optional[TickData]:
+        """Fetch a single symbol quote and normalize it to TickData."""
+        pass
+
+    def _poll_loop(self) -> None:
+        while not self._stop_event.is_set():
+            for symbol in list(self._subscribed_symbols):
+                try:
+                    tick = self._fetch_tick(symbol)
+                    if tick is not None:
+                        self._emit_tick(tick)
+                except Exception as exc:
+                    logger.warning(
+                        "HTTP polling provider fetch failed",
+                        provider=self.__class__.__name__,
+                        symbol=symbol,
+                        error=str(exc),
+                    )
+                    self._emit_error(exc)
+            self._stop_event.wait(timeout=self.interval)
+
+    def _http_get(self, url: str, headers: Optional[Dict[str, str]] = None) -> str:
+        request = Request(url, headers=headers or {})
+        with urlopen(request, timeout=self.timeout) as response:
+            return response.read().decode("utf-8", errors="ignore")
+
+    @staticmethod
+    def _symbol_to_cn_code(symbol: str) -> str:
+        code, _, exchange = symbol.partition(".")
+        prefix = "sh" if exchange.upper() == "SH" else "sz"
+        return f"{prefix}{code}"
+
+    @staticmethod
+    def _safe_float(value: Any, scale: float = 1.0) -> float:
+        try:
+            return float(value) / scale
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def _parse_timestamp(date_value: str = "", time_value: str = "") -> datetime:
+        text = f"{date_value} {time_value}".strip()
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y%m%d%H%M%S"):
+            try:
+                return datetime.strptime(text, fmt)
+            except ValueError:
+                continue
+        return datetime.now()
 
 
 # ---------------------------------------------------------------------------
@@ -424,7 +547,7 @@ class SimulationDataProvider(BaseDataProvider):
 # Sina Data Provider (Stub)
 # ---------------------------------------------------------------------------
 
-class SinaDataProvider(BaseDataProvider):
+class SinaDataProvider(HTTPPollingDataProvider):
     """
     新浪财经实时行情 (Stub)
     
@@ -436,25 +559,139 @@ class SinaDataProvider(BaseDataProvider):
     - http://hq.sinajs.cn/list=sh600519
     """
     
-    def __init__(self, event_engine: Optional[EventEngine] = None):
-        super().__init__(event_engine)
-        self._poll_interval = 3  # seconds
-    
-    def connect(self) -> bool:
-        logger.info("Connecting to Sina...")
-        # TODO: Implement actual connection
-        raise NotImplementedError("Sina provider not implemented")
-    
-    def disconnect(self) -> None:
-        self._connected = False
-    
-    def subscribe(self, symbols: List[str]) -> None:
-        for symbol in symbols:
-            self._subscribed_symbols.add(symbol)
-    
-    def unsubscribe(self, symbols: List[str]) -> None:
-        for symbol in symbols:
-            self._subscribed_symbols.discard(symbol)
+    def __init__(
+        self,
+        event_engine: Optional[EventEngine] = None,
+        interval: float = 3.0,
+        timeout: float = 5.0,
+    ):
+        super().__init__(interval=interval, event_engine=event_engine, timeout=timeout)
+
+    def _fetch_tick(self, symbol: str) -> Optional[TickData]:
+        provider_symbol = self._symbol_to_cn_code(symbol)
+        url = f"https://hq.sinajs.cn/list={quote(provider_symbol)}"
+        payload = self._http_get(
+            url,
+            headers={
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": "Mozilla/5.0",
+            },
+        )
+        return self._parse_payload(symbol, payload)
+
+    def _parse_payload(self, symbol: str, payload: str) -> Optional[TickData]:
+        if '"' not in payload:
+            return None
+        raw = payload.split('"', 1)[1].rsplit('"', 1)[0]
+        if not raw:
+            return None
+        parts = raw.split(",")
+        if len(parts) < 10:
+            return None
+        timestamp = self._parse_timestamp(
+            parts[-3] if len(parts) >= 3 else "",
+            parts[-2] if len(parts) >= 2 else "",
+        )
+        return TickData(
+            symbol=symbol,
+            timestamp=timestamp,
+            last_price=self._safe_float(parts[3]),
+            volume=self._safe_float(parts[8]),
+            bid_price=self._safe_float(parts[11]) if len(parts) > 11 else self._safe_float(parts[6]),
+            ask_price=self._safe_float(parts[21]) if len(parts) > 21 else self._safe_float(parts[7]),
+            bid_volume=self._safe_float(parts[10]) if len(parts) > 10 else 0.0,
+            ask_volume=self._safe_float(parts[20]) if len(parts) > 20 else 0.0,
+        )
+
+
+class EastmoneyDataProvider(HTTPPollingDataProvider):
+    """Eastmoney quote provider based on push2 HTTP endpoint."""
+
+    def __init__(
+        self,
+        event_engine: Optional[EventEngine] = None,
+        interval: float = 3.0,
+        timeout: float = 5.0,
+    ) -> None:
+        super().__init__(interval=interval, event_engine=event_engine, timeout=timeout)
+
+    def _fetch_tick(self, symbol: str) -> Optional[TickData]:
+        secid = self._to_secid(symbol)
+        fields = "f43,f44,f45,f46,f47,f48,f60,f19,f20,f17"
+        url = f"https://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields={fields}"
+        payload = self._http_get(
+            url,
+            headers={
+                "Referer": "https://quote.eastmoney.com",
+                "User-Agent": "Mozilla/5.0",
+            },
+        )
+        return self._parse_payload(symbol, payload)
+
+    def _to_secid(self, symbol: str) -> str:
+        code, _, exchange = symbol.partition(".")
+        exchange_code = "1" if exchange.upper() == "SH" else "0"
+        return f"{exchange_code}.{code}"
+
+    def _parse_payload(self, symbol: str, payload: str) -> Optional[TickData]:
+        data = json.loads(payload or "{}").get("data") or {}
+        if not data:
+            return None
+        return TickData(
+            symbol=symbol,
+            timestamp=datetime.now(),
+            last_price=self._safe_float(data.get("f43"), scale=100),
+            volume=self._safe_float(data.get("f47")),
+            bid_price=self._safe_float(data.get("f19"), scale=100),
+            ask_price=self._safe_float(data.get("f20"), scale=100),
+            bid_volume=0.0,
+            ask_volume=0.0,
+        )
+
+
+class TencentDataProvider(HTTPPollingDataProvider):
+    """Tencent quote provider using qt.gtimg.cn snapshot endpoint."""
+
+    def __init__(
+        self,
+        event_engine: Optional[EventEngine] = None,
+        interval: float = 3.0,
+        timeout: float = 5.0,
+    ) -> None:
+        super().__init__(interval=interval, event_engine=event_engine, timeout=timeout)
+
+    def _fetch_tick(self, symbol: str) -> Optional[TickData]:
+        provider_symbol = self._symbol_to_cn_code(symbol)
+        url = f"https://qt.gtimg.cn/q={quote(provider_symbol)}"
+        payload = self._http_get(
+            url,
+            headers={
+                "Referer": "https://gu.qq.com",
+                "User-Agent": "Mozilla/5.0",
+            },
+        )
+        return self._parse_payload(symbol, payload)
+
+    def _parse_payload(self, symbol: str, payload: str) -> Optional[TickData]:
+        if '"' not in payload:
+            return None
+        raw = payload.split('"', 1)[1].rsplit('"', 1)[0]
+        if not raw:
+            return None
+        parts = raw.split("~")
+        if len(parts) < 22:
+            return None
+        timestamp = self._parse_timestamp(time_value=parts[30] if len(parts) > 30 else "")
+        return TickData(
+            symbol=symbol,
+            timestamp=timestamp,
+            last_price=self._safe_float(parts[3]),
+            volume=self._safe_float(parts[6]),
+            bid_price=self._safe_float(parts[9]),
+            ask_price=self._safe_float(parts[19]),
+            bid_volume=self._safe_float(parts[10]),
+            ask_volume=self._safe_float(parts[20]),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -524,6 +761,7 @@ class AKShareDataProvider(BaseDataProvider):
                         self._emit_tick(tick)
                 except Exception as exc:
                     logger.warning("AKShareDataProvider poll error", symbol=symbol, error=str(exc))
+                    self._emit_error(exc)
             self._stop_event.wait(timeout=self.interval)
 
     def _fetch_tick(self, symbol: str) -> Optional[TickData]:
@@ -714,6 +952,7 @@ class RealtimeDataManager:
         # Providers
         self._providers: Dict[DataSource, BaseDataProvider] = {}
         self._active_provider: Optional[DataSource] = None
+        self._fallback_providers: List[DataSource] = []
         
         # Bar builders
         self._bar_builders: Dict[str, Dict[int, BarBuilder]] = defaultdict(dict)
@@ -725,6 +964,7 @@ class RealtimeDataManager:
         # Data cache
         self._latest_ticks: Dict[str, TickData] = {}
         self._latest_bars: Dict[str, Dict[int, BarData]] = defaultdict(dict)
+        self._subscriptions: Dict[str, Set[int]] = defaultdict(set)
         
         # State
         self._running = False
@@ -733,6 +973,7 @@ class RealtimeDataManager:
         """Add data provider."""
         self._providers[source] = provider
         provider.on_tick(self._on_tick)
+        provider.on_error(lambda error, provider_source=source: self._on_provider_error(provider_source, error))
         logger.info("Data provider added", source=source.value)
     
     def set_active_provider(self, source: DataSource) -> None:
@@ -740,6 +981,13 @@ class RealtimeDataManager:
         if source not in self._providers:
             raise ValueError(f"Provider not found: {source}")
         self._active_provider = source
+
+    def set_fallback_providers(self, sources: List[DataSource]) -> None:
+        """Configure ordered fallback providers for failover."""
+        for source in sources:
+            if source not in self._providers:
+                raise ValueError(f"Provider not found: {source}")
+        self._fallback_providers = list(sources)
     
     def get_provider(self, source: Optional[DataSource] = None) -> Optional[BaseDataProvider]:
         """Get data provider."""
@@ -776,6 +1024,7 @@ class RealtimeDataManager:
             for interval in bar_intervals:
                 if interval not in self._bar_builders[symbol]:
                     self._bar_builders[symbol][interval] = BarBuilder(symbol, interval)
+                self._subscriptions[symbol].add(interval)
         
         logger.info("Subscribed", symbols=symbols, intervals=bar_intervals)
     
@@ -789,6 +1038,7 @@ class RealtimeDataManager:
             self._bar_builders.pop(symbol, None)
             self._latest_ticks.pop(symbol, None)
             self._latest_bars.pop(symbol, None)
+            self._subscriptions.pop(symbol, None)
     
     # ---------------------------------------------------------------------------
     # Callbacks
@@ -837,6 +1087,17 @@ class RealtimeDataManager:
                     
                     if self.event_engine:
                         self.event_engine.put(Event(DataEvent.BAR.value, bar))
+
+    def _on_provider_error(self, source: DataSource, error: Exception) -> None:
+        """Fail over when the active provider starts erroring."""
+        if source != self._active_provider:
+            return
+        logger.warning(
+            "Active realtime provider reported error",
+            source=source.value,
+            error=str(error),
+        )
+        self._attempt_failover(source)
     
     # ---------------------------------------------------------------------------
     # Control
@@ -844,12 +1105,15 @@ class RealtimeDataManager:
     
     def start(self) -> None:
         """Start all providers."""
-        for source, provider in self._providers.items():
-            if not provider.is_connected():
-                provider.connect()
-            
-            if isinstance(provider, SimulationDataProvider):
-                provider.start()
+        if self._active_provider is not None:
+            self._connect_provider_with_fallback(self._active_provider)
+        else:
+            for source, provider in self._providers.items():
+                if not provider.is_connected():
+                    provider.connect()
+
+                if isinstance(provider, SimulationDataProvider):
+                    provider.start()
         
         self._running = True
         logger.info("Data manager started")
@@ -901,6 +1165,61 @@ class RealtimeDataManager:
             symbol: tick.last_price
             for symbol, tick in self._latest_ticks.items()
         }
+
+    def _connect_provider_with_fallback(self, preferred_source: DataSource) -> None:
+        """Connect the preferred provider first, then fall back if needed."""
+        ordered_sources = [preferred_source] + [
+            source for source in self._fallback_providers if source != preferred_source
+        ]
+        for source in ordered_sources:
+            provider = self._providers.get(source)
+            if provider is None:
+                continue
+            if provider.is_connected() or provider.connect():
+                if isinstance(provider, SimulationDataProvider):
+                    provider.start()
+                self._active_provider = source
+                self._resubscribe_active_provider()
+                logger.info("Realtime provider active", source=source.value)
+                return
+        raise RuntimeError("Failed to connect any realtime data provider")
+
+    def _attempt_failover(self, failed_source: DataSource) -> None:
+        """Switch to the next configured fallback provider."""
+        for source in self._fallback_providers:
+            if source == failed_source:
+                continue
+            provider = self._providers.get(source)
+            if provider is None:
+                continue
+            try:
+                if not provider.is_connected() and not provider.connect():
+                    continue
+                failed_provider = self._providers.get(failed_source)
+                if failed_provider and failed_provider.is_connected():
+                    failed_provider.disconnect()
+                self._active_provider = source
+                self._resubscribe_active_provider()
+                logger.info(
+                    "Realtime provider failed over",
+                    from_source=failed_source.value,
+                    to_source=source.value,
+                )
+                return
+            except Exception as exc:
+                logger.warning(
+                    "Realtime provider failover candidate failed",
+                    source=source.value,
+                    error=str(exc),
+                )
+
+    def _resubscribe_active_provider(self) -> None:
+        """Re-apply tracked subscriptions to the current active provider."""
+        provider = self.get_provider()
+        if provider is None:
+            return
+        if self._subscriptions:
+            provider.subscribe(list(self._subscriptions.keys()))
 
 
 # ---------------------------------------------------------------------------
@@ -1129,8 +1448,11 @@ __all__ = [
 
     # Providers
     'BaseDataProvider',
+    'HTTPPollingDataProvider',
     'SimulationDataProvider',
     'SinaDataProvider',
+    'EastmoneyDataProvider',
+    'TencentDataProvider',
     'AKShareDataProvider',
     'WebSocketDataProvider',
 

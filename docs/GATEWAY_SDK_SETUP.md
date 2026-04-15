@@ -9,8 +9,8 @@ This guide covers installation and configuration for the three trading gateway S
 | Gateway | SDK | Status | Notes |
 |---------|-----|--------|-------|
 | XtQuant/QMT | xtquant | Production | Bundled with QMT client |
-| XTP | xtp-api | Stub mode | Requires broker SDK license |
-| Hundsun UFT | hundsun-uft-sdk | Stub mode | Requires broker SDK license |
+| XTP | xtp-api | Integration smoke ready | Requires broker SDK license |
+| Hundsun UFT | hundsun-uft-sdk | Integration smoke ready | Requires broker SDK license |
 
 All gateways support **stub mode** for development and testing when the real SDK is unavailable. Stub mode simulates order lifecycle callbacks with synthetic data.
 
@@ -150,7 +150,7 @@ config = GatewayConfig(
 
 ## SDK Path Configuration
 
-The `GatewayConfig.sdk_path` field automatically adds the directory to `sys.path` at initialization:
+The `GatewayConfig.sdk_path` field automatically adds the directory to `sys.path` at initialization and the XTP/UFT gateways will retry SDK import during gateway construction:
 
 ```python
 # In GatewayConfig.__post_init__:
@@ -197,6 +197,77 @@ print(f"XTP SDK available: {XTP_AVAILABLE}")
 
 gw = XtpGateway(config, event_queue)
 print(f"Running in stub mode: {gw._stub_mode}")
+```
+
+---
+
+## Integration Smoke
+
+The repository ships two real-SDK integration smokes:
+
+- `tests/test_gateway_xtp_integration.py`
+- `tests/test_gateway_uft_integration.py`
+
+They are designed to be safe by default:
+
+- If the required SDK/account environment variables are missing, the test is skipped.
+- Order submission is disabled unless `ALLOW_LIVE_SMOKE_ORDER=1`.
+- The assertions focus on `connect -> query_account -> query_positions`.
+
+### Required environment variables
+
+#### XTP
+
+```powershell
+$env:XTP_SMOKE_ACCOUNT="your_account"
+$env:XTP_SMOKE_PASSWORD="your_password"
+$env:XTP_SMOKE_TRADE_SERVER="tcp://host:port"
+$env:XTP_SMOKE_QUOTE_SERVER="tcp://host:port"
+$env:XTP_SMOKE_CLIENT_ID="1"
+$env:XTP_SMOKE_SDK_PATH="C:\path\to\xtp_sdk"
+```
+
+Optional:
+
+```powershell
+$env:XTP_SMOKE_LOG_PATH=".\logs\xtp_smoke"
+```
+
+#### UFT
+
+```powershell
+$env:UFT_SMOKE_ACCOUNT="your_account"
+$env:UFT_SMOKE_PASSWORD="your_password"
+$env:UFT_SMOKE_TD_FRONT="tcp://host:port"
+$env:UFT_SMOKE_SDK_PATH="C:\path\to\uft_sdk"
+```
+
+Optional:
+
+```powershell
+$env:UFT_SMOKE_MD_FRONT="tcp://host:port"
+$env:UFT_SMOKE_LOG_PATH=".\logs\uft_smoke"
+```
+
+### Run commands
+
+Direct pytest:
+
+```powershell
+python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short
+```
+
+Via local CI:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs gateway-integration -SkipInstall
+```
+
+If you need to validate the order/cancel path in a broker-approved test environment:
+
+```powershell
+$env:ALLOW_LIVE_SMOKE_ORDER="1"
+python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short
 ```
 
 ---

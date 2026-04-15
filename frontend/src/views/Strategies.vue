@@ -42,7 +42,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import client from '@/api/client'
+import client, { unwrapApiData } from '@/api/client'
 import type { StrategyInfo } from '@/api/types'
 
 const router = useRouter()
@@ -54,7 +54,8 @@ const selectedStrategy = ref<StrategyInfo | null>(null)
 onMounted(async () => {
   try {
     const resp = await client.get('/api/v2/strategies')
-    strategies.value = resp.data.strategies || []
+    const data = unwrapApiData<{ strategies: StrategyInfo[] }>(resp.data)
+    strategies.value = data.strategies || []
   } catch { /* ignore */ }
 })
 

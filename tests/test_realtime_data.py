@@ -18,9 +18,13 @@ from src.core.realtime_data import (
     AKShareDataProvider,
     BarBuilder,
     DataSource,
+    EastmoneyDataProvider,
     RealtimeDataManager,
     SimulationDataProvider,
+    SinaDataProvider,
+    TencentDataProvider,
     TickData,
+    BaseDataProvider,
 )
 
 
@@ -47,6 +51,35 @@ def _make_akshare_df(last_price: float = 100.0) -> pd.DataFrame:
         "item": ["最新", "总手", "买一价", "卖一价", "买一量", "卖一量"],
         "value": [last_price, 50000, last_price - 0.1, last_price + 0.1, 200, 300],
     })
+
+
+class _FakeProvider(BaseDataProvider):
+    def __init__(self, connect_result: bool = True):
+        super().__init__(event_engine=None)
+        self.connect_result = connect_result
+        self.connect_calls = 0
+        self.disconnect_calls = 0
+        self.subscriptions: List[str] = []
+
+    def connect(self) -> bool:
+        self.connect_calls += 1
+        self._connected = self.connect_result
+        return self.connect_result
+
+    def disconnect(self) -> None:
+        self.disconnect_calls += 1
+        self._connected = False
+
+    def subscribe(self, symbols: List[str]) -> None:
+        self.subscriptions.extend(symbols)
+        self._subscribed_symbols.update(symbols)
+
+    def unsubscribe(self, symbols: List[str]) -> None:
+        for symbol in symbols:
+            self._subscribed_symbols.discard(symbol)
+
+    def push_error(self, message: str = "provider failure") -> None:
+        self._emit_error(RuntimeError(message))
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +264,50 @@ class TestAKShareDataProvider:
         assert provider._connected is False
 
 
+class TestHttpPollingProviders:
+    def test_sina_provider_parses_snapshot(self):
+        provider = SinaDataProvider(interval=60.0)
+        payload = (
+            'var hq_str_sh600519="贵州茅台,1700.00,1698.00,1705.50,1710.00,1690.00,1705.00,1705.50,12345,210000,200,1705.00,0,0,0,0,0,0,0,0,300,1705.50,2026-04-09,10:15:30,00";'
+        )
+
+        tick = provider._parse_payload("600519.SH", payload)
+
+        assert tick is not None
+        assert tick.symbol == "600519.SH"
+        assert tick.last_price == pytest.approx(1705.50)
+        assert tick.bid_price == pytest.approx(1705.00)
+        assert tick.ask_price == pytest.approx(1705.50)
+        assert tick.volume == pytest.approx(12345)
+
+    def test_eastmoney_provider_parses_json(self):
+        provider = EastmoneyDataProvider(interval=60.0)
+        payload = '{"data":{"f43":170550,"f47":12345,"f19":170500,"f20":170600}}'
+
+        tick = provider._parse_payload("600519.SH", payload)
+
+        assert tick is not None
+        assert tick.last_price == pytest.approx(1705.50)
+        assert tick.bid_price == pytest.approx(1705.00)
+        assert tick.ask_price == pytest.approx(1706.00)
+        assert tick.volume == pytest.approx(12345)
+
+    def test_tencent_provider_parses_snapshot(self):
+        provider = TencentDataProvider(interval=60.0)
+        payload = (
+            'v_sh600519="51~贵州茅台~600519~1705.50~1698.00~1700.00~12345~0~0~1705.00~200~0~0~0~0~0~0~0~0~1705.60~300~0~0~0~0~0~0~0~0~0~20260409101530~0";'
+        )
+
+        tick = provider._parse_payload("600519.SH", payload)
+
+        assert tick is not None
+        assert tick.last_price == pytest.approx(1705.50)
+        assert tick.bid_price == pytest.approx(1705.00)
+        assert tick.ask_price == pytest.approx(1705.60)
+        assert tick.bid_volume == pytest.approx(200)
+        assert tick.ask_volume == pytest.approx(300)
+
+
 def _fake_connect(provider: AKShareDataProvider):
     """Helper: simulate a connected state with the real poll loop (mocked akshare)."""
     provider._connected = True
@@ -313,3 +390,40 @@ class TestRealtimeDataManager:
         mgr = RealtimeDataManager()
         with pytest.raises(ValueError, match="No active provider"):
             mgr.subscribe(["600519.SH"])
+
+    def test_start_uses_fallback_when_active_provider_fails(self):
+        mgr = RealtimeDataManager()
+        primary = _FakeProvider(connect_result=False)
+        fallback = _FakeProvider(connect_result=True)
+        mgr.add_provider(DataSource.SINA, primary)
+        mgr.add_provider(DataSource.AKSHARE, fallback)
+        mgr.set_active_provider(DataSource.SINA)
+        mgr.set_fallback_providers([DataSource.AKSHARE])
+        mgr.subscribe(["600519.SH"], bar_intervals=[1])
+
+        mgr.start()
+
+        assert mgr.get_provider() is fallback
+        assert mgr._active_provider == DataSource.AKSHARE
+        assert "600519.SH" in fallback._subscribed_symbols
+
+        mgr.stop()
+
+    def test_runtime_failover_switches_provider(self):
+        mgr = RealtimeDataManager()
+        primary = _FakeProvider(connect_result=True)
+        fallback = _FakeProvider(connect_result=True)
+        mgr.add_provider(DataSource.SINA, primary)
+        mgr.add_provider(DataSource.AKSHARE, fallback)
+        mgr.set_active_provider(DataSource.SINA)
+        mgr.set_fallback_providers([DataSource.AKSHARE])
+        mgr.subscribe(["600519.SH"], bar_intervals=[1])
+
+        mgr.start()
+        primary.push_error("sina unavailable")
+
+        assert mgr._active_provider == DataSource.AKSHARE
+        assert primary.disconnect_calls >= 1
+        assert "600519.SH" in fallback._subscribed_symbols
+
+        mgr.stop()

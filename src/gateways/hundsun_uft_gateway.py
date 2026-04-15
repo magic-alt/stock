@@ -63,8 +63,10 @@ References:
 """
 from __future__ import annotations
 
+import importlib
 import os
 import logging
+import sys
 import threading
 import time
 from datetime import datetime
@@ -94,26 +96,49 @@ logger = logging.getLogger("gateways.hundsun_uft")
 # Check if Hundsun SDK is available
 UFT_AVAILABLE = False
 hsuft_api = None
+CHSTradeApi = None
+CHSTradeSpi = None
+CHSMdApi = None
+CHSMdSpi = None
 _UFT_IMPORT_ERROR: str = ""
 
-try:
-    # The actual import depends on how UFT SDK is packaged
-    # Common names: hsuft, chsapi, etc.
-    import hsuft_api  # type: ignore
-    from hsuft_api import (  # type: ignore
-        CHSTradeApi,
-        CHSTradeSpi,
-        CHSMdApi,
-        CHSMdSpi,
-    )
-    UFT_AVAILABLE = True
-except ImportError as _exc:
-    _UFT_IMPORT_ERROR = (
-        f"Hundsun UFT SDK not available: {_exc}. "
-        "Install the hsuft_api package or set UFT_SDK_PATH. "
-        "Gateway will operate in stub mode."
-    )
-    logger.warning("uft_sdk_unavailable: %s", _exc)
+def _load_uft_sdk(sdk_path: Optional[str] = None) -> bool:
+    """Try to import the Hundsun UFT SDK, optionally extending ``sys.path``."""
+    global UFT_AVAILABLE, hsuft_api, CHSTradeApi, CHSTradeSpi, CHSMdApi, CHSMdSpi, _UFT_IMPORT_ERROR
+
+    if sdk_path and sdk_path not in sys.path:
+        sys.path.insert(0, sdk_path)
+
+    try:
+        module = importlib.import_module("hsuft_api")
+        hsuft_api = module
+        CHSTradeApi = getattr(module, "CHSTradeApi")
+        CHSTradeSpi = getattr(module, "CHSTradeSpi")
+        CHSMdApi = getattr(module, "CHSMdApi")
+        CHSMdSpi = getattr(module, "CHSMdSpi")
+        UFT_AVAILABLE = True
+        _UFT_IMPORT_ERROR = ""
+        return True
+    except ImportError as _exc:
+        UFT_AVAILABLE = False
+        _UFT_IMPORT_ERROR = (
+            f"Hundsun UFT SDK not available: {_exc}. "
+            "Install the hsuft_api package or set UFT_SDK_PATH. "
+            "Gateway will operate in stub mode."
+        )
+        logger.warning("uft_sdk_unavailable: %s", _exc)
+    except AttributeError as _exc:
+        UFT_AVAILABLE = False
+        _UFT_IMPORT_ERROR = (
+            f"Hundsun UFT SDK missing required bindings: {_exc}. "
+            "Verify the installed hsuft_api package matches the gateway expectations."
+        )
+        logger.warning("uft_sdk_incomplete: %s", _exc)
+
+    return False
+
+
+_load_uft_sdk()
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +264,10 @@ class HundsunUftGateway(BaseLiveGateway):
             logger: Optional logger instance
         """
         super().__init__(config, event_queue, logger)
+
+        if not UFT_AVAILABLE and config.sdk_path:
+            if _load_uft_sdk(config.sdk_path) and _HundsunTradeSpi is None:
+                globals()["_HundsunTradeSpi"] = _create_uft_trade_spi_class()
         
         # Stub mode if SDK not available
         self._stub_mode = not UFT_AVAILABLE
@@ -246,7 +275,7 @@ class HundsunUftGateway(BaseLiveGateway):
         if self._stub_mode:
             self.log.warning(
                 "uft_gateway_stub_mode",
-                detail="Hundsun UFT SDK not available, running in stub mode"
+                detail=_UFT_IMPORT_ERROR or "Hundsun UFT SDK not available, running in stub mode",
             )
         
         # API instances
@@ -283,6 +312,11 @@ class HundsunUftGateway(BaseLiveGateway):
             td_front=config.td_front,
             stub_mode=self._stub_mode,
         )
+
+    @property
+    def sdk_import_error(self) -> str:
+        """Expose SDK import diagnostics for smoke checks and setup scripts."""
+        return _UFT_IMPORT_ERROR
     
     def _next_order_ref(self) -> str:
         """Generate next order reference."""
@@ -905,8 +939,8 @@ class HundsunUftGateway(BaseLiveGateway):
 # UFT Callback Handler (SPI)
 # ---------------------------------------------------------------------------
 
-if UFT_AVAILABLE:
-    
+def _create_uft_trade_spi_class():
+    """Build the SPI callback class after the SDK is available."""
     class _HundsunTradeSpi(CHSTradeSpi):
         """
         Hundsun UFT Trade callback handler.
@@ -974,7 +1008,7 @@ if UFT_AVAILABLE:
         def OnRtnTrade(self, pTrade: CHSTradeField) -> None:
             """Trade report callback."""
             self.gateway._on_rtn_trade(pTrade)
-        
+
         def OnRspQryFund(
             self,
             pFund: CHSFundField,
@@ -1021,8 +1055,10 @@ if UFT_AVAILABLE:
                 request_id=nRequestID,
             )
 
-else:
-    _HundsunTradeSpi = None
+    return _HundsunTradeSpi
+
+
+_HundsunTradeSpi = _create_uft_trade_spi_class() if UFT_AVAILABLE else None
 
 
 # ---------------------------------------------------------------------------

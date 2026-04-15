@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import client from '@/api/client'
+import client, { unwrapApiData } from '@/api/client'
 import type { BacktestMetrics } from '@/api/types'
 
 export const useBacktestStore = defineStore('backtest', () => {
@@ -23,12 +23,12 @@ export const useBacktestStore = defineStore('backtest', () => {
     error.value = null
     try {
       const resp = await client.post('/api/v2/strategies/run', params)
-      const data = resp.data
-      if (data.ok) {
+      const data = unwrapApiData<{ metrics: BacktestMetrics }>(resp.data)
+      if (data.metrics) {
         lastResult.value = data.metrics
         history.value.unshift(data.metrics)
       } else {
-        error.value = data.error || 'Backtest failed'
+        error.value = 'Backtest failed'
       }
     } catch (e) {
       error.value = (e as Error).message

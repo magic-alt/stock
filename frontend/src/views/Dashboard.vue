@@ -86,7 +86,7 @@
 import { computed, onMounted } from 'vue'
 import { useTradingStore } from '@/stores/trading'
 import { useBacktestStore } from '@/stores/backtest'
-import client from '@/api/client'
+import client, { unwrapApiData } from '@/api/client'
 import { ref } from 'vue'
 
 const tradingStore = useTradingStore()
@@ -94,10 +94,11 @@ const backtestStore = useBacktestStore()
 const strategyCount = ref(0)
 
 onMounted(async () => {
-  tradingStore.fetchStatus()
+  await tradingStore.refreshAll()
   try {
     const resp = await client.get('/api/v2/strategies')
-    strategyCount.value = resp.data.count || 0
+    const data = unwrapApiData<{ count: number }>(resp.data)
+    strategyCount.value = data.count || 0
   } catch { /* ignore */ }
 })
 

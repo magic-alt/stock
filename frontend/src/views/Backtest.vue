@@ -56,7 +56,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useBacktestStore } from '@/stores/backtest'
-import client from '@/api/client'
+import client, { unwrapApiData } from '@/api/client'
 import type { StrategyInfo } from '@/api/types'
 
 const backtestStore = useBacktestStore()
@@ -73,7 +73,8 @@ const form = ref({
 onMounted(async () => {
   try {
     const resp = await client.get('/api/v2/strategies')
-    strategies.value = resp.data.strategies || []
+    const data = unwrapApiData<{ strategies: StrategyInfo[] }>(resp.data)
+    strategies.value = data.strategies || []
   } catch { /* ignore */ }
 })
 

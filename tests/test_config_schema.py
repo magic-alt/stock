@@ -85,10 +85,16 @@ class TestGlobalConfig:
         """Valid providers accepted; invalid ones and bad interval values rejected."""
         cfg = RealtimeDataConfig(provider="akshare", interval_seconds=5.0)
         assert cfg.provider == "akshare"
+        cfg = RealtimeDataConfig(provider="eastmoney", fallback_providers=["tencent"])
+        assert cfg.provider == "eastmoney"
+        assert cfg.fallback_providers == ["tencent"]
 
         # Invalid provider
         with pytest.raises(ValidationError):
             RealtimeDataConfig(provider="invalid_provider")
+
+        with pytest.raises(ValidationError):
+            RealtimeDataConfig(provider="akshare", fallback_providers=["invalid_provider"])
 
         # Non-positive interval
         with pytest.raises(ValidationError):
@@ -96,6 +102,9 @@ class TestGlobalConfig:
 
         with pytest.raises(ValidationError):
             RealtimeDataConfig(interval_seconds=0)
+
+        with pytest.raises(ValidationError):
+            RealtimeDataConfig(request_timeout_seconds=0)
 
     def test_realtime_data_default_bar_intervals(self):
         """Default bar_intervals list must not be shared across instances."""

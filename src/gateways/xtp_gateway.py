@@ -59,6 +59,7 @@ References:
 """
 from __future__ import annotations
 
+import importlib
 import os
 import logging
 import threading
@@ -93,25 +94,45 @@ logger = logging.getLogger("gateways.xtp")
 XTP_AVAILABLE = False
 xtp_api = None
 _XTP_IMPORT_ERROR: str = ""
+XTPTraderApi = None
+XTPTraderSpi = None
+XTPQuoteApi = None
+XTPQuoteSpi = None
 
-try:
-    # Try importing common XTP Python wrapper packages
-    # The actual import depends on how XTP SDK is packaged
-    import xtp_api  # type: ignore  # Example package name
-    from xtp_api import (  # type: ignore
-        XTPTraderApi,
-        XTPTraderSpi,
-        XTPQuoteApi,
-        XTPQuoteSpi,
-    )
-    XTP_AVAILABLE = True
-except ImportError as _exc:
-    _XTP_IMPORT_ERROR = (
-        f"XTP SDK not available: {_exc}. "
-        "Install the xtp_api package or set XTP_SDK_PATH. "
-        "Gateway will operate in stub mode."
-    )
-    logger.warning("xtp_sdk_unavailable: %s", _exc)
+
+def _load_xtp_sdk(sdk_path: Optional[str] = None) -> bool:
+    """Try loading the XTP SDK, optionally after injecting sdk_path."""
+    global XTP_AVAILABLE, xtp_api, _XTP_IMPORT_ERROR
+    global XTPTraderApi, XTPTraderSpi, XTPQuoteApi, XTPQuoteSpi
+
+    if sdk_path:
+        resolved = str(Path(sdk_path).resolve())
+        import sys
+        if resolved not in sys.path:
+            sys.path.insert(0, resolved)
+
+    try:
+        module = importlib.import_module("xtp_api")
+        xtp_api = module
+        XTPTraderApi = getattr(module, "XTPTraderApi")
+        XTPTraderSpi = getattr(module, "XTPTraderSpi")
+        XTPQuoteApi = getattr(module, "XTPQuoteApi")
+        XTPQuoteSpi = getattr(module, "XTPQuoteSpi")
+        XTP_AVAILABLE = True
+        _XTP_IMPORT_ERROR = ""
+        return True
+    except ImportError as _exc:
+        XTP_AVAILABLE = False
+        _XTP_IMPORT_ERROR = (
+            f"XTP SDK not available: {_exc}. "
+            "Install the xtp_api package or set XTP_SDK_PATH. "
+            "Gateway will operate in stub mode."
+        )
+        logger.warning("xtp_sdk_unavailable: %s", _exc)
+        return False
+
+
+_load_xtp_sdk()
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +265,10 @@ class XtpGateway(BaseLiveGateway):
             ImportError: If XTP SDK is not available
         """
         super().__init__(config, event_queue, logger)
+
+        if not XTP_AVAILABLE and config.sdk_path:
+            if _load_xtp_sdk(config.sdk_path) and _XtpTraderSpi is None:
+                globals()["_XtpTraderSpi"] = _create_xtp_trader_spi_class()
         
         # Note: In production, XTP_AVAILABLE would be True if SDK is installed
         # For development, we implement with stub mode
@@ -252,7 +277,7 @@ class XtpGateway(BaseLiveGateway):
         if self._stub_mode:
             self.log.warning(
                 "xtp_gateway_stub_mode",
-                detail="XTP SDK not available, running in stub mode"
+                detail=_XTP_IMPORT_ERROR or "XTP SDK not available, running in stub mode",
             )
         
         # XTP API instances
@@ -280,6 +305,11 @@ class XtpGateway(BaseLiveGateway):
             trade_server=config.trade_server,
             stub_mode=self._stub_mode,
         )
+
+    @property
+    def sdk_import_error(self) -> str:
+        """Expose SDK import diagnostics for smoke checks and setup scripts."""
+        return _XTP_IMPORT_ERROR
     
     def _next_request_id(self) -> int:
         """Generate next request ID."""
@@ -751,9 +781,8 @@ class XtpGateway(BaseLiveGateway):
 # XTP Callback Handler (SPI)
 # ---------------------------------------------------------------------------
 
-if XTP_AVAILABLE:
-    
-    class _XtpTraderSpi(XTPTraderSpi):
+def _create_xtp_trader_spi_class():
+    class _XtpTraderSpiImpl(XTPTraderSpi):
         """
         XTP Trader callback handler.
         
@@ -863,8 +892,10 @@ if XTP_AVAILABLE:
             
             self.gateway._publish_event(GatewayEventType.POSITION_UPDATE, update)
 
-else:
-    _XtpTraderSpi = None
+    return _XtpTraderSpiImpl
+
+
+_XtpTraderSpi = _create_xtp_trader_spi_class() if XTP_AVAILABLE else None
 
 
 # ---------------------------------------------------------------------------

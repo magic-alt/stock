@@ -284,6 +284,47 @@ class BaseLiveGatewayAdapter:
             )
         return positions
 
+    def query_orders(self, symbol: Optional[str] = None) -> List[OrderInfo]:
+        orders = []
+        for order in self._gateway.get_orders(symbol=symbol):
+            orders.append(
+                OrderInfo(
+                    order_id=order.client_order_id,
+                    symbol=order.symbol,
+                    side=Side(order.side.value),
+                    order_type=OrderTypeEnum(order.order_type.value),
+                    price=order.price,
+                    quantity=order.quantity,
+                    filled_quantity=order.filled_quantity,
+                    avg_fill_price=order.avg_fill_price,
+                    status=_map_live_order_status(order.status.value),
+                    create_time=order.create_time,
+                    update_time=order.update_time,
+                )
+            )
+        return orders
+
+    def query_trades(
+        self,
+        symbol: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[TradeInfo]:
+        trades = []
+        for trade in self._gateway.get_recent_trades(symbol=symbol, limit=limit):
+            trades.append(
+                TradeInfo(
+                    trade_id=trade.trade_id,
+                    order_id=trade.client_order_id,
+                    symbol=trade.symbol,
+                    side=Side(trade.side.value),
+                    price=trade.price,
+                    quantity=trade.quantity,
+                    commission=trade.commission,
+                    timestamp=trade.trade_time,
+                )
+            )
+        return trades
+
     def _account_id(self) -> str:
         return self.config.account or "default"
 
@@ -443,6 +484,26 @@ class PaperTradingAdapter:
     
     def query_positions(self) -> Dict[str, PositionInfo]:
         return self._positions.copy()
+
+    def query_orders(self, symbol: Optional[str] = None) -> List[OrderInfo]:
+        orders = list(self._orders.values())
+        if symbol is not None:
+            orders = [order for order in orders if order.symbol == symbol]
+        orders.sort(key=lambda order: order.update_time or order.create_time or datetime.min, reverse=True)
+        return orders
+
+    def query_trades(
+        self,
+        symbol: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[TradeInfo]:
+        trades = self._trades
+        if symbol is not None:
+            trades = [trade for trade in trades if trade.symbol == symbol]
+        trades = sorted(trades, key=lambda trade: trade.timestamp or datetime.min, reverse=True)
+        if limit is not None and limit >= 0:
+            return trades[:limit]
+        return trades
     
     def update_price(self, symbol: str, price: float) -> None:
         """Update market price and check pending orders."""
@@ -1409,11 +1470,30 @@ class TradingGateway:
     def get_positions(self) -> Dict[str, PositionInfo]:
         """Get all positions."""
         return self._adapter.query_positions()
-    
+
     def get_position(self, symbol: str) -> Optional[PositionInfo]:
         """Get position for a symbol."""
         positions = self._adapter.query_positions()
         return positions.get(symbol)
+
+    def get_orders(self, symbol: Optional[str] = None) -> List[OrderInfo]:
+        """Get cached orders when supported by the underlying adapter."""
+        query_orders = getattr(self._adapter, "query_orders", None)
+        if callable(query_orders):
+            return query_orders(symbol=symbol)
+        return []
+
+    def get_trades(
+        self,
+        *,
+        symbol: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[TradeInfo]:
+        """Get recent trades when supported by the underlying adapter."""
+        query_trades = getattr(self._adapter, "query_trades", None)
+        if callable(query_trades):
+            return query_trades(symbol=symbol, limit=limit)
+        return []
     
     # ---------------------------------------------------------------------------
     # Price Updates (for paper trading)
