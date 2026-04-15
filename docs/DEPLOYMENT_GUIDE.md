@@ -48,6 +48,277 @@ pip install -r requirements.txt
 
 ## 🚀 快速部署
 
+### Docker Compose 生产部署
+
+推荐使用仓库内置的 Docker Compose 栈发布：
+
+```bash
+python scripts/deploy_release.py
+```
+
+默认会完成以下动作：
+
+1. 构建 API 与前端镜像
+2. 启动 `api`、`frontend`、`redis` 服务
+3. 等待 `http://127.0.0.1:8000/api/v2/health` 和 `http://127.0.0.1:3000` 健康检查通过
+
+停止部署：
+
+```bash
+python scripts/deploy_release.py --down
+```
+
+## 🚦 上线决策闸门（Decision Gate）
+
+在上线前先做「决策-only」预检，先给一版可直接执行的标准清单。  
+本清单与另一份文档的对应段落保持一致，变更时同步更新两处，避免版本漂移。
+
+### 1) local_ci 全流程触发清单（含 preflight-gate）
+
+1. 做纯闸门预检前置（本地快速验证）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs test,code-quality,security-scan -SkipInstall
+```
+
+2. 运行阶段1运行态冒烟（XTP/UFT + realtime_data）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs runtime-smoke -SkipInstall
+```
+
+3. 运行真实 SDK 联调冒烟（仅在券商测试环境或联调机上）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs gateway-integration -SkipInstall
+```
+
+4. 运行闸门（建议接在三项前置之后）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs test,code-quality,security-scan,preflight-gate -SkipInstall
+```
+
+5. 做完整上线预检查（含 `preflight-gate` + release 之前校验）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs test,runtime-smoke,code-quality,security-scan,performance,preflight-gate,release -SkipInstall
+```
+
+6. 做“全量本地 CI”（额外含文档、集成测试）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs all -IncludeRelease -SkipInstall
+```
+
+7. 观察关键结果（必须看到）
+
+```text
+Selected jobs: test, code-quality, security-scan, preflight-gate
+[preflight-gate] Run launch preflight decision gate passed
+```
+
+如果直接执行 `-Jobs preflight-gate` 而没跑前置，通常会看到：
+
+```text
+preflight-gate skipped (needs: test, code-quality, security-scan)
+```
+
+该命令不算失败，表示你要补齐前置 dependencies 后再重跑。
+
+`preflight-gate` 在脚本中的固定参数如下：
+
+```text
+--preflight --preflight-platform-run --preflight-platform-limit 3
+--preflight-auto-regression --preflight-auto-rounds 2 --preflight-use-best
+--preflight-decision-only --preflight-fail-on-review
+--preflight-decision-file report/preflight_gate.json
+--preflight-decision-seed-file report/preflight_decision_latest.json
+```
+
+`gateway-integration` 的固定参数如下：
+
+```text
+python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short -x
+```
+
+### 2) `--preflight-decision-seed-file` 主-从轮次闭环清单
+
+标准目标：每次 `review + recommended_replay` 自动回填下一轮的 `--preflight-params`，直到 `approve/block/force_hold` 结束。
+
+1. 准备一次主轮的基线参数
+
+```powershell
+python scripts/start_production.py --preflight --preflight-decision-only --preflight-platform-run --preflight-platform-limit 5 --preflight-decision-file report/preflight_gate.json --preflight-decision-seed-file report/preflight_decision_latest.json --preflight-fail-on-review
+```
+
+2. 设定自动复测闭环（一行即可）
+
+```powershell
+python scripts/start_production.py --preflight --preflight-decision-only --preflight-platform-run --preflight-platform-limit 5 --preflight-auto-regression --preflight-auto-rounds 3 --preflight-decision-file report/preflight_gate.json --preflight-decision-seed-file report/preflight_decision_latest.json --preflight-fail-on-review
+```
+
+3. 约定文件行为
+
+`local_ci.ps1` 与闭环任务会将决策写到：
+
+```text
+report/preflight_gate.json
+```
+
+并将下一轮推荐参数回写到：
+
+```text
+report/preflight_decision_latest.json
+```
+
+主-从轮次重跑时，必须让系统无显示指定 `--preflight-params`，通过 `--preflight-decision-seed-file` 自动注入：
+
+- 第 1 轮：未带 `--preflight-params`，自动读 `report/preflight_decision_latest.json`。
+- 第 2+ 轮：`review + recommended_replay.params` 会被写回该 seed 并作为下一轮参数来源。
+- 轮次上限：`--preflight-auto-rounds 3`（可调整）。
+
+4. 观察复测触发日志（必须出现）
+
+```text
+Preflight decision round 1/3
+Decision round 1 is review and has recommended replay. Starting auto round 2.
+Preflight decision round 2/3
+```
+
+5. 结束条件与人工介入
+
+- 看到 `approved`、`blocked` 或 `force_hold` 时停止并汇总当前决策文件。
+- 看到 `review` 且 `--preflight-auto-regression` 关闭时停止人工复核。
+- 看到 `review` 且开启自动复测时，观察达到 `--preflight-auto-rounds` 后仍未转为非 review，则按规则阻断或降级复测策略。
+
+### 3) CI dry-run 输出模板（预期）
+
+```text
+Repo root: ...
+Selected jobs: test, code-quality, security-scan, preflight-gate
+Skip install: True
+========================================================================
+[JOB] test
+...
+[JOB] code-quality
+...
+[JOB] security-scan
+...
+========================================================================
+[JOB] preflight-gate
+[preflight-gate] Run launch preflight decision gate
+  > python scripts/start_production.py --preflight --preflight-platform-run ...
+[preflight-gate] Run launch preflight decision gate passed
+========================================================================
+Summary
+========================================================================
+preflight-gate passed
+Local CI finished without hard failures.
+```
+
+如果仅执行 `-Jobs preflight-gate` 且没跑前置，预期输出片段为：
+
+```text
+Selected jobs: preflight-gate
+...
+[JOB] preflight-gate
+preflight-gate skipped (needs: test, code-quality, security-scan)
+```
+
+### 4) 推荐命令（可直接用于发布前执行）
+
+```bash
+python scripts/start_production.py --preflight --preflight-decision-only \
+  --preflight-platform-run \
+  --preflight-platform-limit 5 \
+  --preflight-auto-regression \
+  --preflight-auto-rounds 3 \
+  --preflight-decision-seed-file report/preflight_decision_latest.json \
+  --preflight-use-best \
+  --preflight-fail-on-review \
+  --preflight-decision-file report/preflight_release_gate.json
+```
+
+命令说明：
+- `--preflight-decision-only`：仅执行预检并输出 `release_decision`，不启动交易服务。
+- `--preflight-platform-run`：启用候选参数实验平台化复测。
+- `--preflight-platform-limit 5`：平台化复测候选上限（含 base + 4 个候选）。
+- `--preflight-auto-regression`：review 决策时自动回放上轮 `release_decision` 并发起下一轮预检。
+- `--preflight-auto-rounds 3`：单次闸门最大复测轮次（默认 3）。
+- `--preflight-use-best`：用平台最优参数复跑一次作为最终决策依据。
+- `--preflight-fail-on-review`：在策略评分为 `review` 时让命令返回非 0，支持严格 CI 阻断。
+- `--preflight-decision-file`：将结构化决策落盘，便于后续审计与回放。
+- `--preflight-decision-seed-file`：读取上轮 `release_decision.recommended_replay.params`，无显式 `--preflight-params` 时回填为本轮参数。
+
+`local_ci.ps1` 的 `preflight-gate` 会将闸门决策写入 `report/preflight_gate.json`，并更新 `report/preflight_decision_latest.json`，实现“决策 -> 写入 -> 下一轮回填”的闭环。
+
+本地 CI 可直接接入该闸门：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs preflight-gate
+```
+
+若发布流水线要同时执行打包发布与闸门，可执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs release
+```
+
+可选环境变量：
+
+```bash
+PLATFORM_API_TOKEN=your_token
+TUSHARE_TOKEN=your_tushare_token
+```
+
+### 单服务发布模式
+
+`api_v2` 现在支持在生产态直接托管 `frontend/dist`，适合没有 Docker 的机器或单实例云主机：
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+
+python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
+```
+
+发布后统一从 `http://127.0.0.1:8000` 访问：
+
+- Web 控制台：`http://127.0.0.1:8000/`
+- API 健康检查：`http://127.0.0.1:8000/api/v2/health`
+- API 文档：`http://127.0.0.1:8000/api/v2/docs`
+
+可选环境变量：
+
+```bash
+PLATFORM_FRONTEND_DIST=frontend/dist
+PLATFORM_ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.example.com
+```
+
+### Render Blueprint 部署
+
+仓库根目录新增 `render.yaml`，可以直接作为 Render Blueprint 使用。该方案会使用根目录 `Dockerfile` 构建单服务镜像，并把前端静态文件打包进 API 容器。
+
+发布步骤：
+
+```bash
+git add render.yaml Dockerfile
+git commit -m "feat(deploy): add render blueprint"
+git push origin main
+```
+
+打开 Render Blueprint 入口：
+
+`https://dashboard.render.com/blueprint/new?repo=https://github.com/magic-alt/stock`
+
+创建时补充以下密钥：
+
+- `PLATFORM_API_TOKEN`
+- `TUSHARE_TOKEN`
+
 ### 1. 克隆项目
 
 ```bash
@@ -103,6 +374,26 @@ python scripts/start_production.py --mode paper
 # 实盘交易模式（已实现，需显式确认）
 CONFIRM_LIVE_TRADING=1 python scripts/start_production.py --mode live
 ```
+
+### 7. Web 控制台
+
+生产部署默认暴露：
+
+- 前端控制台：`http://127.0.0.1:3000`
+- API 健康检查：`http://127.0.0.1:8000/api/v2/health`
+- API 文档：`http://127.0.0.1:8000/api/v2/docs`
+
+单服务发布模式暴露：
+
+- 统一入口：`http://127.0.0.1:8000/`
+- 健康检查：`http://127.0.0.1:8000/health`
+- 指标接口：`http://127.0.0.1:8000/metrics`
+
+网页端能力包括：
+
+- 回测配置与结果查看
+- 网关连接、下单、撤单、paper 行情注入
+- 系统监控、任务列表、告警、账户/持仓/订单/成交查看
 
 ---
 

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: stock-platform
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    healthCheckPath: /api/v2/health
+    envVars:
+      - key: PYTHONPATH
+        value: /app
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PLATFORM_FRONTEND_DIST
+        value: /app/frontend/dist
+      - key: PLATFORM_API_TOKEN
+        sync: false
+      - key: TUSHARE_TOKEN
+        sync: false

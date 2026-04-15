@@ -61,6 +61,18 @@ python examples/quick_start.py
 # 策略列表
 python unified_backtest_framework.py list
 
+# 生成真实历史样本回归基线
+python unified_backtest_framework.py baseline --strategy macd \
+  --params '{"fast": 12, "slow": 26, "signal": 9}' \
+  --register-strategy-baseline --baseline-alias prod \
+  --regimes bull bear range high-vol
+
+# 生成策略准入报告（自动解析单策略基线并做漂移检查）
+python unified_backtest_framework.py admission --strategy macd \
+  --profile institutional \
+  --baseline-alias prod \
+  --regimes bull bear range high-vol
+
 # 网格搜索
 python unified_backtest_framework.py grid --strategy macd --symbols 600519.SH \
   --start 2023-01-01 --end 2024-12-31 \
@@ -76,7 +88,10 @@ python unified_backtest_framework.py combo --navs report/ema_nav.csv report/macd
 ```
 
 - `run` 默认启用交易日历对齐与停牌填充（可用 `--calendar off` 关闭）。
+- A 股数据源（`akshare` / `tushare`）会自动使用上交所真实交易日历做对齐和质量检查，不再把春节、国庆等休市日误判为缺失交易日。
 - 回测输出目录会生成 `run_snapshot.json` 与 `data_quality.json/.md` 便于复现与审计。
+- `baseline` / `admission` 会基于真实历史样本输出 JSON + Markdown 评审产物，支持按 `bull` / `bear` / `range` / `high-vol` 分层回归，并按策略族套用不同准入门槛。
+- `baseline --register-strategy-baseline` 会把基线注册到 `report/strategy_baselines/<strategy>/<alias>/`；后续 `admission` 在未传 `--baseline-file` 时会自动解析该单策略基线。
 
 ---
 
@@ -118,11 +133,12 @@ stock/
 
 ## 📚 文档索引
 
-- `PROJECT_ROADMAP.md` - 路线图/进度
+- `docs/ROADMAP.md` - 路线图/进度
 - `CHANGELOG.md` - 版本记录
-- `QUICK_START_DEPLOYMENT.md` - 部署速览
+- `docs/QUICK_START_DEPLOYMENT.md` - 部署速览
 - `docs/API_REFERENCE.md` - API 参考
 - `docs/LIVE_TRADING_API.md` - 实盘接口说明
+- `docs/STRATEGY_ADMISSION_WORKFLOW.md` - 历史样本回归基线与策略准入流程
 
 ---
 

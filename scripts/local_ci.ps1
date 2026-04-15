@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("all", "test", "code-quality", "security-scan", "build-docs", "performance", "integration-test", "release")]
     [string[]]$Jobs = @("all"),
     [switch]$IncludeRelease,
     [switch]$SkipInstall
@@ -12,6 +11,13 @@ $ErrorActionPreference = "Stop"
 $script:SoftFailures = @()
 $script:JobResults = @()
 $script:JobState = @{}
+
+$allowedJobs = @("all", "test", "runtime-smoke", "gateway-integration", "code-quality", "security-scan", "build-docs", "performance", "integration-test", "preflight-gate", "release")
+$Jobs = @($Jobs | ForEach-Object { $_ -split "," } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$invalidJobs = @($Jobs | Where-Object { $_ -notin $allowedJobs })
+if ($invalidJobs.Count -gt 0) {
+    throw ("Unsupported job(s): {0}. Allowed jobs: {1}" -f (($invalidJobs | Sort-Object -Unique) -join ", "), ($allowedJobs -join ", "))
+}
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $repoRoot
@@ -121,7 +127,7 @@ function Invoke-Job {
 }
 
 function Resolve-SelectedJobs {
-    $defaultOrder = @("test", "code-quality", "security-scan", "build-docs", "performance", "integration-test")
+    $defaultOrder = @("test", "runtime-smoke", "code-quality", "security-scan", "build-docs", "performance", "integration-test")
     if ($IncludeRelease) {
         $defaultOrder += "release"
     }
@@ -137,8 +143,31 @@ function Resolve-SelectedJobs {
         }
     }
 
+    $releaseRequested = ($Jobs -contains "release") -or ($selected -contains "release")
+
+    if (($Jobs -contains "preflight-gate") -and ($selected -notcontains "preflight-gate")) {
+        $selected += "preflight-gate"
+    }
+    if (($Jobs -contains "gateway-integration") -and ($selected -notcontains "gateway-integration")) {
+        $selected += "gateway-integration"
+    }
+
     if (($Jobs -contains "release") -and ($selected -notcontains "release")) {
         $selected += "release"
+    }
+    if ($releaseRequested) {
+        $selected = @($selected | Where-Object { $_ -ne "preflight-gate" })
+        $releaseIndex = [Array]::IndexOf($selected, "release")
+        if ($releaseIndex -ge 0) {
+            $head = @()
+            if ($releaseIndex -gt 0) {
+                $head = $selected[0..($releaseIndex - 1)]
+            }
+            $tail = $selected[$releaseIndex..($selected.Count - 1)]
+            $selected = @($head + @("preflight-gate") + $tail)
+        } else {
+            $selected += "preflight-gate"
+        }
     }
 
     return $selected
@@ -165,8 +194,11 @@ foreach ($job in $selectedJobs) {
                         { pip install pytest pytest-cov pytest-xdist }
                     )
                 }
+                Invoke-Step -JobName "test" -StepName "Run strategy smoke gate" -Commands @(
+                    { python -m pytest tests/test_strategy_backtest_contracts.py -v --tb=short -x }
+                )
                 Invoke-Step -JobName "test" -StepName "Run tests" -Commands @(
-                    { python -m pytest tests/ -v --tb=short }
+                    { python -m pytest tests/ -v --tb=short --ignore=tests/test_strategy_backtest_contracts.py }
                 )
             }
         }
@@ -189,6 +221,32 @@ foreach ($job in $selectedJobs) {
                 )
                 Invoke-Step -JobName "code-quality" -StepName "Pylint" -AllowFailure -Commands @(
                     { pylint src/ --disable=C0111,R0913,R0914,R0915 }
+                )
+            }
+        }
+        "runtime-smoke" {
+            Invoke-Job -Name "runtime-smoke" -Body {
+                if (-not $SkipInstall) {
+                    Invoke-Step -JobName "runtime-smoke" -StepName "Install dependencies" -Commands @(
+                        { python -m pip install --upgrade pip },
+                        { pip install -r requirements.txt }
+                    )
+                }
+                Invoke-Step -JobName "runtime-smoke" -StepName "Run gateway and realtime smoke tests" -Commands @(
+                    { python -m pytest tests/test_gateway_xtp_smoke.py tests/test_gateway_uft_smoke.py tests/test_realtime_data.py tests/test_config_schema.py::TestGlobalConfig::test_default_config_valid tests/test_config_schema.py::TestGlobalConfig::test_realtime_data_config_validation tests/test_config_schema.py::TestGlobalConfig::test_realtime_data_default_bar_intervals -v --tb=short -x }
+                )
+            }
+        }
+        "gateway-integration" {
+            Invoke-Job -Name "gateway-integration" -Body {
+                if (-not $SkipInstall) {
+                    Invoke-Step -JobName "gateway-integration" -StepName "Install dependencies" -Commands @(
+                        { python -m pip install --upgrade pip },
+                        { pip install -r requirements.txt }
+                    )
+                }
+                Invoke-Step -JobName "gateway-integration" -StepName "Run XTP/UFT SDK integration smoke" -Commands @(
+                    { python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short -x }
                 )
             }
         }
@@ -269,8 +327,34 @@ foreach ($job in $selectedJobs) {
                 )
             }
         }
+        "preflight-gate" {
+            Invoke-Job -Name "preflight-gate" -Needs @("test", "code-quality", "security-scan") -Body {
+                if (-not $SkipInstall) {
+                    Invoke-Step -JobName "preflight-gate" -StepName "Install dependencies" -Commands @(
+                        { python -m pip install --upgrade pip },
+                        { pip install -r requirements.txt }
+                    )
+                }
+                $decisionFile = "report/preflight_gate.json"
+                $decisionSeedFile = "report/preflight_decision_latest.json"
+                Invoke-Step -JobName "preflight-gate" -StepName "Run launch preflight decision gate" -Commands @(
+                    {
+                        python scripts/start_production.py --preflight `
+                            --preflight-platform-run `
+                            --preflight-platform-limit 3 `
+                            --preflight-auto-regression `
+                            --preflight-auto-rounds 2 `
+                            --preflight-use-best `
+                            --preflight-decision-only `
+                            --preflight-fail-on-review `
+                            --preflight-decision-file $decisionFile `
+                            --preflight-decision-seed-file $decisionSeedFile
+                    }
+                )
+            }
+        }
         "release" {
-            Invoke-Job -Name "release" -Needs @("test", "code-quality", "security-scan", "performance") -Body {
+            Invoke-Job -Name "release" -Needs @("test", "runtime-smoke", "code-quality", "security-scan", "performance", "preflight-gate") -Body {
                 if (-not $SkipInstall) {
                     Invoke-Step -JobName "release" -StepName "Install build package" -Commands @(
                         { python -m pip install --upgrade pip build }

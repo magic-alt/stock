@@ -34,9 +34,13 @@ jobs:
         pip install pytest pytest-cov pytest-xdist httpx
         pip install pyarrow scipy jinja2 duckdb
 
+    - name: Run strategy smoke gate
+      run: |
+        python -m pytest tests/test_strategy_backtest_contracts.py -v --tb=short -x
+
     - name: Run tests
       run: |
-        python -m pytest tests/ -v --tb=short --override-ini="addopts=-v --tb=short" -x
+        python -m pytest tests/ -v --tb=short --override-ini="addopts=-v --tb=short" --ignore=tests/test_strategy_backtest_contracts.py -x
 
     - name: Run tests with coverage
       if: matrix.os == 'ubuntu-latest'

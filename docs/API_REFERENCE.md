@@ -527,7 +527,7 @@ risk:
 
 - [Deployment Guide](DEPLOYMENT_GUIDE.md)
 - [Architecture Review](ARCHITECTURE_REVIEW.md)
-- [Quick Start](../QUICK_START_DEPLOYMENT.md)
+- [Quick Start](QUICK_START_DEPLOYMENT.md)
 - [Changelog](../CHANGELOG.md)
 
 ---

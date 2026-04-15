@@ -11,21 +11,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Install core Python deps first (caching layer)
-COPY pyproject.toml ./
+COPY requirements.txt requirements-mlops.txt pyproject.toml README.md ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir ".[api,perf]"
+    pip install --no-cache-dir -r requirements.txt fastapi "uvicorn[standard]" duckdb polars pyarrow
 
 # ---------------------------------------------------------------------------
-# Data layer: + DuckDB + Parquet tools
+# Data layer: reserved stage for cacheable data-tooling customizations
 # ---------------------------------------------------------------------------
 FROM base AS data
-RUN pip install --no-cache-dir duckdb polars pyarrow
+RUN python -V
 
 # ---------------------------------------------------------------------------
 # Full image: + ML deps (optional, large)
 # ---------------------------------------------------------------------------
 FROM data AS full
-RUN pip install --no-cache-dir ".[ml]" || echo "ML deps skipped (optional)"
+RUN pip install --no-cache-dir -r requirements-mlops.txt || echo "ML deps skipped (optional)"
+
+# ---------------------------------------------------------------------------
+# Frontend build: compile the Vue SPA for production release images
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS frontend-build
+
+WORKDIR /frontend
+
+COPY frontend/package*.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
 
 # ---------------------------------------------------------------------------
 # Production image: minimal
@@ -35,6 +48,8 @@ FROM data AS production
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY config.yaml.example ./config.yaml.example
+COPY requirements.txt pyproject.toml README.md ./
+COPY --from=frontend-build /frontend/dist ./frontend/dist
 
 # Create runtime directories
 RUN mkdir -p cache report data_lake logs
@@ -50,5 +65,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PLATFORM_FRONTEND_DIST=/app/frontend/dist
 
-CMD ["python", "-m", "uvicorn", "src.platform.api_v2:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port ${PORT:-8000}"]

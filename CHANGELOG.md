@@ -2,6 +2,73 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased] - 2026-04-09
+
+### Added
+- 生产: 为上线预检增加实盘回放一致性评估与策略优化建议，支持回测/回放参数统一映射校验。
+- Gateway: add structured `run_smoke_test()` readiness checks for live gateways so XTP/UFT can reuse the same smoke contract in stub mode or SDK-backed environments.
+- Gateway: add real-SDK integration smoke tests for XTP/UFT with environment-driven account wiring and an explicit live-order opt-in.
+- Realtime: add HTTP polling providers for `sina` / `eastmoney` / `tencent`, plus active-provider failover support in `RealtimeDataManager`.
+- Web: add monitor summary/history/alerts endpoints plus gateway snapshot/orders/trades endpoints for the browser console.
+- Web: add frontend monitor store, gateway connection form, order/trade tables, and paper-price injection flow.
+- Deploy: add `frontend/Dockerfile` and `frontend/nginx.conf` so the Vite frontend can run behind the existing Docker Compose stack.
+- Deploy: add `scripts/deploy_release.py` for one-command Docker Compose build, startup, and health-check validation.
+- Deploy: add `render.yaml` Blueprint for single-service Render release using the root Docker image.
+- Backtest: add historical sample regression baseline generation and strategy admission reporting in `src/backtest/admission.py`.
+- Docs: add `docs/STRATEGY_ADMISSION_WORKFLOW.md` with baseline/admission commands, default sample windows, and report workflow.
+- Backtest: expand built-in historical sample windows to cover `bull`, `bear`, `range`, and `high-vol` regimes for both single-symbol and multi-symbol strategies.
+- Backtest: add single-strategy baseline registry support so canonical baselines can be registered under `report/strategy_baselines/<strategy>/<alias>/` and auto-resolved by `admission`.
+- 上线: 启动脚本新增上线决策系统，输出结构化 `release_decision`（approve/review/block）、必需 override 与复用建议（`recommended_replay`），支持决策导向的预检停机/放行判断。
+- 上线: 启动脚本新增自动实验平台化能力，支持 `--preflight-platform-run` 与实验参数批量复测落盘（`preflight_platform`），并可直接使用平台最优候选重跑预检。
+
+### Changed
+- 启动脚本 `scripts/start_production.py` 默认预检策略采用配置优先 + `macd` 回退，并输出预检策略优化建议，便于实盘前决策。
+- Gateway: retry XTP/UFT SDK imports during gateway initialization so `GatewayConfig.sdk_path` can activate broker SDKs without requiring a process-wide `PYTHONPATH` bootstrap.
+- Config: expand `RealtimeDataConfig` to support `eastmoney` / `tencent`, fallback provider lists, and realtime request timeout validation.
+- 预检报告结构化输出增强：`scripts/preflight_check.py` 新增 `advice_level`/`candidate_grid`/`candidate_plan` 对齐字段，并在启动流程消费并记录候选复检计划。
+- 上线启动增强：`scripts/start_production.py` 新增实盘预检门禁参数（`--preflight-allow-warn` / `--preflight-allow-block`）与预检报告导出（`--preflight-export`），实盘模式下可按 `advice_level` 自动阻断或放行。
+- 上线启动增强：`scripts/start_production.py` 新增 `--preflight-sweep` 小规模候选参数复检流程（含 `--preflight-sweep-limit`、导出到 `preflight` 报表 `preflight_sweep`），用于实盘前快速 paper/回测回放筛选。
+- 启动器复检增强：`scripts/start_production.py` 在候选复检后追加 `recommended_replay` 结构化建议（含可复跑参数包），用于自动化审批/二次预检闭环。
+- 启动器继续增强：新增 `--preflight-use-best`，在候选复检后可直接以最优候选复跑一次预检并用其结果作为后续启动依据（附带降级警告与追踪字段）。
+- 上线启动增强：启动器新增 `--preflight-platform-run` / `--preflight-platform-dir` / `--preflight-platform-limit` / `--preflight-decision-only`，并将平台最优候选与最终 `--preflight-use-best` 预检重跑统一。
+- 决策闸门增强：`--preflight-decision-only` 下新增 `--preflight-fail-on-review` 与 `--preflight-decision-file`，支持 CI/脚本将 `review` 与 `block` 分离为“可警告”与“阻断”。
+- 上线治理增强：`scripts/local_ci.ps1` 新增 `preflight-gate` job，调用 `start_production.py --preflight-decision-only` 形成可复用上线闸门；`-Jobs release` 会联动执行闸门并将 `release` 受控依赖于其通过。
+- 上线治理增强：`scripts/local_ci.ps1` 新增 `runtime-smoke` job，将 XTP/UFT gateway smoke 与 realtime_data failover/provider 测试纳入本地发布验收链路，并让 `release` 依赖其通过。
+- 上线治理增强：`scripts/local_ci.ps1` 新增 `gateway-integration` job，用于真实 SDK 联调机执行 XTP/UFT 集成冒烟；默认不并入 `all/release`，避免污染通用本地 CI。
+- 上线治理增强：`start_production.py` 支持通过 `--preflight-decision-seed-file` 自动读取上一轮 `release_decision.recommended_replay.params`，在未手工传入 `--preflight-params` 时自动回填；闸门默认同时更新 `report/preflight_decision_latest.json`，形成决策-复测-参数回写闭环。
+- 上线治理增强：`start_production.py` 新增 `--preflight-auto-regression` 与 `--preflight-auto-rounds`，在 `--preflight-decision-only` 下支持 review 状态触发下一轮复测（读取 `release_decision` 决策快照）。
+- Platform: enrich gateway service status payload with account, connection timestamp, and aggregated snapshot data.
+- Gateway: retain cached live trades/orders for API exposure and web-side monitoring.
+- API: align production FastAPI `api_v2` with web trading/monitoring endpoints and add `/api/v2/strategies/run`.
+- Deploy: build the frontend into the production API image and serve `frontend/dist` directly from `api_v2` for single-port releases.
+- Repo: move quick-start deployment notes from the repository root into `docs/QUICK_START_DEPLOYMENT.md` and repair README/API doc links.
+- CI: promote full strategy backtest smoke validation to a dedicated gate in GitHub Actions and `scripts/local_ci.ps1`.
+- CLI: add `baseline` and `admission` commands to `unified_backtest_framework.py` so real-history baselines and admission reports can be generated from the main entrypoint.
+- Backtest: resolve admission thresholds by strategy family (`trend`, `mean_reversion`, `breakout`, `portfolio`, `futures`, `machine_learning`) instead of applying one universal profile to every strategy.
+- Reports: add regime coverage and regime-level performance summaries to baseline/admission artifacts, and support `--regimes` filtering from the CLI.
+- CLI: add `--register-strategy-baseline`, `--baseline-root`, and `--baseline-alias` so baseline generation and admission can operate against strategy-owned canonical baselines instead of one-off file paths.
+- Reports: record parameter signatures plus baseline source/alias/match status in admission artifacts so reviewers can see whether regression checks used a strategy-owned baseline.
+
+### Fixed
+- Frontend: normalize backend position/account payloads to actual API schema so trading pages render correctly.
+- Frontend: switch release path to `api_v2` envelopes so strategy/trading pages work behind the production stack.
+- Deploy: align production health endpoints and legacy release proxies with `api_v2` paths.
+- Repo: ignore coverage caches, Python bytecode, frontend temp files, and test snapshots to keep the workspace clean.
+- Backtest: fix EMA strategy warmup validation so real data length is read from the underlying data source instead of `len(self.data)` during Backtrader initialization.
+- Backtest: replace unsafe RSI indicator usage with `RSI_Safe` across mean-reversion and trend-pullback strategies to prevent `ZeroDivisionError` crashes on monotonic windows.
+- Strategy API: remove dangling ML aliases that advertised strategies not actually resolvable through the Backtrader registry.
+- Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
+
+### Tests
+- Backtest: add `tests/test_strategy_backtest_contracts.py` to smoke-test every registered strategy except the external-dependency `qlib_registry` path.
+- Tests: add `tests/test_gateway_xtp_smoke.py` and `tests/test_gateway_uft_smoke.py` for unified gateway smoke assertions, and extend `tests/test_realtime_data.py` with HTTP provider parsing plus failover coverage.
+- Tests: add `tests/test_gateway_xtp_integration.py` and `tests/test_gateway_uft_integration.py` so real broker SDK environments can validate connect/account/position readiness with skip-safe behavior.
+- Tests: add alias integrity coverage so strategy aliases cannot point at unregistered backtest implementations.
+- Backtest: add `tests/test_strategy_admission.py` to cover historical sample loading, strategy-shape filtering, admission gating, and artifact rendering.
+- Backtest: add regime-filter and strategy-family profile coverage so admission behavior cannot silently fall back to one-size-fits-all thresholds.
+- Data: add exchange-calendar coverage so the quality gate ignores the 2024 Spring Festival closure for A-share samples.
+- Backtest: add single-strategy baseline registry and parameter-mismatch coverage so admission auto-resolution does not silently compare against the wrong baseline.
+
 ## [Unreleased] - 2026-03-01
 
 ### Added — V5.0-F Engineering Efficiency Upgrade (1054 tests)

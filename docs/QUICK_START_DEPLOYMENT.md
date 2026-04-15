@@ -175,10 +175,10 @@ python scripts/start_production.py --log-level DEBUG
 
 ## 📚 下一步
 
-- 📖 阅读 [完整部署指南](docs/DEPLOYMENT_GUIDE.md)
-- 📊 查看 [架构审查报告](docs/ARCHITECTURE_REVIEW.md)
-- 🎯 学习 [用户手册](README.md)
+- 阅读 [完整部署指南](DEPLOYMENT_GUIDE.md)
+- 查看 [架构审查报告](ARCHITECTURE_REVIEW.md)
+- 学习 [用户手册](../README.md)
 
 ---
 
-**需要帮助？** 查看 [故障排查指南](docs/DEPLOYMENT_GUIDE.md#故障排查)
+**需要帮助？** 查看 [故障排查指南](DEPLOYMENT_GUIDE.md#故障排查)
