@@ -44,10 +44,12 @@ class EMAStrategy(bt.Strategy):
     )
 
     def __init__(self):
-        # Check if we have enough data for the indicator
-        data_len = len(self.data)
+        # Backtrader strategy __init__ runs before bars are consumed, so len(self.data)
+        # is still 0 here. Use the underlying DataFrame length when available.
+        source_df = getattr(self.data, "_dataname", None)
+        data_len = len(source_df) if hasattr(source_df, "__len__") else 0
         min_bars = max(self.params.period + self.params.slope_lookback, self.params.atr_period)
-        if data_len < min_bars:
+        if data_len and data_len < min_bars:
             raise ValueError(
                 f"EMA strategy requires at least {min_bars} bars of data, "
                 f"but only {data_len} bars available. "

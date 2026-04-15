@@ -4,22 +4,58 @@ Trading calendar utilities for backtest alignment and suspension handling.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from functools import lru_cache
+from typing import ClassVar, Iterable, Optional
 
 import pandas as pd
+
+try:  # pragma: no cover - exercised through public behavior
+    import exchange_calendars as xcals
+except ImportError:  # pragma: no cover - graceful fallback when optional dep is missing
+    xcals = None
+
+
+@lru_cache(maxsize=8)
+def _get_exchange_calendar(exchange: str):
+    if xcals is None:
+        raise RuntimeError("exchange_calendars is not installed")
+    return xcals.get_calendar(exchange)
 
 
 @dataclass(frozen=True)
 class TradingCalendar:
-    """Simple weekday trading calendar with optional holiday exclusions."""
+    """Trading calendar with optional exchange sessions and holiday exclusions."""
+
+    SOURCE_EXCHANGE_MAP: ClassVar[dict[str, Optional[str]]] = {
+        "akshare": "XSHG",
+        "qlib": "XSHG",
+        "tushare": "XSHG",
+        "yfinance": None,
+    }
+
     holidays: Optional[pd.DatetimeIndex] = None
+    exchange: Optional[str] = None
+
+    @classmethod
+    def for_source(cls, source: Optional[str]) -> "TradingCalendar":
+        """Build a default calendar for a configured market data source."""
+        normalized = str(source or "").strip().lower()
+        return cls(exchange=cls.SOURCE_EXCHANGE_MAP.get(normalized))
 
     def sessions(self, start: str, end: str) -> pd.DatetimeIndex:
         """Return trading sessions between start and end (inclusive)."""
-        sessions = pd.bdate_range(start=start, end=end)
+        sessions = self._exchange_sessions(start, end) if self.exchange else pd.bdate_range(start=start, end=end)
         if self.holidays is None or len(self.holidays) == 0:
             return sessions
         return sessions.difference(self.holidays)
+
+    def _exchange_sessions(self, start: str, end: str) -> pd.DatetimeIndex:
+        """Return exchange sessions when an exchange calendar is configured."""
+        try:
+            sessions = _get_exchange_calendar(str(self.exchange)).sessions_in_range(start, end)
+        except Exception:
+            sessions = pd.bdate_range(start=start, end=end)
+        return pd.to_datetime(sessions).normalize()
 
 
 def normalize_holidays(holidays: Optional[Iterable[str]]) -> pd.DatetimeIndex:

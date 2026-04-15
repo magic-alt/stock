@@ -54,7 +54,7 @@ class ZScoreEnhancedStrategy(bt.Strategy):
     def __init__(self):
         self.sma = bt.indicators.SMA(self.data.close, period=self.params.period)
         self.std = bt.indicators.StdDev(self.data.close, period=self.params.period)
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.rsi_period)
+        self.rsi = bt.indicators.RSI_Safe(self.data.close, period=self.params.rsi_period)
         self.atr = bt.indicators.ATR(self.data, period=self.params.atr_period)
         
         self.order = None
@@ -138,7 +138,7 @@ class RSITrendStrategy(bt.Strategy):
     )
 
     def __init__(self):
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.rsi_period)
+        self.rsi = bt.indicators.RSI_Safe(self.data.close, period=self.params.rsi_period)
         self.sma_trend = bt.indicators.SMA(self.data.close, period=self.params.trend_period)
         self.order = None
 

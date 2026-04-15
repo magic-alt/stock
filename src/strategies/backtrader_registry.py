@@ -873,9 +873,6 @@ STRATEGY_ALIASES: Dict[str, str] = {
     # 机构级策略
     'trend_pullback': 'trend_pullback_enhanced',
     
-    # ML策略 (需要先注册)
-    'ml_basic': 'ml_enhanced',
-    'ml_ensemble_strategy': 'ml_ensemble',
 }
 
 # 反向映射: 实际名 -> 标准化别名列表

@@ -77,7 +77,7 @@ class TrendPullbackEnhanced(bt.Strategy):
         self.atr = bt.indicators.ATR(
             self.data, period=self.params.atr_period, plot=False
         )
-        self.rsi = bt.indicators.RSI(
+        self.rsi = bt.indicators.RSI_Safe(
             self.data.close, period=self.params.rsi_period, plot=False
         )
 

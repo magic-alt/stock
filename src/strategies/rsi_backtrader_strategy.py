@@ -35,7 +35,7 @@ class RSIStrategy(bt.Strategy):
     )
 
     def __init__(self):
-        self.rsi = bt.indicators.RSI(
+        self.rsi = bt.indicators.RSI_Safe(
             self.data.close,
             period=self.params.period,
         )
@@ -140,7 +140,7 @@ class RSIMaFilterStrategy(bt.Strategy):
     )
 
     def __init__(self):
-        self.rsi = bt.indicators.RSI(
+        self.rsi = bt.indicators.RSI_Safe(
             self.data.close,
             period=self.params.rsi_period,
         )
@@ -190,7 +190,7 @@ class RSIDivergenceStrategy(bt.Strategy):
     )
 
     def __init__(self):
-        self.rsi = bt.indicators.RSI(
+        self.rsi = bt.indicators.RSI_Safe(
             self.data.close,
             period=self.params.period,
         )

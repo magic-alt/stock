@@ -46,7 +46,7 @@ class BollingerStrategy(bt.Strategy):
             devfactor=self.params.devfactor,
         )
         # V3.0: RSI 指标
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.params.rsi_period)
+        self.rsi = bt.indicators.RSI_Safe(self.data.close, period=self.params.rsi_period)
         self.order = None
 
     def log(self, txt: str, dt=None):

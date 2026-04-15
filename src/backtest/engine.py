@@ -241,7 +241,7 @@ class BacktestEngine:
         self.source = source
         self.benchmark_source = benchmark_source or source
         self.cache_dir = cache_dir
-        self.calendar = calendar or TradingCalendar()
+        self.calendar = calendar or TradingCalendar.for_source(source)
         self.calendar_mode = calendar_mode
         
         # V2.6.0: Initialize event-driven components (with backward compatibility)

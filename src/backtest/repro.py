@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime as _dt
 import hashlib
 import json
+import math
 import os
 import platform
 import subprocess
@@ -25,11 +26,15 @@ def _to_builtin(value: Any) -> Any:
         return {str(k): _to_builtin(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [_to_builtin(v) for v in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (_dt.datetime, _dt.date)):
+        return value.isoformat()
     if isinstance(value, (pd.Timestamp,)):
         return value.isoformat()
     if hasattr(value, "item"):
         try:
-            return value.item()
+            return _to_builtin(value.item())
         except Exception:
             return str(value)
     return value
@@ -139,5 +144,5 @@ def write_snapshot(report_dir: str, payload: Dict[str, Any], filename: str = "ru
     os.makedirs(report_dir, exist_ok=True)
     path = os.path.join(report_dir, filename)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+        json.dump(payload, f, indent=2, ensure_ascii=False, allow_nan=False)
     return path

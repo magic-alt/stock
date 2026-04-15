@@ -52,7 +52,7 @@ class KeltnerStrategy(bt.Strategy):
         
         # V3.1: RSI 确认
         if self.params.use_rsi_confirm:
-            self.rsi = bt.indicators.RSI(
+            self.rsi = bt.indicators.RSI_Safe(
                 self.data.close, period=self.params.rsi_period
             )
         

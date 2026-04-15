@@ -583,7 +583,7 @@ class BollingerRSI_Optimized(bt.Strategy):
         )
         
         # RSI
-        self.rsi = bt.indicators.RSI(self.data.close, period=self.p.rsi_period)
+        self.rsi = bt.indicators.RSI_Safe(self.data.close, period=self.p.rsi_period)
         
         # 趋势过滤（可选）
         if self.p.use_trend_filter:

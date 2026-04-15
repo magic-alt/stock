@@ -16,9 +16,20 @@ import argparse
 import json
 import os
 import time
-from typing import Dict
+from typing import Any, Dict, Optional
 
 # Import modularized components
+from src.backtest.admission import (
+    ADMISSION_PROFILES,
+    DEFAULT_STRATEGY_BASELINE_ROOT,
+    evaluate_admission,
+    generate_historical_baseline,
+    load_sample_cases,
+    register_strategy_baseline,
+    resolve_baseline_snapshot,
+    write_admission_artifacts,
+    write_baseline_artifacts,
+)
 from src.data_sources.providers import get_provider, PROVIDER_NAMES
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.backtest.engine import BacktestEngine
@@ -39,10 +50,35 @@ def _build_report_dir(args: argparse.Namespace) -> str:
     if getattr(args, "out_dir", None):
         return args.out_dir
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+    command = getattr(args, "command", "run")
+    strategy = getattr(args, "strategy", "run")
+    if command in {"baseline", "admission"}:
+        return os.path.join("report", f"{strategy}_{command}_{timestamp}")
     symbol_part = "_".join(args.symbols) if getattr(args, "symbols", None) else "unknown"
     symbol_part = symbol_part.replace(".SH", "").replace(".SZ", "").replace(".", "_")
-    strategy = getattr(args, "strategy", "run")
     return os.path.join("report", f"{symbol_part}_{strategy}_{timestamp}")
+
+
+def _parse_json_option(value: Optional[str], *, option_name: str) -> Optional[Dict[str, Any]]:
+    """Parse a JSON CLI option into a dictionary."""
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON for {option_name}: {exc}") from exc
+    if parsed is None:
+        return None
+    if not isinstance(parsed, dict):
+        raise ValueError(f"{option_name} must be a JSON object.")
+    return parsed
+
+
+def _log_artifacts(title: str, artifacts: Dict[str, str]) -> None:
+    """Log generated artifact paths."""
+    logger.info(title)
+    for name, path in artifacts.items():
+        logger.info(f"- {name}: {path}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,6 +109,58 @@ def parse_args() -> argparse.Namespace:
                        help="Fee plugin name (e.g., 'cn_stock'). If not specified, uses default commission.")
     run_p.add_argument("--fee-params", dest="fee_params", default=None,
                        help='Fee plugin parameters as JSON string (e.g., \'{"commission_rate":0.0001,"min_commission":5.0}\')')
+
+    # ===== baseline command =====
+    baseline_p = sub.add_parser("baseline", help="Generate historical regression baseline snapshots")
+    baseline_p.add_argument("--strategy", required=True, choices=sorted(STRATEGY_REGISTRY.keys()))
+    baseline_p.add_argument("--params", default=None, help="JSON string of strategy params")
+    baseline_p.add_argument("--samples-file", default=None, help="YAML/JSON file with historical sample cases")
+    baseline_p.add_argument("--samples", nargs="*", default=None, help="Optional sample ids to run")
+    baseline_p.add_argument("--regimes", nargs="*", default=None, help="Optional regime tags to run (bull/bear/range/high-vol)")
+    baseline_p.add_argument("--source", default=None, choices=sorted(PROVIDER_NAMES),
+                            help="Override the source for all selected sample cases")
+    baseline_p.add_argument("--benchmark_source", default=None, choices=sorted(PROVIDER_NAMES),
+                            help="Override the benchmark source for all selected sample cases")
+    baseline_p.add_argument("--cash", type=float, default=200000)
+    baseline_p.add_argument("--commission", type=float, default=0.0001)
+    baseline_p.add_argument("--slippage", type=float, default=0.0005)
+    baseline_p.add_argument("--adj", default=None)
+    baseline_p.add_argument("--out_dir", default=None)
+    baseline_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
+    baseline_p.add_argument("--baseline-root", default=DEFAULT_STRATEGY_BASELINE_ROOT,
+                            help="Root directory for registered single-strategy baselines")
+    baseline_p.add_argument("--baseline-alias", default="default",
+                            help="Alias under the strategy baseline registry")
+    baseline_p.add_argument("--register-strategy-baseline", action="store_true",
+                            help="Register this snapshot as the canonical baseline for the strategy/alias")
+    baseline_p.add_argument("--calendar", choices=["off", "fill"], default=None,
+                            help="Override trading calendar alignment for selected samples")
+
+    # ===== admission command =====
+    admission_p = sub.add_parser("admission", help="Evaluate strategy admission against historical sample gates")
+    admission_p.add_argument("--strategy", required=True, choices=sorted(STRATEGY_REGISTRY.keys()))
+    admission_p.add_argument("--params", default=None, help="JSON string of strategy params")
+    admission_p.add_argument("--samples-file", default=None, help="YAML/JSON file with historical sample cases")
+    admission_p.add_argument("--samples", nargs="*", default=None, help="Optional sample ids to run")
+    admission_p.add_argument("--regimes", nargs="*", default=None, help="Optional regime tags to run (bull/bear/range/high-vol)")
+    admission_p.add_argument("--baseline-file", default=None, help="Optional stored baseline JSON for regression checks")
+    admission_p.add_argument("--profile", default="institutional", choices=sorted(ADMISSION_PROFILES.keys()))
+    admission_p.add_argument("--source", default=None, choices=sorted(PROVIDER_NAMES),
+                             help="Override the source for all selected sample cases")
+    admission_p.add_argument("--benchmark_source", default=None, choices=sorted(PROVIDER_NAMES),
+                             help="Override the benchmark source for all selected sample cases")
+    admission_p.add_argument("--cash", type=float, default=200000)
+    admission_p.add_argument("--commission", type=float, default=0.0001)
+    admission_p.add_argument("--slippage", type=float, default=0.0005)
+    admission_p.add_argument("--adj", default=None)
+    admission_p.add_argument("--out_dir", default=None)
+    admission_p.add_argument("--cache_dir", default=CACHE_DEFAULT)
+    admission_p.add_argument("--baseline-root", default=DEFAULT_STRATEGY_BASELINE_ROOT,
+                             help="Root directory for registered single-strategy baselines")
+    admission_p.add_argument("--baseline-alias", default="default",
+                             help="Alias under the strategy baseline registry to resolve when --baseline-file is omitted")
+    admission_p.add_argument("--calendar", choices=["off", "fill"], default=None,
+                             help="Override trading calendar alignment for selected samples")
 
     # ===== grid command =====
     grid_p = sub.add_parser("grid", help="Run grid search for a strategy")
@@ -183,16 +271,20 @@ def main() -> None:
 
     # ===== run command =====
     if args.command == "run":
-        params = json.loads(args.params) if args.params else None
+        try:
+            params = _parse_json_option(args.params, option_name="--params")
+        except ValueError as exc:
+            logger.error(str(exc))
+            return
         
         # V2.9.0: Parse fee plugin parameters
         fee_plugin = args.fee_config if hasattr(args, 'fee_config') else None
         fee_plugin_params = None
         if hasattr(args, 'fee_params') and args.fee_params:
             try:
-                fee_plugin_params = json.loads(args.fee_params)
-            except json.JSONDecodeError as e:
-                logger.error("Error parsing --fee-params", error=str(e))
+                fee_plugin_params = _parse_json_option(args.fee_params, option_name="--fee-params")
+            except ValueError as exc:
+                logger.error(str(exc))
                 return
         
         engine = BacktestEngine(
@@ -281,6 +373,104 @@ def main() -> None:
             )
             if report_dir:
                 logger.info(f"[报告] 详细报告已保存到: {report_dir}")
+        return
+
+    # ===== baseline command =====
+    if args.command == "baseline":
+        try:
+            params = _parse_json_option(args.params, option_name="--params")
+            sample_cases = load_sample_cases(args.samples_file)
+        except (OSError, ValueError) as exc:
+            logger.error(str(exc))
+            return
+
+        snapshot = generate_historical_baseline(
+            args.strategy,
+            params=params,
+            sample_cases=sample_cases,
+            sample_ids=args.samples,
+            regimes=args.regimes,
+            cash=args.cash,
+            commission=args.commission,
+            slippage=args.slippage,
+            cache_dir=args.cache_dir,
+            source_override=args.source,
+            benchmark_source_override=args.benchmark_source,
+            calendar_override=args.calendar,
+            adj_override=args.adj,
+        )
+        report_dir = _build_report_dir(args)
+        artifacts = write_baseline_artifacts(report_dir, snapshot)
+        logger.info(json.dumps(snapshot, indent=2))
+        _log_artifacts("Historical baseline artifacts:", artifacts)
+        if args.register_strategy_baseline:
+            registry_artifacts = register_strategy_baseline(
+                snapshot,
+                baseline_root=args.baseline_root,
+                alias=args.baseline_alias,
+            )
+            _log_artifacts("Registered strategy baseline artifacts:", registry_artifacts)
+        return
+
+    # ===== admission command =====
+    if args.command == "admission":
+        try:
+            params = _parse_json_option(args.params, option_name="--params")
+            sample_cases = load_sample_cases(args.samples_file)
+            baseline_snapshot, baseline_context = resolve_baseline_snapshot(
+                args.strategy,
+                baseline_file=args.baseline_file,
+                baseline_root=args.baseline_root,
+                alias=args.baseline_alias,
+            )
+        except (OSError, ValueError) as exc:
+            logger.error(str(exc))
+            return
+
+        if baseline_context.get("mode") == "strategy_registry":
+            logger.info(
+                "Resolved strategy baseline: %s (alias=%s)",
+                baseline_context.get("path"),
+                baseline_context.get("alias"),
+            )
+        elif baseline_context.get("mode") == "missing":
+            logger.info(
+                "No registered strategy baseline found under %s for alias=%s; continuing without regression baseline.",
+                args.baseline_root,
+                baseline_context.get("alias"),
+            )
+
+        current_snapshot = generate_historical_baseline(
+            args.strategy,
+            params=params,
+            sample_cases=sample_cases,
+            sample_ids=args.samples,
+            regimes=args.regimes,
+            cash=args.cash,
+            commission=args.commission,
+            slippage=args.slippage,
+            cache_dir=args.cache_dir,
+            source_override=args.source,
+            benchmark_source_override=args.benchmark_source,
+            calendar_override=args.calendar,
+            adj_override=args.adj,
+        )
+        report = evaluate_admission(
+            current_snapshot,
+            profile_name=args.profile,
+            baseline_snapshot=baseline_snapshot,
+            baseline_context=baseline_context,
+        )
+        report_dir = _build_report_dir(args)
+        snapshot_artifacts = write_baseline_artifacts(
+            report_dir,
+            current_snapshot,
+            prefix="current_historical_snapshot",
+        )
+        report_artifacts = write_admission_artifacts(report_dir, report)
+        logger.info(json.dumps(report, indent=2))
+        _log_artifacts("Historical snapshot artifacts:", snapshot_artifacts)
+        _log_artifacts("Admission report artifacts:", report_artifacts)
         return
 
     # ===== grid command =====
