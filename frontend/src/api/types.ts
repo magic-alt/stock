@@ -174,6 +174,37 @@ export interface MonitorSummary {
   jobs: JobInfo[]
 }
 
+export interface DemoStep {
+  name: string
+  status: string
+  details: Record<string, unknown>
+}
+
+export interface PaperTradingDemo {
+  ok: boolean
+  name: string
+  description: string
+  input: Record<string, unknown>
+  summary: {
+    gateway_connected: boolean
+    mode: string
+    broker: string
+    account_id: string
+    cash: number
+    total_value: number
+    unrealized_pnl: number
+    positions: number
+    orders: number
+    open_orders: number
+    filled_orders: number
+    cancelled_orders: number
+    trades: number
+  }
+  steps: DemoStep[]
+  snapshot: GatewaySnapshot
+  monitor: MonitorSummary | null
+}
+
 export interface GatewayConnectPayload {
   mode: string
   broker: string

@@ -30,6 +30,13 @@ python scripts/deploy_release.py --skip-build
 python scripts/deploy_release.py --down
 ```
 
+### `demo_platform_console.py`
+运行隔离的 Paper Trading 控制台功能演示，覆盖连接、下单、模拟行情成交、撤单、网关快照与监控摘要。
+
+```bash
+python scripts/demo_platform_console.py --out report/platform_console_demo.json
+```
+
 ### `start_production.py`
 生产启动与上线预检入口，包含策略上线决策与自动实验复测能力。
 

@@ -28,6 +28,7 @@ from src.core.logger import get_logger
 from src.core.monitoring import SystemMonitor
 from src.core.trading_gateway import BrokerType, GatewayConfig, TradingGateway, TradingMode
 from src.core.interfaces import OrderTypeEnum
+from src.platform.demo import run_paper_trading_demo
 from src.platform.backtest_task import run_backtest_job
 from src.platform.job_queue import JobQueue, JobStore
 from src.platform.orchestrator import run_workflow
@@ -637,6 +638,34 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return True
         return False
 
+    def _handle_demo_get(self, *, request_id: str, versioned: bool) -> None:
+        query = self._query_params()
+        symbol = ((query.get("symbol") or ["600519.SH"])[0] or "600519.SH").strip()
+        quantity_raw = ((query.get("quantity") or ["100"])[0] or "100").strip()
+        limit = self._query_int("limit", 20, minimum=1, maximum=50)
+        try:
+            quantity = float(quantity_raw)
+            demo = run_paper_trading_demo(
+                GatewayService(),
+                queue=self.queue,
+                monitor_service=self.monitor_service,
+                metrics=self.metrics,
+                symbol=symbol,
+                quantity=quantity,
+                limit=limit,
+            )
+        except Exception as exc:
+            if versioned:
+                self._error_v1(request_id=request_id, status=500, code=50001, message=str(exc))
+            else:
+                self._json({"error": str(exc)}, status=500)
+            return
+
+        if versioned:
+            self._json_v1(request_id=request_id, data={"demo": demo})
+        else:
+            self._json({"demo": demo})
+
     def _handle_gateway_post_v1(self, path: str, payload: Dict[str, Any], request_id: str) -> bool:
         try:
             if path == f"{API_PREFIX}/gateway/connect":
@@ -725,6 +754,10 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return
 
         if self._handle_monitor_get_v1(path, request_id):
+            return
+
+        if path == f"{API_PREFIX}/demo/paper-trading":
+            self._handle_demo_get(request_id=request_id, versioned=True)
             return
 
         if path == f"{API_PREFIX}/chart-data":
@@ -893,6 +926,9 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
         if path == "/monitor/alerts":
             limit = self._query_int("limit", 20, minimum=1, maximum=500)
             self._json({"alerts": self.monitor_service.alerts(limit=limit)})
+            return
+        if path == "/demo/paper-trading":
+            self._handle_demo_get(request_id=request_id, versioned=False)
             return
         if path == "/jobs":
             self._json({"jobs": self._list_jobs()})

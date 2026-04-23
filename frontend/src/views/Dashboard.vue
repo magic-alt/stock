@@ -42,7 +42,50 @@
             <el-button style="width: 100%" @click="$router.push('/strategies')">
               Strategy Library
             </el-button>
+            <el-button type="success" style="width: 100%" :loading="demoLoading" @click="runPaperDemo">
+              Run Paper Demo
+            </el-button>
           </el-space>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row v-if="demoResult || demoLoading" :gutter="16" class="mb-4">
+      <el-col :span="24">
+        <el-card v-loading="demoLoading" shadow="never" class="dark-card">
+          <template #header>
+            <div class="card-header">
+              <span>Paper Trading Demo</span>
+              <el-tag v-if="demoResult" :type="demoResult.ok ? 'success' : 'danger'" size="small">
+                {{ demoResult.ok ? 'Passed' : 'Failed' }}
+              </el-tag>
+            </div>
+          </template>
+
+          <template v-if="demoResult">
+            <el-row :gutter="12" class="demo-stats">
+              <el-col v-for="item in demoStats" :key="item.label" :span="4">
+                <div class="demo-stat">
+                  <span>{{ item.label }}</span>
+                  <strong :class="item.className">{{ item.value }}</strong>
+                </div>
+              </el-col>
+            </el-row>
+
+            <el-table :data="demoResult.steps" stripe size="small">
+              <el-table-column prop="name" label="Step" width="220" />
+              <el-table-column prop="status" label="Status" width="110">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'passed' ? 'success' : 'danger'" size="small">
+                    {{ row.status }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="Details" show-overflow-tooltip>
+                <template #default="{ row }">{{ formatDetails(row.details) }}</template>
+              </el-table-column>
+            </el-table>
+          </template>
         </el-card>
       </el-col>
     </el-row>
@@ -83,15 +126,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useTradingStore } from '@/stores/trading'
 import { useBacktestStore } from '@/stores/backtest'
 import client, { unwrapApiData } from '@/api/client'
-import { ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import type { PaperTradingDemo } from '@/api/types'
 
 const tradingStore = useTradingStore()
 const backtestStore = useBacktestStore()
 const strategyCount = ref(0)
+const demoLoading = ref(false)
+const demoResult = ref<PaperTradingDemo | null>(null)
 
 onMounted(async () => {
   await tradingStore.refreshAll()
@@ -109,6 +155,19 @@ const statsCards = computed(() => [
   { label: 'Positions', value: String(tradingStore.positions.length), color: '' },
 ])
 
+const demoStats = computed(() => {
+  if (!demoResult.value) return []
+  const summary = demoResult.value.summary
+  return [
+    { label: 'Gateway', value: summary.gateway_connected ? 'Online' : 'Offline', className: summary.gateway_connected ? 'text-green' : 'text-red' },
+    { label: 'Trades', value: String(summary.trades), className: '' },
+    { label: 'Filled', value: String(summary.filled_orders), className: 'text-green' },
+    { label: 'Cancelled', value: String(summary.cancelled_orders), className: '' },
+    { label: 'Positions', value: String(summary.positions), className: '' },
+    { label: 'Unrealized PnL', value: formatNum(summary.unrealized_pnl), className: summary.unrealized_pnl >= 0 ? 'text-green' : 'text-red' },
+  ]
+})
+
 function formatPct(v: number | undefined): string {
   if (v === undefined || v !== v) return 'N/A'
   return (v * 100).toFixed(2) + '%'
@@ -118,11 +177,30 @@ function formatNum(v: number | undefined): string {
   if (v === undefined || v !== v) return 'N/A'
   return v.toFixed(4)
 }
+
+function formatDetails(value: Record<string, unknown>): string {
+  return JSON.stringify(value)
+}
+
+async function runPaperDemo() {
+  demoLoading.value = true
+  try {
+    const resp = await client.get('/api/v2/demo/paper-trading')
+    const data = unwrapApiData<{ demo: PaperTradingDemo }>(resp.data)
+    demoResult.value = data.demo
+    ElMessage.success('Paper demo completed')
+  } catch (err) {
+    ElMessage.error(`Paper demo failed: ${(err as Error).message}`)
+  } finally {
+    demoLoading.value = false
+  }
+}
 </script>
 
 <style scoped>
 .dashboard { max-width: 1400px; }
 .mb-4 { margin-bottom: 16px; }
+.card-header { display: flex; align-items: center; justify-content: space-between; }
 .stat-card {
   background: var(--bg-card);
   border-color: var(--border);
@@ -131,6 +209,22 @@ function formatNum(v: number | undefined): string {
 .stat-label { color: var(--text-secondary); font-size: 12px; text-transform: uppercase; }
 .stat-value { font-size: 24px; font-weight: 700; margin-top: 6px; }
 .dark-card { background: var(--bg-card); border-color: var(--border); }
+.demo-stats { margin-bottom: 16px; }
+.demo-stat {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+.demo-stat span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.demo-stat strong {
+  display: block;
+  font-size: 18px;
+  margin-top: 4px;
+}
 .text-green { color: var(--green); }
 .text-red { color: var(--red); }
 </style>

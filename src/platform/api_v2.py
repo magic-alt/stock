@@ -522,6 +522,27 @@ if HAS_FASTAPI:
         async def monitor_alerts(request: Request, limit: int = 20):
             return ApiEnvelope(data={"alerts": request.app.state.monitor_service.alerts(limit=limit)})
 
+        @app.get("/api/v2/demo/paper-trading", tags=["Demo"])
+        async def demo_paper_trading(
+            request: Request,
+            symbol: str = "600519.SH",
+            quantity: float = 100.0,
+            limit: int = 20,
+        ):
+            from src.platform.demo import run_paper_trading_demo
+
+            demo_gateway = GatewayService()
+            demo = run_paper_trading_demo(
+                demo_gateway,
+                queue=request.app.state.job_queue,
+                monitor_service=request.app.state.monitor_service,
+                metrics=request.app.state.api_metrics,
+                symbol=symbol,
+                quantity=quantity,
+                limit=max(1, min(limit, 50)),
+            )
+            return ApiEnvelope(data={"demo": demo})
+
         frontend_dist = _resolve_frontend_dist()
         if frontend_dist is not None:
             frontend_index = frontend_dist / "index.html"
