@@ -149,6 +149,29 @@ class AccountInfo:
 
 
 @dataclass
+class OrderRequest:
+    """Canonical order request shared by OMS, paper, and live gateways."""
+    symbol: str
+    side: Side
+    quantity: float
+    price: Optional[float] = None
+    order_type: OrderTypeEnum = OrderTypeEnum.LIMIT
+    client_order_id: str = ""
+    strategy_id: str = ""
+    tenant_id: str = ""
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    tags: Dict[str, str] = field(default_factory=dict)
+    create_time: datetime = field(default_factory=datetime.now)
+
+    def __post_init__(self) -> None:
+        if self.quantity <= 0:
+            raise ValueError("Order quantity must be positive")
+        if self.order_type in (OrderTypeEnum.LIMIT, OrderTypeEnum.STOP_LIMIT) and self.price is None:
+            raise ValueError(f"{self.order_type.value} order requires price")
+
+
+@dataclass
 class OrderInfo:
     """Order information container."""
     order_id: str
@@ -187,6 +210,82 @@ class TradeInfo:
     @property
     def value(self) -> float:
         return self.price * self.quantity
+
+
+@dataclass(slots=True)
+class OrderEventPayload:
+    """Normalized OMS/execution event payload."""
+    event_type: str
+    order_id: str
+    symbol: str
+    side: Side
+    status: OrderStatusEnum
+    quantity: float
+    filled_quantity: float = 0.0
+    price: Optional[float] = None
+    avg_fill_price: float = 0.0
+    broker_order_id: str = ""
+    reason: str = ""
+    timestamp: datetime = field(default_factory=datetime.now)
+    source: str = "oms"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "event_type": self.event_type,
+            "order_id": self.order_id,
+            "symbol": self.symbol,
+            "side": self.side.value,
+            "status": self.status.value,
+            "quantity": self.quantity,
+            "filled_quantity": self.filled_quantity,
+            "price": self.price,
+            "avg_fill_price": self.avg_fill_price,
+            "broker_order_id": self.broker_order_id,
+            "reason": self.reason,
+            "timestamp": self.timestamp.isoformat(),
+            "source": self.source,
+        }
+
+
+@dataclass(slots=True)
+class ExecutionReport:
+    """Normalized fill report emitted by matching/live execution layers."""
+    trade_id: str
+    order_id: str
+    symbol: str
+    side: Side
+    price: float
+    quantity: float
+    commission: float = 0.0
+    timestamp: datetime = field(default_factory=datetime.now)
+    source: str = "execution"
+
+    @classmethod
+    def from_trade_info(cls, trade: TradeInfo, source: str = "execution") -> "ExecutionReport":
+        return cls(
+            trade_id=trade.trade_id,
+            order_id=trade.order_id,
+            symbol=trade.symbol,
+            side=trade.side,
+            price=trade.price,
+            quantity=trade.quantity,
+            commission=trade.commission,
+            timestamp=trade.timestamp or datetime.now(),
+            source=source,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "trade_id": self.trade_id,
+            "order_id": self.order_id,
+            "symbol": self.symbol,
+            "side": self.side.value,
+            "price": self.price,
+            "quantity": self.quantity,
+            "commission": self.commission,
+            "timestamp": self.timestamp.isoformat(),
+            "source": self.source,
+        }
 
 
 # ---------------------------------------------------------------------------

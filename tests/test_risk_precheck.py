@@ -458,3 +458,41 @@ class TestRiskPrecheckIntegration:
         # Trading should be halted due to daily loss → order must be rejected
         with pytest.raises(ValueError):
             gw.send_order("600519.SH", "buy", 10, price=100.0, order_type="limit")
+
+
+class TestTradingGatewayRiskEvents:
+    def test_trading_gateway_publishes_risk_checked_and_rejected_events(self):
+        from src.core.events import EventType
+        from src.core.interfaces import OrderTypeEnum
+        from src.core.risk_manager_v2 import RiskConfig, RiskManagerV2
+        from src.core.trading_gateway import TradingGateway
+
+        class _EventSink:
+            def __init__(self):
+                self.events = []
+
+            def register(self, event_type, handler):
+                return None
+
+            def unregister(self, event_type, handler):
+                return None
+
+            def put(self, event):
+                self.events.append(event)
+
+        events = _EventSink()
+        received = []
+        risk_manager = RiskManagerV2(RiskConfig(max_order_value=1.0, max_order_pct=0.99, max_position_pct=0.99))
+        gateway = TradingGateway.create_paper(
+            initial_cash=100_000.0,
+            event_engine=events,
+            risk_manager=risk_manager,
+        )
+        gateway.update_price("600519.SH", 100.0)
+
+        with pytest.raises(PermissionError):
+            gateway.buy("600519.SH", 100, order_type=OrderTypeEnum.MARKET)
+
+        event_types = [event.type for event in events.events]
+        assert EventType.RISK_CHECKED in event_types
+        assert EventType.RISK_REJECTED in event_types

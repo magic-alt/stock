@@ -11,6 +11,7 @@ from typing import Dict, Optional, Set
 import pandas as pd
 
 from src.core.events import EventEngine, Event, EventType
+from src.core.interfaces import ExecutionReport, Side
 from .order import Order, Trade, OrderStatus, OrderType, OrderDirection
 from .order_book import OrderBook
 from .slippage import SlippageModel, FixedSlippage
@@ -442,6 +443,20 @@ class MatchingEngine:
         if self.event_engine:
             self.event_engine.put(Event(EventType.TRADE, trade))
             self.event_engine.put(Event(EventType.ORDER, order))
+            self.event_engine.put(Event(
+                EventType.EXECUTION_REPORT,
+                ExecutionReport(
+                    trade_id=trade.trade_id,
+                    order_id=trade.order_id,
+                    symbol=trade.symbol,
+                    side=Side.BUY if trade.direction == OrderDirection.BUY else Side.SELL,
+                    price=trade.price,
+                    quantity=trade.quantity,
+                    commission=trade.fees,
+                    timestamp=trade.timestamp,
+                    source="matching_engine",
+                ).to_dict(),
+            ))
 
         # A-share T+1: record buy for sell-lock
         if self.ashare.enabled and order.direction == OrderDirection.BUY:

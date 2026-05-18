@@ -692,6 +692,28 @@ class TencentDataProvider(HTTPPollingDataProvider):
         )
 
 
+def create_realtime_provider(
+    source: DataSource | str,
+    *,
+    event_engine: Optional[EventEngine] = None,
+    interval: float = 3.0,
+    timeout: float = 5.0,
+) -> BaseDataProvider:
+    """Create a concrete realtime provider from a DataSource value."""
+    source_enum = source if isinstance(source, DataSource) else DataSource(str(source).lower())
+    if source_enum == DataSource.SIMULATION:
+        return SimulationDataProvider(event_engine=event_engine, interval_ms=max(1, int(interval * 1000)))
+    if source_enum == DataSource.AKSHARE:
+        return AKShareDataProvider(interval=interval, event_engine=event_engine)
+    if source_enum == DataSource.SINA:
+        return SinaDataProvider(event_engine=event_engine, interval=interval, timeout=timeout)
+    if source_enum == DataSource.EASTMONEY:
+        return EastmoneyDataProvider(event_engine=event_engine, interval=interval, timeout=timeout)
+    if source_enum == DataSource.TENCENT:
+        return TencentDataProvider(event_engine=event_engine, interval=interval, timeout=timeout)
+    raise ValueError(f"Unsupported realtime provider: {source_enum.value}")
+
+
 # ---------------------------------------------------------------------------
 # AKShare Data Provider (HTTP polling)
 # ---------------------------------------------------------------------------
@@ -973,6 +995,27 @@ class RealtimeDataManager:
         provider.on_tick(self._on_tick)
         provider.on_error(lambda error, provider_source=source: self._on_provider_error(provider_source, error))
         logger.info("Data provider added", source=source.value)
+
+    def configure_from_config(self, config: Any) -> None:
+        """Install active and fallback providers from a RealtimeDataConfig-like object."""
+        provider = DataSource(str(config.provider).lower())
+        interval = float(getattr(config, "interval_seconds", 3.0))
+        timeout = float(getattr(config, "request_timeout_seconds", 5.0))
+        sources = [provider] + [DataSource(str(item).lower()) for item in getattr(config, "fallback_providers", [])]
+        for source in sources:
+            if source not in self._providers:
+                self.add_provider(
+                    source,
+                    create_realtime_provider(
+                        source,
+                        event_engine=self.event_engine,
+                        interval=interval,
+                        timeout=timeout,
+                    ),
+                )
+        self.set_active_provider(provider)
+        if len(sources) > 1:
+            self.set_fallback_providers(sources[1:])
     
     def set_active_provider(self, source: DataSource) -> None:
         """Set active data provider."""
@@ -1453,6 +1496,7 @@ __all__ = [
     'TencentDataProvider',
     'AKShareDataProvider',
     'WebSocketDataProvider',
+    'create_realtime_provider',
 
     # Signal generation
     'RealtimeSignalGenerator',

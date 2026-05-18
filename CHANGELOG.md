@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- V4.0-A: add canonical `OrderRequest`, normalized order event payloads, and execution report DTOs for OMS/gateway/execution alignment.
+- V4.0-A: add `PaperGatewayV3Adapter` so `TradingGateway` paper mode routes through the MatchingEngine-backed PaperGatewayV3 contract.
+- V4.0-A: add realtime provider factory and `src/core/realtime_providers/` exports for Sina, Eastmoney, and Tencent providers.
+- V4.0-A: add `constraints.txt` as a dependency resolution seed aligned with runtime/test requirements.
 - CLI: `unified_backtest_framework.py features|capabilities --json` now lists registered strategies, data sources, backtest engines, financial providers, live gateways, trading brokers, and workflows.
 - Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring commercial SDKs.
 - Web: 回测工作台新增动态策略参数、同步/异步运行模式、任务状态、错误提示、指标明细和响应式布局。
@@ -21,6 +25,8 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
+- Config: align `GlobalConfig` schema with `config.yaml.example` by adding database, monitoring, performance, provider-detail, and execution live-gateway fields.
 - CLI: `grid` and `auto` workflows now expose `--engine` and correctly pass fee plugin parameters through to engine execution.
 - Gateway: `src.gateways` and `TradingGateway` lazily load concrete commercial SDK gateways; importing CLI/base modules no longer probes XTP/UFT SDKs.
 - Gateway: XtQuant/QMT now supports SDK-less stub mode aligned with XTP/UFT for development, CI, and smoke tests.
@@ -91,6 +97,7 @@ All notable changes to this project will be documented in this file.
 - Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
 
 ### Tests
+- Tests: expand gateway unification, risk precheck, realtime provider, and config schema coverage for V4.0-A architecture convergence.
 - Tests: 增加 FastAPI 回测 job、chart-data 与扩展回测参数透传覆盖。
 - Backtest: add `tests/test_strategy_backtest_contracts.py` to smoke-test every registered strategy except the external-dependency `qlib_registry` path.
 - Tests: add `tests/test_gateway_xtp_smoke.py` and `tests/test_gateway_uft_smoke.py` for unified gateway smoke assertions, and extend `tests/test_realtime_data.py` with HTTP provider parsing plus failover coverage.
