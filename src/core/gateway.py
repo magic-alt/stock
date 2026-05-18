@@ -221,42 +221,32 @@ class BacktestGateway:
 
 
 # ---------------------------------------------------------------------------
-# Placeholder Gateway Classes (for future implementation)
+# LiveGateway backward-compat alias
 # ---------------------------------------------------------------------------
+# The original placeholder ``LiveGateway`` class in this module duplicated the
+# abstract interface now owned by :class:`src.gateways.base_live_gateway.BaseLiveGateway`
+# and only raised ``NotImplementedError`` from every method. It has been
+# replaced with a deprecation alias so existing ``from src.core import LiveGateway``
+# imports continue to work while new code should depend on
+# ``BaseLiveGateway`` directly. To be removed in a future major release.
 
-class LiveGateway:
-    """
-    Live trading gateway interface (placeholder for future implementation).
-    
-    Planned implementations per broker:
-    - IBGateway: Interactive Brokers (US/Global)
-    - CTPGateway: CTP futures (China)
-    - XtQuantGateway: XtQuant/QMT (A-share)
-    - BinanceGateway: Binance crypto
-    
-    Features:
-    - Real-time order execution
-    - Position and account synchronization
-    - Risk management hooks
-    - Error handling and reconnection
-    - Heartbeat monitoring
-    
-    Usage:
-        >>> gateway = IBGateway(account="DU123456")
-        >>> gateway.connect()
-        >>> gateway.send_order("AAPL", "buy", 100, price=150.0, order_type="limit")
-        >>> gateway.query_account()
-    """
-    
-    def connect(self) -> bool:
-        """Connect to broker API."""
-        raise NotImplementedError("LiveGateway implementations required")
-    
-    def disconnect(self) -> None:
-        """Disconnect from broker API."""
-        raise NotImplementedError
-    
-    def is_connected(self) -> bool:
-        """Check connection status."""
-        raise NotImplementedError
+
+def _resolve_live_gateway_alias():
+    try:
+        from src.gateways.base_live_gateway import BaseLiveGateway
+        return BaseLiveGateway
+    except Exception:  # pragma: no cover - import guard
+        class _MissingLiveGateway:
+            """Fallback when src.gateways.base_live_gateway is unavailable."""
+
+            def __init__(self, *args, **kwargs):
+                raise NotImplementedError(
+                    "LiveGateway is deprecated. Install gateway dependencies and use "
+                    "src.gateways.base_live_gateway.BaseLiveGateway."
+                )
+
+        return _MissingLiveGateway
+
+
+LiveGateway = _resolve_live_gateway_alias()
 
