@@ -1,7 +1,7 @@
 # API Reference Documentation
 
-**Version**: V3.1.0  
-**Date**: 2026-01-11  
+**Version**: V3.3.0
+**Date**: 2026-05-18
 **Status**: 🟢 Production Ready
 
 ---
@@ -20,6 +20,45 @@
 - [Available Strategies](#available-strategies)
 - [Performance Metrics](#performance-metrics)
 - [Error Codes](#error-codes)
+- [Platform REST API](#platform-rest-api)
+
+---
+
+## Platform REST API
+
+**Primary implementation**: `src/platform/api_v2.py` (FastAPI)
+**OpenAPI UI**: `/api/v2/docs`
+**Compatibility**: `/api/v1/*` remains versioned compatibility; unversioned legacy routes are not production entrypoints.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/api/v2/health` | Liveness check |
+| `GET` | `/api/v2/ready` | Readiness check |
+| `GET` | `/api/v2/metrics` | API and queue metrics |
+| `GET` | `/api/v2/chart-data` | OHLCV chart data for the web frontend |
+| `GET` | `/api/v2/strategies` | List registered strategies |
+| `POST` | `/api/v2/strategies/validate` | Validate submitted strategy code |
+| `POST` | `/api/v2/backtest/run` | Run a synchronous backtest |
+| `POST` | `/api/v2/backtest/jobs` | Submit an asynchronous backtest job |
+| `GET` | `/api/v2/backtest/jobs/{job_id}` | Read job status/result |
+| `POST` | `/api/v2/backtest/jobs/{job_id}/cancel` | Cancel a pending job |
+| `POST` | `/api/v2/gateway/connect` | Connect a trading gateway |
+| `POST` | `/api/v2/gateway/order` | Submit an order |
+| `POST` | `/api/v2/gateway/cancel` | Cancel an order |
+| `GET` | `/api/v2/monitor/summary` | Monitoring summary |
+
+Standard v2 envelope:
+
+```json
+{
+  "ok": true,
+  "data": {},
+  "error": null,
+  "request_id": "abcd1234"
+}
+```
+
+Related status audit: [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md).
 
 ---
 

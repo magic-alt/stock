@@ -1,8 +1,8 @@
 # 商业级能力差距评估（对标 vn.py / qlib 核心能力）
 
 ## 范围与结论
-- 审查范围：`src/`、`tests/`、`examples/`、`scripts/`、GUI (`scripts/backtest_gui.py`)、平台 API (`src/platform/api_server.py`)。
-- 结论：项目已具备“可运行且可扩展”的平台底座，但距离商业级仍存在系统性差距，优先级集中在 API 契约、安全基线、测试真实性、可观测性和任务编排可靠性。
+- 审查范围：`src/`、`tests/`、`examples/`、`scripts/`、GUI (`scripts/backtest_gui.py`)、平台 API (`src/platform/api_v2.py`, `src/platform/api_server.py`)、前端 (`frontend/`) 和部署资产。
+- 结论：项目已具备平台化底座。REST API、Docker 容器化、配置加密、Web 前端和框架级分布式回测已经落地；商业级剩余差距集中在微服务拆分、生产集群化、外部 KMS/Vault、真实网关 SDK 联调、SLO/容量验证和不可篡改审计存储。
 
 ## 顶层架构现状
 - 展示层：CLI + Tkinter GUI + Platform Web。
@@ -15,9 +15,9 @@
 ### 1. 功能完整性
 - 优势：策略、数据源、撮合、归因、MLOps 模块齐备。
 - 差距：
-  - 平台 API 缺少版本化契约，响应结构不统一。
-  - 作业取消能力缺失或弱化，运行态控制不足。
-  - GUI 与平台接口的治理规则未形成统一标准。
+  - 平台 API 已版本化，但 v1/v2 文档和客户端 SDK 仍需统一。
+  - 作业取消、指标、异步 job 已具备；跨服务任务编排和多租户配额仍需生产化。
+  - GUI、Web SPA 与平台接口仍需统一权限和错误展示标准。
 
 ### 2. 性能与容量
 - 优势：已有缓存与并行处理工具。
@@ -34,9 +34,9 @@
 ### 4. 安全与合规
 - 优势：已有 RBAC、审计日志基础设施。
 - 差距：
-  - 平台 API 缺乏默认鉴权。
-  - 关键接口缺少统一 request_id 和标准错误码。
-  - 敏感信息治理与最小权限执行未完全闭环。
+  - API 鉴权、request_id、安全响应头和敏感值加密能力已具备。
+  - 外部 KMS/Vault、数据库静态加密、OAuth2/OIDC、MFA 与不可篡改存储仍未生产化。
+  - 最小权限执行和多租户资源隔离仍需和微服务拆分一起推进。
 
 ### 5. 测试与质量
 - 优势：测试数量可观，覆盖模块广。
@@ -45,9 +45,9 @@
   - 需补齐 API 安全和异常路径的自动化回归。
 
 ## 风险分级
-- P0（立即处理）：API 鉴权、版本化契约、可观测性、任务取消语义。
-- P1（短中期）：压测基线、作业编排可靠性、插件契约版本治理。
-- P2（中长期）：回测-仿真-实盘一致性验证、运维演练与灰度发布流程。
+- P0（立即处理）：v1/v2 文档一致性、未版本化入口清理后的部署指引同步、真实 SDK 环境冒烟。
+- P1（短中期）：生产容量基准、Ray/Dask 集群部署模板、外部密钥管理、插件契约版本治理。
+- P2（中长期）：微服务拆分、跨服务权限/审计/限流、不可篡改审计存储、监管级对账归档。
 
 ## 已落地（本次）
 - 新增 `/api/v1/*` 版本化 API 路由。
@@ -55,7 +55,15 @@
 - 新增可选 Bearer Token 鉴权（`--api-token` 或 `PLATFORM_API_TOKEN`）。
 - 新增 `healthz/readyz/metrics` 端点与队列指标。
 - 新增作业取消接口：`POST /api/v1/jobs/{id}/cancel`。
-- 保留旧接口兼容：`/jobs`、`/gateway/*`、`/health`。
+- FastAPI `/api/v2/*`、Docker/Compose、Vue3 前端、SecurityManager/Vault、Ray/Dask 分布式入口均已落地。
+- 未版本化旧接口不再作为生产入口。
+
+## 中长期规划完成度
+
+详见 [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)。摘要：
+
+- P2：REST API、Docker 容器化、配置加密均已完成。
+- P3：Web 前端已完成；分布式回测框架大部分完成；微服务架构部分完成。
 
 ## 下一步建议
 - 用 `docs/COMMERCIAL_UPGRADE_ROADMAP.md` 的 P0/P1/P2 节点作为执行看板。
