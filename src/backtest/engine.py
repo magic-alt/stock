@@ -657,6 +657,7 @@ class BacktestEngine:
         out_dir: Optional[str] = None,
         label: Optional[str] = None,
         enable_plot: bool = False,
+        engine: str = "backtrader",
     ) -> Tuple[pd.Series, Dict[str, Any], Optional[bt.Cerebro]]:
         """
         Run a backtest for the supplied strategy module and capture metrics.
@@ -664,16 +665,31 @@ class BacktestEngine:
         Note: Plotting is now handled by plotting.py module via plot_backtest_with_indicators().
         This method only returns the cerebro instance when enable_plot=True.
         """
-        nav, metrics, cerebro = self._run_module(
-            module,
-            data_map,
-            params,
-            cash=cash,
-            commission=commission,
-            slippage=slippage,
-            benchmark_nav=benchmark_nav,
-            return_cerebro=enable_plot,
-        )
+        if engine and engine.lower() not in ("backtrader", "bt"):
+            from src.backtest.engine_base import EngineRegistry
+            backend = EngineRegistry.get(engine)
+            result = backend.run(
+                module,
+                data_map,
+                params,
+                cash=cash,
+                commission=commission,
+                slippage=slippage,
+                benchmark_nav=benchmark_nav,
+                return_cerebro=False,
+            )
+            nav, metrics, cerebro = result.nav, result.metrics, result.extra
+        else:
+            nav, metrics, cerebro = self._run_module(
+                module,
+                data_map,
+                params,
+                cash=cash,
+                commission=commission,
+                slippage=slippage,
+                benchmark_nav=benchmark_nav,
+                return_cerebro=enable_plot,
+            )
         
         if benchmark_nav is not None and out_dir:
             os.makedirs(out_dir, exist_ok=True)
@@ -721,6 +737,7 @@ class BacktestEngine:
         fee_plugin_params: Optional[Dict[str, Any]] = None,
         calendar_mode: Optional[str] = None,
         collect_diagnostics: bool = False,
+        engine: str = "backtrader",
     ) -> Dict[str, Any]:
         """
         Convenience wrapper returning both metrics and NAV for a single run.
@@ -728,6 +745,9 @@ class BacktestEngine:
         Args:
             fee_plugin: Fee plugin name (e.g., 'cn_stock'). If None, uses default commission.
             fee_plugin_params: Parameters for fee plugin (e.g., {"commission_rate": 0.0001}).
+            engine: Execution backend — ``"backtrader"`` (default) or ``"zipline"``.
+                Use :func:`src.backtest.engine_base.EngineRegistry.available()` to
+                discover registered engines at runtime.
         """
         from .strategy_modules import STRATEGY_REGISTRY
         
@@ -780,6 +800,7 @@ class BacktestEngine:
             out_dir=out_dir,
             label="run",
             enable_plot=enable_plot,
+            engine=engine,
         )
         
         metrics.update({"strategy": strategy, **param_dict})
@@ -789,6 +810,7 @@ class BacktestEngine:
             metrics["_data_fingerprint"] = data_fingerprint
         if cerebro:
             metrics["_cerebro"] = cerebro
+        metrics["_engine"] = engine
             
         return metrics
 

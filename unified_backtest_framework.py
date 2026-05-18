@@ -109,6 +109,8 @@ def parse_args() -> argparse.Namespace:
                        help="Fee plugin name (e.g., 'cn_stock'). If not specified, uses default commission.")
     run_p.add_argument("--fee-params", dest="fee_params", default=None,
                        help='Fee plugin parameters as JSON string (e.g., \'{"commission_rate":0.0001,"min_commission":5.0}\')')
+    run_p.add_argument("--engine", default="backtrader",
+                       help="Execution engine: 'backtrader' (default) or 'zipline'.")
 
     # ===== baseline command =====
     baseline_p = sub.add_parser("baseline", help="Generate historical regression baseline snapshots")
@@ -310,6 +312,7 @@ def main() -> None:
             fee_plugin_params=fee_plugin_params,
             calendar_mode=args.calendar,
             collect_diagnostics=True,
+            engine=getattr(args, "engine", "backtrader"),
         )
         nav = metrics.pop("nav")
         cerebro = metrics.pop("_cerebro", None)

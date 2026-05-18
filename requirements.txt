@@ -10,6 +10,11 @@ backtrader>=1.9.76  # 回测框架
 matplotlib>=3.5.0   # 图表绘制
 psutil>=5.9.0      # 系统监控（可选，但推荐）
 
+# 可选回测引擎（V3.3.0+）：启用 zipline 后端
+# 取消下一行注释或 `pip install zipline-reloaded>=3.0` 安装；
+# 未安装时框架仍以纯向量化模式运行 ZiplineBackend，CLI / GUI 可继续工作。
+# zipline-reloaded>=3.0  # 可选：完整 zipline 模拟（C 扩展构建较慢）
+
 # 测试依赖
 pytest>=7.0.0
 pytest-cov>=4.0.0
