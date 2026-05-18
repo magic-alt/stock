@@ -33,6 +33,7 @@ from src.backtest.admission import (
 from src.data_sources.providers import get_provider, PROVIDER_NAMES
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.backtest.engine import BacktestEngine
+from src.backtest.engine_base import EngineRegistry
 from src.backtest.plotting import plot_backtest_with_indicators
 from src.backtest.repro import build_repro_command, build_snapshot_payload, compute_report_signature, write_snapshot
 from src.data_sources.quality import save_quality_report
@@ -41,6 +42,19 @@ from src.core.logger import get_logger
 
 # Default cache directory
 CACHE_DEFAULT = "./cache"
+
+LIVE_GATEWAY_NAMES = ("hundsun", "miniqmt", "qmt", "uft", "xtp", "xtquant")
+TRADING_BROKER_NAMES = (
+    "paper",
+    "eastmoney",
+    "futu",
+    "xueqiu",
+    "ib",
+    "ctp",
+    "xtquant",
+    "xtp",
+    "hundsun",
+)
 
 logger = get_logger("unified_cli")
 
@@ -81,10 +95,31 @@ def _log_artifacts(title: str, artifacts: Dict[str, str]) -> None:
         logger.info(f"- {name}: {path}")
 
 
+def _engine_choices() -> tuple[str, ...]:
+    """Return CLI-selectable backtest engines."""
+    return EngineRegistry.available()
+
+
+def _build_feature_summary() -> Dict[str, Any]:
+    """Return the feature registry surfaced by the CLI."""
+    return {
+        "strategies": sorted(STRATEGY_REGISTRY.keys()),
+        "data_sources": sorted(PROVIDER_NAMES),
+        "backtest_engines": sorted(_engine_choices()),
+        "financial_providers": ["akshare", "none", "null", "tushare"],
+        "live_gateways": list(LIVE_GATEWAY_NAMES),
+        "trading_brokers": list(TRADING_BROKER_NAMES),
+        "workflows": ["run", "grid", "auto", "combo", "baseline", "admission"],
+    }
+
+
 def parse_args() -> argparse.Namespace:
     """Build the CLI interface and return parsed arguments."""
-    parser = argparse.ArgumentParser(description="Unified akshare/yfinance/tushare backtest framework")
+    parser = argparse.ArgumentParser(
+        description="Unified quantitative platform CLI: backtests, optimisation, admission, gateways, and feature discovery"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
+    engine_choices = _engine_choices()
 
     # ===== run command =====
     run_p = sub.add_parser("run", help="Run a single strategy backtest")
@@ -109,7 +144,7 @@ def parse_args() -> argparse.Namespace:
                        help="Fee plugin name (e.g., 'cn_stock'). If not specified, uses default commission.")
     run_p.add_argument("--fee-params", dest="fee_params", default=None,
                        help='Fee plugin parameters as JSON string (e.g., \'{"commission_rate":0.0001,"min_commission":5.0}\')')
-    run_p.add_argument("--engine", default="backtrader",
+    run_p.add_argument("--engine", default="backtrader", choices=engine_choices,
                        help="Execution engine: 'backtrader' (default) or 'zipline'.")
 
     # ===== baseline command =====
@@ -183,6 +218,8 @@ def parse_args() -> argparse.Namespace:
                         help="Trading calendar alignment (off/fill)")
     grid_p.add_argument("--out_csv", default=None)
     grid_p.add_argument("--workers", type=int, default=1)
+    grid_p.add_argument("--engine", default="backtrader", choices=engine_choices,
+                        help="Execution engine for each grid point: 'backtrader' (default) or 'zipline'.")
     grid_p.add_argument("--fee-config", dest="fee_config", default=None,
                         help="Fee plugin name (e.g., 'cn_stock')")
     grid_p.add_argument("--fee-params", dest="fee_params", default=None,
@@ -209,6 +246,8 @@ def parse_args() -> argparse.Namespace:
     auto_p.add_argument("--calendar", choices=["off", "fill"], default="fill",
                         help="Trading calendar alignment (off/fill)")
     auto_p.add_argument("--workers", type=int, default=1)
+    auto_p.add_argument("--engine", default="backtrader", choices=engine_choices,
+                        help="Execution engine for optimisation and Top-N replay.")
     auto_p.add_argument("--hot_only", action="store_true", help="Use narrowed hot-zone parameter grids for strategies")
     auto_p.add_argument("--use_benchmark_regime", action="store_true",
                         help="Use benchmark EMA200 as bull regime filter (see --regime_scope)")
@@ -233,6 +272,11 @@ def parse_args() -> argparse.Namespace:
     # ===== list command =====
     sub.add_parser("list", help="List registered strategies", aliases=["list-strategies"])
 
+    # ===== features command =====
+    features_p = sub.add_parser("features", help="List registered engines, providers, gateways, and workflows",
+                                aliases=["capabilities"])
+    features_p.add_argument("--json", dest="json_output", action="store_true", help="Print machine-readable JSON")
+
     return parser.parse_args()
 
 
@@ -245,6 +289,17 @@ def main() -> None:
         logger.info("Available strategies:")
         for name, module in STRATEGY_REGISTRY.items():
             logger.info(f"- {name}: {module.description}")
+        return
+
+    # ===== features command =====
+    if args.command in {"features", "capabilities"}:
+        summary = _build_feature_summary()
+        if args.json_output:
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+        else:
+            print("Registered platform capabilities:")
+            for section, values in summary.items():
+                print(f"- {section}: {', '.join(values)}")
         return
 
     # ===== combo command =====
@@ -478,6 +533,19 @@ def main() -> None:
 
     # ===== grid command =====
     if args.command == "grid":
+        fee_plugin = args.fee_config if hasattr(args, 'fee_config') else None
+        extra_params: Dict[str, Any] = {}
+        if fee_plugin:
+            extra_params["_fee_plugin"] = fee_plugin
+        if hasattr(args, 'fee_params') and args.fee_params:
+            try:
+                fee_plugin_params = _parse_json_option(args.fee_params, option_name="--fee-params")
+            except ValueError as exc:
+                logger.error(str(exc))
+                return
+            for key, value in (fee_plugin_params or {}).items():
+                extra_params[f"_{key}"] = value
+
         engine = BacktestEngine(
             source=args.source,
             benchmark_source=args.benchmark_source or args.source,
@@ -498,7 +566,9 @@ def main() -> None:
             benchmark=args.benchmark,
             adj=args.adj,
             max_workers=args.workers,
+            extra_params=extra_params or None,
             calendar_mode=args.calendar,
+            engine=args.engine,
         )
         if args.out_csv:
             df.to_csv(args.out_csv, index=False)
@@ -508,6 +578,15 @@ def main() -> None:
 
     # ===== auto command =====
     if args.command == "auto":
+        fee_plugin = args.fee_config if hasattr(args, 'fee_config') else None
+        fee_plugin_params = None
+        if hasattr(args, 'fee_params') and args.fee_params:
+            try:
+                fee_plugin_params = _parse_json_option(args.fee_params, option_name="--fee-params")
+            except ValueError as exc:
+                logger.error(str(exc))
+                return
+
         engine = BacktestEngine(
             source=args.source,
             benchmark_source=args.benchmark_source or args.source,
@@ -532,6 +611,9 @@ def main() -> None:
             use_benchmark_regime=args.use_benchmark_regime,
             regime_scope=args.regime_scope,
             calendar_mode=args.calendar,
+            fee_plugin=fee_plugin,
+            fee_plugin_params=fee_plugin_params,
+            engine=args.engine,
         )
         logger.info(f"Pipeline completed. Results saved to {args.out_dir}")
         return

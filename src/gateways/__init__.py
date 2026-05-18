@@ -23,6 +23,9 @@ Usage:
 """
 from __future__ import annotations
 
+from importlib import import_module
+from typing import Dict, Iterator, Tuple
+
 from src.gateways.base_live_gateway import (
     BaseLiveGateway,
     GatewayConfig,
@@ -45,21 +48,45 @@ from src.gateways.mappers import (
     ExchangeCode,
 )
 
-# Gateway implementations
-from src.gateways.xtquant_gateway import XtQuantGateway
-from src.gateways.xtp_gateway import XtpGateway
-from src.gateways.hundsun_uft_gateway import HundsunUftGateway
-
-
-# Gateway factory
-GATEWAY_REGISTRY = {
-    "xtquant": XtQuantGateway,
-    "qmt": XtQuantGateway,
-    "miniqmt": XtQuantGateway,
-    "xtp": XtpGateway,
-    "hundsun": HundsunUftGateway,
-    "uft": HundsunUftGateway,
+_GATEWAY_IMPORTS: Dict[str, Tuple[str, str]] = {
+    "xtquant": ("src.gateways.xtquant_gateway", "XtQuantGateway"),
+    "qmt": ("src.gateways.xtquant_gateway", "XtQuantGateway"),
+    "miniqmt": ("src.gateways.xtquant_gateway", "XtQuantGateway"),
+    "xtp": ("src.gateways.xtp_gateway", "XtpGateway"),
+    "hundsun": ("src.gateways.hundsun_uft_gateway", "HundsunUftGateway"),
+    "uft": ("src.gateways.hundsun_uft_gateway", "HundsunUftGateway"),
 }
+
+
+def _load_gateway_class(module_name: str, class_name: str):
+    module = import_module(module_name)
+    return getattr(module, class_name)
+
+
+class _LazyGatewayRegistry(dict):
+    """Mapping that resolves concrete gateway classes only when requested."""
+
+    def __getitem__(self, key: str):
+        module_name, class_name = super().__getitem__(key)
+        return _load_gateway_class(module_name, class_name)
+
+    def get(self, key: str, default=None):
+        if key not in self:
+            return default
+        return self[key]
+
+    def items(self) -> Iterator[Tuple[str, type]]:  # type: ignore[override]
+        for key in self.keys():
+            yield key, self[key]
+
+    def values(self) -> Iterator[type]:  # type: ignore[override]
+        for key in self.keys():
+            yield self[key]
+
+
+# Gateway factory. Values are lazily resolved to avoid probing commercial SDKs
+# when callers only need base classes/configuration objects.
+GATEWAY_REGISTRY = _LazyGatewayRegistry(_GATEWAY_IMPORTS)
 
 
 def create_gateway(broker: str, config: GatewayConfig, event_queue, logger=None):
@@ -85,6 +112,16 @@ def create_gateway(broker: str, config: GatewayConfig, event_queue, logger=None)
     
     gateway_cls = GATEWAY_REGISTRY[broker_lower]
     return gateway_cls(config, event_queue, logger)
+
+
+def __getattr__(name: str):
+    if name in {"XtQuantGateway", "XtpGateway", "HundsunUftGateway"}:
+        for module_name, class_name in _GATEWAY_IMPORTS.values():
+            if class_name == name:
+                value = _load_gateway_class(module_name, class_name)
+                globals()[name] = value
+                return value
+    raise AttributeError(f"module 'src.gateways' has no attribute {name!r}")
 
 
 __all__ = [

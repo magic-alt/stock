@@ -832,6 +832,7 @@ class BacktestEngine:
         max_workers: int = 1,
         extra_params: Optional[Dict[str, Any]] = None,
         calendar_mode: Optional[str] = None,
+        engine: str = "backtrader",
     ) -> pd.DataFrame:
         """Evaluate the Cartesian product of parameters and return the score grid."""
         from .strategy_modules import STRATEGY_REGISTRY
@@ -855,6 +856,14 @@ class BacktestEngine:
         rows: List[Dict[str, Any]] = []
         broker_conf = dict(cash=cash, commission=commission, slippage=slippage)
         max_workers = max(1, max_workers)
+        engine_key = (engine or "backtrader").lower()
+        if max_workers > 1 and engine_key not in ("backtrader", "bt"):
+            logger.warning(
+                "Grid search engine does not support process workers; running serial",
+                engine=engine_key,
+                requested_workers=max_workers,
+            )
+            max_workers = 1
         
         # V2.7.0 Patch 3: Publish grid search start event
         self.events.put(Event(EventType.PIPELINE_STAGE, {
@@ -899,6 +908,7 @@ class BacktestEngine:
             except Exception:
                 pass
             for i, (param_dict, metrics) in enumerate(zip(param_dicts, metrics_list)):
+                metrics.setdefault("_engine", "backtrader")
                 rows.append({"strategy": strategy, **param_dict, **metrics})
                 # V2.7.0 Patch 3: Publish metrics calculated event
                 self.events.put(Event(EventType.METRICS_CALCULATED, {
@@ -914,7 +924,7 @@ class BacktestEngine:
                 if extra_params:
                     param_dict.update(extra_params)
                 try:
-                    _, metrics, _ = self._run_module(
+                    _, metrics, _ = self._execute_strategy(
                         module,
                         local_data_map,
                         param_dict,
@@ -922,6 +932,7 @@ class BacktestEngine:
                         commission=commission,
                         slippage=slippage,
                         benchmark_nav=local_bench_nav,
+                        engine=engine,
                     )
                 except Exception as err:
                     metrics = {
@@ -932,8 +943,10 @@ class BacktestEngine:
                         "bench_return": float("nan"),
                         "bench_mdd": float("nan"),
                         "excess_return": float("nan"),
+                        "_engine": engine_key,
                         "error": str(err),
                     }
+                metrics.setdefault("_engine", engine_key)
                 rows.append({"strategy": strategy, **param_dict, **metrics})
                 # V2.7.0 Patch 3: Publish metrics calculated event
                 self.events.put(Event(EventType.METRICS_CALCULATED, {
@@ -1007,6 +1020,9 @@ class BacktestEngine:
         use_benchmark_regime: bool = False,
         regime_scope: str = "trend",
         calendar_mode: Optional[str] = None,
+        fee_plugin: Optional[str] = None,
+        fee_plugin_params: Optional[Dict[str, Any]] = None,
+        engine: str = "backtrader",
     ) -> None:
         """Run optimization for each strategy, combine results, and replay top picks."""
         from .strategy_modules import STRATEGY_REGISTRY
@@ -1039,6 +1055,13 @@ class BacktestEngine:
                     extras = {"bull_filter": True, "bull_filter_benchmark": True}
                 elif regime_scope != "none":
                     extras = {"bull_filter": True, "bull_filter_benchmark": True}
+
+            fee_extras: Dict[str, Any] = {}
+            if fee_plugin:
+                fee_extras["_fee_plugin"] = fee_plugin
+                for key, value in (fee_plugin_params or {}).items():
+                    fee_extras[f"_{key}"] = value
+            combined_extras = {**fee_extras, **(extras or {})}
             
             df = self.grid_search(
                 name,
@@ -1054,7 +1077,8 @@ class BacktestEngine:
                 data_map=data_map,
                 bench_nav=bench_nav,
                 max_workers=workers,
-                extra_params=extras,
+                extra_params=combined_extras or None,
+                engine=engine,
             )
             csv_path = os.path.join(out_dir, f"opt_{name}.csv")
             df.to_csv(csv_path, index=False)
@@ -1080,6 +1104,7 @@ class BacktestEngine:
             slippage,
             out_dir,
             workers=workers,
+            engine=engine,
         )
 
         elapsed = time.perf_counter() - start_ts
@@ -1217,6 +1242,7 @@ class BacktestEngine:
         slippage: float,
         out_dir: str,
         workers: int,
+        engine: str = "backtrader",
     ) -> None:
         """Replay the best candidates from the Pareto frontier to produce NAV curves."""
         from .strategy_modules import STRATEGY_REGISTRY
@@ -1267,7 +1293,7 @@ class BacktestEngine:
                 # Return a flat NAV series to avoid crash
                 flat_nav = pd.Series(1.0, index=pd.date_range(start, end, freq='B'), name=label)
                 return label, flat_nav
-            nav, _, _ = self._run_module(
+            nav, _, _ = self._execute_strategy(
                 module,
                 local_map,
                 params,
@@ -1275,6 +1301,7 @@ class BacktestEngine:
                 commission=commission,
                 slippage=slippage,
                 benchmark_nav=bench_nav,
+                engine=engine,
             )
             return label, nav
 
