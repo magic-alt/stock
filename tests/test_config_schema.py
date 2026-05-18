@@ -287,3 +287,13 @@ class TestConfigManager:
         assert loaded.realtime_data.interval_seconds == 1.5
         assert loaded.portfolio.optimization_objective == "min_vol"
         assert loaded.portfolio.rebalance_interval_days == 30
+
+    def test_repository_example_config_loads(self):
+        """config.yaml.example must stay aligned with GlobalConfig schema."""
+        manager = ConfigManager("config.yaml.example")
+        config = manager.load()
+
+        assert config.data.provider == "akshare"
+        assert config.database.path == "./cache/market_data.db"
+        assert config.monitoring.metrics_port == 9090
+        assert config.performance.max_workers == 4

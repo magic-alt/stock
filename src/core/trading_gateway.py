@@ -35,7 +35,9 @@ from typing import Any, Callable, Dict, List, Optional, Protocol
 from src.core.events import EventEngine, Event, EventType
 from src.core.interfaces import (
     AccountInfo, OrderInfo, PositionInfo, TradeInfo,
-    Side, OrderTypeEnum, OrderStatusEnum
+    Side, OrderTypeEnum, OrderStatusEnum,
+    OrderRequest as CoreOrderRequest,
+    OrderEventPayload,
 )
 from src.core.logger import get_logger
 from src.core.audit import AuditLogger, audit_event
@@ -194,6 +196,221 @@ class BrokerAdapter(Protocol):
     def query_positions(self) -> Dict[str, PositionInfo]:
         """Query all positions."""
         ...
+
+
+class _SynchronousEventBridge:
+    """Small EventEngine-compatible bridge used by PaperGatewayV3Adapter."""
+
+    def __init__(self, upstream: Optional[EventEngine] = None):
+        self.upstream = upstream
+        self._handlers: Dict[str, List[Callable[[Event], None]]] = {}
+
+    def register(self, event_type: str, handler: Callable[[Event], None]) -> None:
+        self._handlers.setdefault(event_type, []).append(handler)
+
+    def unregister(self, event_type: str, handler: Callable[[Event], None]) -> None:
+        handlers = self._handlers.get(event_type, [])
+        if handler in handlers:
+            handlers.remove(handler)
+
+    def put(self, event: Event) -> None:
+        for handler in list(self._handlers.get(event.type, [])):
+            handler(event)
+        if self.upstream:
+            self.upstream.put(event)
+
+    def start(self) -> None:
+        if self.upstream:
+            self.upstream.start()
+
+    def stop(self) -> None:
+        if self.upstream:
+            self.upstream.stop()
+
+
+class PaperGatewayV3Adapter:
+    """BrokerAdapter facade over the MatchingEngine-backed PaperGatewayV3."""
+
+    def __init__(
+        self,
+        config: GatewayConfig,
+        event_engine: Optional[EventEngine] = None,
+    ):
+        from src.core.paper_gateway_v3 import PaperGateway as PaperGatewayV3
+
+        self.config = config
+        self._events = _SynchronousEventBridge(event_engine)
+        self._gateway = PaperGatewayV3(
+            self._events,  # type: ignore[arg-type]
+            initial_cash=config.initial_cash,
+            commission_rate=config.commission_rate,
+        )
+        self._connected = False
+        self._last_prices: Dict[str, float] = {}
+
+    def connect(self) -> bool:
+        self._connected = True
+        return True
+
+    def disconnect(self) -> None:
+        self._connected = False
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def submit_order(
+        self,
+        symbol: str,
+        side: Side,
+        quantity: float,
+        price: Optional[float] = None,
+        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT,
+    ) -> str:
+        order_id = self._gateway.send_order(
+            symbol=symbol,
+            side=side.value,
+            size=quantity,
+            price=price,
+            order_type=order_type.value,
+        )
+        last_price = self._last_prices.get(symbol)
+        if last_price and _order_crosses_price(side, order_type, price, last_price):
+            self.update_price(symbol, last_price)
+        return order_id
+
+    def cancel_order(self, order_id: str) -> bool:
+        return self._gateway.cancel_order(order_id)
+
+    def query_order(self, order_id: str) -> Optional[OrderInfo]:
+        query_order = getattr(self._gateway, "query_order", None)
+        if callable(query_order):
+            result = query_order(order_id)
+            if result is not None:
+                return self._order_to_info(result)
+        for order in self._gateway.query_orders():
+            if order.get("order_id") == order_id:
+                return self._order_to_info(order)
+        return None
+
+    def query_account(self) -> AccountInfo:
+        data = self._gateway.query_account()
+        return AccountInfo(
+            account_id=str(data.get("account_id", "PAPER")),
+            cash=float(data.get("balance", 0.0)),
+            total_value=float(data.get("equity", 0.0)),
+            available=float(data.get("available", 0.0)),
+            unrealized_pnl=float(data.get("unrealized_pnl", 0.0)),
+            realized_pnl=float(data.get("realized_pnl", 0.0)),
+        )
+
+    def query_positions(self) -> Dict[str, PositionInfo]:
+        positions: Dict[str, PositionInfo] = {}
+        for symbol, data in self._gateway.query_all_positions().items():
+            positions[symbol] = PositionInfo(
+                symbol=symbol,
+                size=float(data.get("size", 0.0)),
+                avg_price=float(data.get("avg_price", 0.0)),
+                market_value=float(data.get("market_value", 0.0)),
+                unrealized_pnl=float(data.get("unrealized_pnl", 0.0)),
+                realized_pnl=float(data.get("realized_pnl", 0.0)),
+            )
+        return positions
+
+    def query_orders(self, symbol: Optional[str] = None) -> List[OrderInfo]:
+        return [self._order_to_info(order) for order in self._gateway.query_orders(symbol=symbol)]
+
+    def query_trades(
+        self,
+        symbol: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[TradeInfo]:
+        trades = [self._trade_to_info(trade) for trade in self._gateway.query_trades(symbol=symbol)]
+        trades.sort(key=lambda trade: trade.timestamp or datetime.min, reverse=True)
+        if limit is not None and limit >= 0:
+            return trades[:limit]
+        return trades
+
+    def update_price(self, symbol: str, price: float) -> None:
+        self._last_prices[symbol] = price
+        self._gateway.mark_price(symbol, price)
+        bar = {
+            "open": price,
+            "high": price,
+            "low": price,
+            "close": price,
+            "volume": 0.0,
+        }
+        self._gateway.on_bar(symbol, bar)  # type: ignore[arg-type]
+
+    def on_bar(self, symbol: str, bar: Any) -> None:
+        close = float(bar.get("close", bar.get("Close", 0.0))) if hasattr(bar, "get") else 0.0
+        if close > 0:
+            self._last_prices[symbol] = close
+        self._gateway.on_bar(symbol, bar)
+
+    def snapshot_state(self) -> Dict[str, Any]:
+        return {
+            "account": self._gateway.query_account(),
+            "orders": self._gateway.query_orders(),
+            "trades": self._gateway.query_trades(),
+            "positions": self._gateway.query_all_positions(),
+            "last_prices": dict(self._last_prices),
+        }
+
+    def restore_state(self, payload: Dict[str, Any]) -> None:
+        self._last_prices = dict(payload.get("last_prices", {}))
+        for symbol, price in self._last_prices.items():
+            self._gateway.mark_price(symbol, float(price))
+
+    @staticmethod
+    def _order_to_info(data: Any) -> OrderInfo:
+        if isinstance(data, OrderInfo):
+            return data
+        return OrderInfo(
+            order_id=str(data.get("order_id", "")),
+            symbol=str(data.get("symbol", "")),
+            side=Side(data.get("side", Side.BUY.value)),
+            order_type=OrderTypeEnum(data.get("order_type", OrderTypeEnum.LIMIT.value)),
+            price=data.get("price"),
+            quantity=float(data.get("quantity", 0.0)),
+            filled_quantity=float(data.get("filled_quantity", 0.0)),
+            avg_fill_price=float(data.get("avg_fill_price", 0.0)),
+            status=OrderStatusEnum(data.get("status", OrderStatusEnum.PENDING.value)),
+            create_time=data.get("create_time"),
+            update_time=data.get("update_time"),
+        )
+
+    @staticmethod
+    def _trade_to_info(data: Any) -> TradeInfo:
+        if isinstance(data, TradeInfo):
+            return data
+        return TradeInfo(
+            trade_id=str(data.get("trade_id", "")),
+            order_id=str(data.get("order_id", "")),
+            symbol=str(data.get("symbol", "")),
+            side=Side(data.get("side", Side.BUY.value)),
+            price=float(data.get("price", 0.0)),
+            quantity=float(data.get("quantity", 0.0)),
+            commission=float(data.get("commission", 0.0)),
+            timestamp=data.get("timestamp"),
+        )
+
+
+def _order_crosses_price(
+    side: Side,
+    order_type: OrderTypeEnum,
+    price: Optional[float],
+    last_price: float,
+) -> bool:
+    if order_type == OrderTypeEnum.MARKET:
+        return True
+    if price is None:
+        return False
+    if order_type == OrderTypeEnum.LIMIT:
+        return (side == Side.BUY and last_price <= price) or (side == Side.SELL and last_price >= price)
+    if order_type == OrderTypeEnum.STOP:
+        return (side == Side.BUY and last_price >= price) or (side == Side.SELL and last_price <= price)
+    return False
 
 
 class BaseLiveGatewayAdapter:
@@ -1264,7 +1481,11 @@ class TradingGateway:
         initial_cash: float = 1_000_000.0,
         commission_rate: float = 0.0003,
         slippage: float = 0.0001,
-        event_engine: Optional[EventEngine] = None
+        event_engine: Optional[EventEngine] = None,
+        risk_manager = None,
+        authorizer: Optional[Authorizer] = None,
+        audit_logger: Optional[AuditLogger] = None,
+        tenant_id: str = "",
     ) -> "TradingGateway":
         """Create paper trading gateway."""
         config = GatewayConfig(
@@ -1274,13 +1495,24 @@ class TradingGateway:
             commission_rate=commission_rate,
             slippage=slippage
         )
-        return cls(config, event_engine)
+        return cls(
+            config,
+            event_engine,
+            risk_manager=risk_manager,
+            authorizer=authorizer,
+            audit_logger=audit_logger,
+            tenant_id=tenant_id,
+        )
     
     @classmethod
     def create_live(
         cls,
         broker: BrokerType,
         event_engine: Optional[EventEngine] = None,
+        risk_manager = None,
+        authorizer: Optional[Authorizer] = None,
+        audit_logger: Optional[AuditLogger] = None,
+        tenant_id: str = "",
         **kwargs
     ) -> "TradingGateway":
         """Create live trading gateway."""
@@ -1289,14 +1521,21 @@ class TradingGateway:
             broker=broker,
             **kwargs
         )
-        return cls(config, event_engine)
+        return cls(
+            config,
+            event_engine,
+            risk_manager=risk_manager,
+            authorizer=authorizer,
+            audit_logger=audit_logger,
+            tenant_id=tenant_id,
+        )
     
     def _create_adapter(self):
         """Create appropriate adapter based on config."""
         broker = self.config.broker
         
         if broker == BrokerType.PAPER:
-            return PaperTradingAdapter(self.config)
+            return PaperGatewayV3Adapter(self.config, event_engine=self.event_engine)
         elif broker == BrokerType.EASTMONEY:
             return EastMoneyAdapter(self.config)
         elif broker == BrokerType.FUTU:
@@ -1410,6 +1649,40 @@ class TradingGateway:
             self._publish_event("order.cancelled", {"order_id": order_id})
             self._audit("order.cancel", subject, {"order_id": order_id}, result="ok")
         return result
+
+    def send_order(
+        self,
+        symbol: str,
+        side: str,
+        size: float,
+        price: Optional[float] = None,
+        order_type: str = "market",
+        subject: Optional[Subject] = None,
+    ) -> str:
+        """Submit an order using the TradeGateway-compatible method name."""
+        request = CoreOrderRequest(
+            symbol=symbol,
+            side=Side(side.lower()),
+            quantity=size,
+            price=price,
+            order_type=OrderTypeEnum(order_type.lower()),
+        )
+        return self.submit_order_request(request, subject=subject)
+
+    def submit_order_request(
+        self,
+        request: CoreOrderRequest,
+        subject: Optional[Subject] = None,
+    ) -> str:
+        """Submit a canonical OrderRequest through the configured adapter."""
+        return self._submit_order(
+            request.symbol,
+            request.side,
+            request.quantity,
+            request.price,
+            request.order_type,
+            subject=subject,
+        )
     
     def _submit_order(
         self,
@@ -1423,8 +1696,11 @@ class TradingGateway:
         """Internal order submission with risk checks."""
         # Risk check (if enabled)
         if self.risk_manager and self.config.enable_risk_check:
-            if price is None and order_type == OrderTypeEnum.MARKET:
-                logger.warning("Risk check skipped for market order without price", symbol=symbol)
+            check_price = price
+            if check_price is None and order_type == OrderTypeEnum.MARKET:
+                check_price = getattr(self._adapter, "_last_prices", {}).get(symbol)
+            if check_price is None:
+                logger.warning("Risk check skipped for order without price", symbol=symbol)
             else:
                 account = self.get_account()
                 positions = self.get_positions()
@@ -1432,11 +1708,28 @@ class TradingGateway:
                     symbol=symbol,
                     side=side,
                     quantity=quantity,
-                    price=price or 0.0,
+                    price=check_price,
                     account=account,
                     positions=positions,
                 )
+                self._publish_event(EventType.RISK_CHECKED, {
+                    "symbol": symbol,
+                    "side": side.value,
+                    "quantity": quantity,
+                    "price": check_price,
+                    "passed": result.passed,
+                    "rule": result.rule_name,
+                    "reason": result.reason,
+                })
                 if not result.passed:
+                    self._publish_event(EventType.RISK_REJECTED, {
+                        "symbol": symbol,
+                        "side": side.value,
+                        "quantity": quantity,
+                        "price": check_price,
+                        "rule": result.rule_name,
+                        "reason": result.reason,
+                    })
                     raise PermissionError(f"Risk check failed: {result.reason}")
 
         self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(tenant_id=self.tenant_id))
@@ -1451,6 +1744,17 @@ class TradingGateway:
             "quantity": quantity,
             "price": price
         })
+        self._publish_event(EventType.ORDER_ACCEPTED, OrderEventPayload(
+            event_type=EventType.ORDER_ACCEPTED,
+            order_id=order_id,
+            symbol=symbol,
+            side=side,
+            status=OrderStatusEnum.SUBMITTED,
+            quantity=quantity,
+            price=price,
+            broker_order_id=order_id,
+            source="trading_gateway",
+        ).to_dict())
         self._audit("order.submit", subject, {"order_id": order_id, "symbol": symbol}, result="ok")
         
         return order_id
@@ -1508,6 +1812,8 @@ class TradingGateway:
             price: Current price
         """
         if isinstance(self._adapter, PaperTradingAdapter):
+            self._adapter.update_price(symbol, price)
+        elif hasattr(self._adapter, "update_price"):
             self._adapter.update_price(symbol, price)
     
     # ---------------------------------------------------------------------------
@@ -1594,6 +1900,7 @@ __all__ = [
     'GatewayStatus',
     'BrokerType',
     'GatewayConfig',
+    'PaperGatewayV3Adapter',
     'PaperTradingAdapter',
     'EastMoneyAdapter',
     'FutuAdapter',

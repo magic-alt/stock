@@ -27,6 +27,7 @@ from src.core.realtime_data import (
     TencentDataProvider,
     TickData,
     BaseDataProvider,
+    create_realtime_provider,
 )
 
 
@@ -310,6 +311,18 @@ class TestHttpPollingProviders:
         assert tick.bid_volume == pytest.approx(200)
         assert tick.ask_volume == pytest.approx(300)
 
+    def test_provider_factory_creates_cn_http_providers(self):
+        assert isinstance(create_realtime_provider(DataSource.SINA), SinaDataProvider)
+        assert isinstance(create_realtime_provider("eastmoney"), EastmoneyDataProvider)
+        assert isinstance(create_realtime_provider(DataSource.TENCENT), TencentDataProvider)
+
+    def test_realtime_provider_package_exports(self):
+        from src.core.realtime_providers import SinaDataProvider as ExportedSina
+        from src.core.realtime_providers.eastmoney import EastmoneyDataProvider as ExportedEastmoney
+
+        assert ExportedSina is SinaDataProvider
+        assert ExportedEastmoney is EastmoneyDataProvider
+
 
 def _fake_connect(provider: AKShareDataProvider):
     """Helper: simulate a connected state with the real poll loop (mocked akshare)."""
@@ -430,3 +443,16 @@ class TestRealtimeDataManager:
         assert "600519.SH" in fallback._subscribed_symbols
 
         mgr.stop()
+
+    def test_configure_from_config_installs_provider_and_fallback(self):
+        from src.core.config import RealtimeDataConfig
+
+        mgr = RealtimeDataManager()
+        cfg = RealtimeDataConfig(provider="sina", fallback_providers=["eastmoney"], interval_seconds=1.0)
+
+        mgr.configure_from_config(cfg)
+
+        assert isinstance(mgr.get_provider(DataSource.SINA), SinaDataProvider)
+        assert isinstance(mgr.get_provider(DataSource.EASTMONEY), EastmoneyDataProvider)
+        assert mgr._active_provider == DataSource.SINA
+        assert mgr._fallback_providers == [DataSource.EASTMONEY]

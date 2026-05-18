@@ -145,15 +145,22 @@ class EventType:
     STRATEGY_SIGNAL = "strategy.signal"
     
     # Order events
+    ORDER_CREATED = "order.created"
     ORDER_SENT = "order.sent"
+    ORDER_ACCEPTED = "order.accepted"
     ORDER_FILLED = "order.filled"
+    ORDER_PARTIAL = "order.partial_fill"
     ORDER_CANCELLED = "order.cancelled"
     ORDER_REJECTED = "order.rejected"
+    ORDER_ERROR = "order.error"
     ORDER = "order"  # V3.0: Generic order event from matching engine
     
     # Trade events
     TRADE_EXECUTED = "trade.executed"
     TRADE = "trade"  # V3.0: Generic trade event from matching engine
+
+    # Execution events
+    EXECUTION_REPORT = "execution.report"
     
     # Position events
     POSITION_OPENED = "position.opened"
@@ -172,5 +179,7 @@ class EventType:
     HEARTBEAT = "system.heartbeat"
     
     # Risk events
+    RISK_CHECKED = "risk.checked"
+    RISK_REJECTED = "risk.rejected"
     RISK_WARNING = "risk.warning"
     RISK_BREACH = "risk.breach"

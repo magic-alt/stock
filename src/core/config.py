@@ -25,6 +25,9 @@ __all__ = [
     "LiveTradingConfig",
     "RealtimeDataConfig",
     "PortfolioConfig",
+    "DatabaseConfig",
+    "MonitoringConfig",
+    "PerformanceConfig",
     "GlobalConfig",
     "ConfigManager",
     "get_config",
@@ -43,6 +46,7 @@ class DataConfig(BaseModel):
     adj: Optional[str] = Field(None, description="Adjustment type (qfq/hfq/None)")
     start_date: str = Field("2024-01-01", description="Default start date")
     end_date: str = Field("2024-12-31", description="Default end date")
+    providers: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Provider-specific options")
 
 
 class BacktestConfig(BaseModel):
@@ -51,6 +55,8 @@ class BacktestConfig(BaseModel):
     commission: float = Field(0.001, description="Commission rate", ge=0, le=0.1)
     slippage: float = Field(0.0, description="Slippage (fixed or percentage)", ge=0)
     slippage_type: str = Field("fixed", description="Slippage type (fixed/percentage/volume)")
+    min_trade_unit: int = Field(100, description="Minimum trade lot size", gt=0)
+    allow_short: bool = Field(False, description="Allow short selling")
 
     @validator("commission")
     def validate_commission(cls, v):
@@ -67,6 +73,11 @@ class RiskConfig(BaseModel):
     max_daily_loss_pct: float = Field(0.05, description="Max daily loss %", gt=0, le=1.0)
     max_order_size: float = Field(10000.0, description="Max order size", gt=0)
     max_price_deviation_pct: float = Field(0.05, description="Max price deviation %", gt=0, le=1.0)
+    max_positions: int = Field(10, description="Maximum active positions", gt=0)
+    daily_loss_limit: float = Field(0.05, description="Alias used by config.yaml.example", gt=0, le=1.0)
+    max_drawdown_limit: float = Field(0.20, description="Maximum account drawdown", gt=0, le=1.0)
+    max_order_value: float = Field(100000.0, description="Maximum order notional value", gt=0)
+    min_order_value: float = Field(1000.0, description="Minimum order notional value", ge=0)
 
 
 class ExecutionConfig(BaseModel):
@@ -75,6 +86,7 @@ class ExecutionConfig(BaseModel):
     mode: str = Field("vectorized", description="Execution mode (vectorized/event)")
     enable_matching: bool = Field(True, description="Enable order matching simulation")
     enable_slippage: bool = Field(True, description="Enable slippage simulation")
+    live_gateway: Dict[str, Any] = Field(default_factory=dict, description="Live gateway nested settings")
 
 
 class StrategyConfig(BaseModel):
@@ -92,6 +104,9 @@ class LoggingConfig(BaseModel):
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="Log format"
     )
+    json_format: bool = Field(False, description="Emit structured JSON logs")
+    rotate_size: int = Field(10 * 1024 * 1024, description="Log rotate size in bytes", gt=0)
+    rotate_count: int = Field(5, description="Number of rotated log files", ge=0)
 
     @validator("level")
     def validate_level(cls, v):
@@ -193,6 +208,38 @@ class PortfolioConfig(BaseModel):
         extra = "forbid"
 
 
+class DatabaseConfig(BaseModel):
+    """Database/cache persistence configuration."""
+    path: str = "./cache/market_data.db"
+    backup_enabled: bool = True
+    backup_interval_hours: int = Field(24, gt=0)
+    backup_retention_days: int = Field(30, gt=0)
+
+    class Config:
+        extra = "forbid"
+
+
+class MonitoringConfig(BaseModel):
+    """Runtime monitoring configuration."""
+    enabled: bool = True
+    health_check_interval: int = Field(60, gt=0)
+    metrics_port: int = Field(9090, ge=0, le=65535)
+    alert_email: str = ""
+
+    class Config:
+        extra = "forbid"
+
+
+class PerformanceConfig(BaseModel):
+    """Performance tuning configuration."""
+    max_workers: int = Field(4, gt=0)
+    cache_enabled: bool = True
+    cache_expire_days: int = Field(1, ge=0)
+
+    class Config:
+        extra = "forbid"
+
+
 class GlobalConfig(BaseModel):
     """Global configuration container."""
     data: DataConfig = Field(default_factory=DataConfig)
@@ -205,6 +252,9 @@ class GlobalConfig(BaseModel):
     live_trading: LiveTradingConfig = Field(default_factory=LiveTradingConfig)
     realtime_data: RealtimeDataConfig = Field(default_factory=RealtimeDataConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
 
     class Config:
         """Pydantic config."""

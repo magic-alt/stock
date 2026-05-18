@@ -35,9 +35,10 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from src.core.interfaces import (
-    OrderInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum
+    OrderInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
+    OrderRequest, OrderEventPayload,
 )
-from src.core.events import EventEngine, Event
+from src.core.events import EventEngine, Event, EventType
 from src.core.audit import AuditLogger, audit_event
 from src.core.auth import Authorizer, Permission, ResourceScope, Subject
 from src.core.logger import get_logger
@@ -152,6 +153,23 @@ class ManagedOrder:
             status=self.status,
             create_time=self.create_time,
             update_time=self.update_time
+        )
+
+    def to_order_request(self) -> OrderRequest:
+        """Convert to the canonical gateway order request DTO."""
+        return OrderRequest(
+            symbol=self.symbol,
+            side=self.side,
+            quantity=self.quantity,
+            price=self.price,
+            order_type=self.order_type,
+            client_order_id=self.order_id,
+            strategy_id=self.strategy_id,
+            tenant_id=self.tenant_id,
+            stop_loss=self.stop_loss,
+            take_profit=self.take_profit,
+            tags=self.tags,
+            create_time=self.create_time,
         )
 
 
@@ -430,13 +448,17 @@ class OrderManager:
             ))
             # Submit to gateway
             if self.gateway:
-                broker_id = self.gateway._adapter.submit_order(
-                    symbol=order.symbol,
-                    side=order.side,
-                    quantity=order.quantity,
-                    price=order.price,
-                    order_type=order.order_type
-                )
+                submit_request = getattr(self.gateway, "submit_order_request", None)
+                if callable(submit_request):
+                    broker_id = submit_request(order.to_order_request(), subject=subject)
+                else:
+                    broker_id = self.gateway._adapter.submit_order(
+                        symbol=order.symbol,
+                        side=order.side,
+                        quantity=order.quantity,
+                        price=order.price,
+                        order_type=order.order_type,
+                    )
                 order.broker_order_id = broker_id
             
             # Update status
@@ -805,17 +827,22 @@ class OrderManager:
         
         # Publish to event engine
         if self.event_engine:
-            self.event_engine.put(Event(
-                event_type.value,
-                {
-                    "order_id": order.order_id,
-                    "symbol": order.symbol,
-                    "side": order.side.value,
-                    "status": order.status.value,
-                    "quantity": order.quantity,
-                    "filled": order.filled_quantity
-                }
-            ))
+            payload = OrderEventPayload(
+                event_type=event_type.value,
+                order_id=order.order_id,
+                symbol=order.symbol,
+                side=order.side,
+                status=order.status,
+                quantity=order.quantity,
+                filled_quantity=order.filled_quantity,
+                price=order.price,
+                avg_fill_price=order.avg_fill_price,
+                broker_order_id=order.broker_order_id,
+                reason=order.reject_reason,
+                source="order_manager",
+            )
+            self.event_engine.put(Event(event_type.value, payload.to_dict()))
+            self.event_engine.put(Event(EventType.ORDER, payload.to_dict()))
 
     def _authorize(self, permission: str, subject: Optional[Subject], scope: ResourceScope) -> None:
         if self.authorizer:

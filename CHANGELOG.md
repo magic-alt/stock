@@ -11,9 +11,12 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- V4.0-A: add canonical `OrderRequest`, normalized order event payloads, and execution report DTOs for OMS/gateway/execution alignment.
+- V4.0-A: add `PaperGatewayV3Adapter` so `TradingGateway` paper mode routes through the MatchingEngine-backed PaperGatewayV3 contract.
+- V4.0-A: add realtime provider factory and `src/core/realtime_providers/` exports for Sina, Eastmoney, and Tencent providers.
+- V4.0-A: add `constraints.txt` as a dependency resolution seed aligned with runtime/test requirements.
 - CLI: `unified_backtest_framework.py features|capabilities --json` now lists registered strategies, data sources, backtest engines, financial providers, live gateways, trading brokers, and workflows.
 - Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring commercial SDKs.
-- Docs: 新增 `docs/MID_LONG_TERM_STATUS_AUDIT.md`，复核 P2/P3 规划中 REST API、Docker、配置加密、Web 前端、微服务架构和分布式回测的当前实现状态。
 - Web: 回测工作台新增动态策略参数、同步/异步运行模式、任务状态、错误提示、指标明细和响应式布局。
 - API: FastAPI `api_v2` 新增回测 job 提交/查询/取消端点，并提供 `/api/v2/chart-data` 供前端数据浏览使用。
 - Frontend: Data Browser 从占位页升级为可查询近期 OHLCV 数据的表格视图。
@@ -22,11 +25,12 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
+- Config: align `GlobalConfig` schema with `config.yaml.example` by adding database, monitoring, performance, provider-detail, and execution live-gateway fields.
 - CLI: `grid` and `auto` workflows now expose `--engine` and correctly pass fee plugin parameters through to engine execution.
 - Gateway: `src.gateways` and `TradingGateway` lazily load concrete commercial SDK gateways; importing CLI/base modules no longer probes XTP/UFT SDKs.
 - Gateway: XtQuant/QMT now supports SDK-less stub mode aligned with XTP/UFT for development, CI, and smoke tests.
 - API: `/api/v2/backtest/run` 和 `/api/v2/strategies/run` 现在透传数据源、基准、复权、日历模式和执行引擎参数。
-- Docs: 同步 ROADMAP、ARCHITECTURE_REVIEW、PLATFORM/API/SECURITY/DEPLOYMENT 等文档中的中长期规划状态，移除“REST API/Docker/Web 前端尚未实现”的过期表述。
 - README: 版本升级到 V3.3.0；明确双回测引擎（Backtrader + Zipline）、OrderStateMachine、FinancialDataProvider 工厂、4 个实盘网关、5 种部署形态、本地 CI 流程。
 
 ### Added (previous, from feature/zipline-engine-and-stubs, merged in PR #5)
@@ -93,6 +97,7 @@ All notable changes to this project will be documented in this file.
 - Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
 
 ### Tests
+- Tests: expand gateway unification, risk precheck, realtime provider, and config schema coverage for V4.0-A architecture convergence.
 - Tests: 增加 FastAPI 回测 job、chart-data 与扩展回测参数透传覆盖。
 - Backtest: add `tests/test_strategy_backtest_contracts.py` to smoke-test every registered strategy except the external-dependency `qlib_registry` path.
 - Tests: add `tests/test_gateway_xtp_smoke.py` and `tests/test_gateway_uft_smoke.py` for unified gateway smoke assertions, and extend `tests/test_realtime_data.py` with HTTP provider parsing plus failover coverage.
