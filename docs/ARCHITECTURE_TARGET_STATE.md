@@ -11,7 +11,8 @@
 ### 1. Presentation
 - CLI：`unified_backtest_framework.py`
 - GUI：`scripts/backtest_gui.py`
-- Platform API：`/api/v1/*`
+- Platform API：`/api/v2/*`（FastAPI 主入口）+ `/api/v1/*`（版本化兼容入口）
+- Web：`frontend/` Vue3 SPA，生产态可由 `api_v2` 托管 `frontend/dist`
 
 ### 2. Application
 - Backtest Application Service（编排参数校验、任务装配、执行调度）
@@ -28,7 +29,16 @@
 - Metrics / Audit / Logging
 
 ## API 契约标准
-- 统一响应：
+- v2 统一响应：
+```json
+{
+  "ok": true,
+  "data": {},
+  "error": null,
+  "request_id": "uuid"
+}
+```
+- v1 兼容响应：
 ```json
 {
   "code": 0,
@@ -38,8 +48,8 @@
 }
 ```
 - 认证：Bearer Token（可由环境变量或启动参数注入）。
-- 可用性端点：`/api/v1/healthz`、`/api/v1/readyz`。
-- 可观测端点：`/metrics`（Prometheus 文本）。
+- 可用性端点：`/api/v2/health`、`/api/v2/ready`；v1 兼容 `healthz/readyz`。
+- 可观测端点：`/api/v2/metrics`；v1 兼容指标端点视部署模式保留。
 
 ## 作业状态机
 - `pending` -> `running` -> `success|failed`
@@ -47,8 +57,8 @@
 - 运行中取消默认拒绝（线程任务不可安全强杀）
 
 ## 兼容策略
-- 旧接口 `/jobs`、`/gateway/*`、`/health` 保留一个兼容周期。
-- 新功能仅在 `/api/v1/*` 增强；旧接口进入维护模式。
+- 未版本化旧接口 `/jobs`、`/gateway/*`、`/health` 已移除；生产入口应使用 `/api/v2/*` 或 `/api/v1/*`。
+- 新功能优先在 `/api/v2/*` 增强，v1 仅保留兼容性修复。
 
 ## 关键非功能目标
 - 可用性：接口异常路径可控、错误可诊断。
@@ -56,7 +66,9 @@
 - 可靠性：作业状态与指标一致，支持恢复分析。
 
 ## 当前已实现映射
-- 版本化接口：`src/platform/api_server.py`
+- FastAPI v2：`src/platform/api_v2.py`
+- v1 兼容接口与平台服务：`src/platform/api_server.py`
 - 作业取消与指标：`src/platform/job_queue.py`
 - 启动参数：`scripts/run_platform_api.py`
 - 契约测试：`tests/test_platform_api_server.py`
+- 中长期规划状态：`docs/MID_LONG_TERM_STATUS_AUDIT.md`

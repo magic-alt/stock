@@ -504,7 +504,7 @@ with timed("data_loading"):
 - ✅ API文档完成 (V3.1.0)
 - ✅ 性能优化完成 (V3.1.0)
 
-### 下一步行动
+### 下一步行动（2026-05-18 `src/` 复核后）
 
 1. **立即行动**（P0 优先级）:
    - [x] ~~完善错误处理机制（统一异常类型）~~ ✅ V3.1.0完成
@@ -517,14 +517,16 @@ with timed("data_loading"):
    - [ ] 告警系统完善
 
 3. **中期规划**（P2 优先级）:
-   - [ ] REST API实现
-   - [ ] Docker容器化
-   - [ ] 配置加密
+   - [x] REST API实现 — 已有 FastAPI `/api/v2/*`、OpenAPI 文档、回测 job、策略、交易网关与监控端点；`/api/v1/*` 仍保留版本化兼容入口。
+   - [x] Docker容器化 — 已有根目录多阶段 `Dockerfile`、`docker-compose.yml`、`frontend/Dockerfile`、K8s manifest 与 Render Blueprint。
+   - [x] 配置加密 — 已有 `SecurityManager.encrypt/decrypt` 与 `LocalFileVault` 加密密钥存储；外部 KMS/Vault 和全配置透明加密仍是增强项。
 
 4. **长期规划**（P3 优先级）:
-   - [ ] Web前端
-   - [ ] 微服务架构
-   - [ ] 分布式回测
+   - [x] Web前端 — 已有 `frontend/` Vue3 SPA，并保留 `src/platform/web/` 轻量控制台。
+   - [ ] 微服务架构 — 当前是模块化单体 + Compose 拆分 API/Frontend/Redis，尚未拆为独立 backtest/data/trading/ml 服务。
+   - [x] 分布式回测（框架级） — 已有 `DistributedRunner`、LocalProcessPool、Ray、Dask 适配器；生产集群模板和容量验证仍待补齐。
+
+详见 [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)。
 
 ---
 
@@ -533,12 +535,13 @@ with timed("data_loading"):
 - [部署指南](DEPLOYMENT_GUIDE.md)
 - [API参考文档](API_REFERENCE.md)
 - [用户手册](../README.md)
-- [项目路线图](../PROJECT_ROADMAP.md)
+- [项目路线图](ROADMAP.md)
+- [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)
 - [更新日志](../CHANGELOG.md)
 
 ---
 
-**报告生成时间**: 2026-01-12
+**报告生成时间**: 2026-05-18
 **审查人**: AI Assistant
-**版本**: V3.2.0
-**状态**: ✅ 本地部署就绪 | 商业级架构完善中
+**版本**: V3.3.0
+**状态**: ✅ 本地/容器部署就绪 | P2 中期规划已落地 | P3 微服务化继续推进

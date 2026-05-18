@@ -386,14 +386,16 @@ CONFIRM_LIVE_TRADING=1 python scripts/start_production.py --mode live
 单服务发布模式暴露：
 
 - 统一入口：`http://127.0.0.1:8000/`
-- 健康检查：`http://127.0.0.1:8000/health`
-- 指标接口：`http://127.0.0.1:8000/metrics`
+- 健康检查：`http://127.0.0.1:8000/api/v2/health`
+- 指标接口：`http://127.0.0.1:8000/api/v2/metrics`
 
 网页端能力包括：
 
 - 回测配置与结果查看
 - 网关连接、下单、撤单、paper 行情注入
 - 系统监控、任务列表、告警、账户/持仓/订单/成交查看
+
+中长期规划状态说明：Docker 容器化、REST API、配置加密和 Web 前端均已落地；微服务架构仍是后续演进项。详见 [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)。
 
 ---
 
