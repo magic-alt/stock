@@ -69,22 +69,18 @@ def _load_replay_params_from_decision_file(path: Optional[str]) -> Dict[str, Any
         with open(normalized, "r", encoding="utf-8") as fp:
             payload = json.load(fp)
     except FileNotFoundError:
-        logger.debug("preflight seed decision file not found: %s", normalized)
+        logger.debug(f"preflight seed decision file not found: {normalized}")
         return {}
     except Exception as exc:
-        logger.warning("Failed to load preflight seed decision file %s: %s", normalized, exc)
+        logger.warning(f"Failed to load preflight seed decision file {normalized}: {exc}")
         return {}
 
     params = _extract_replay_params_from_decision(payload)
     if not params:
-        logger.info("No recommended_replay.params found in seed file: %s", normalized)
+        logger.info(f"No recommended_replay.params found in seed file: {normalized}")
         return {}
 
-    logger.info(
-        "Loaded recommended params from preflight seed file: %s (keys=%s)",
-        normalized,
-        sorted(params.keys()),
-    )
+    logger.info(f"Loaded recommended params from preflight seed file: {normalized} (keys={sorted(params.keys())})")
     return params
 
 
@@ -334,10 +330,10 @@ def _persist_preflight_decision_files(
             with target.open("w", encoding="utf-8") as fp:
                 json.dump(release_decision, fp, ensure_ascii=False, indent=2, default=str)
             if logger_obj:
-                logger_obj.info("release_decision saved: %s", decision_path)
+                logger_obj.info(f"release_decision saved: {decision_path}")
         except Exception as exc:
             if logger_obj:
-                logger_obj.error("Failed to save decision file: %s", exc)
+                logger_obj.error(f"Failed to save decision file: {exc}")
             return False
 
     if seed_path and seed_path != decision_path:
@@ -348,10 +344,10 @@ def _persist_preflight_decision_files(
             with target.open("w", encoding="utf-8") as fp:
                 json.dump(release_decision, fp, ensure_ascii=False, indent=2, default=str)
             if logger_obj:
-                logger_obj.info("preflight decision seed updated: %s", seed_path)
+                logger_obj.info(f"preflight decision seed updated: {seed_path}")
         except Exception as exc:
             if logger_obj:
-                logger_obj.error("Failed to save preflight seed file: %s", exc)
+                logger_obj.error(f"Failed to save preflight seed file: {exc}")
 
     return True
 
@@ -376,7 +372,7 @@ def _run_preflight_decision_only_cycles(
 
     for current_round in range(1, max_rounds + 1):
         if logger:
-            logger.info("Preflight decision round %s/%s", current_round, max_rounds)
+            logger.info(f"Preflight decision round {current_round}/{max_rounds}")
 
         if current_round > 1:
             args.preflight_params = None
@@ -404,11 +400,7 @@ def _run_preflight_decision_only_cycles(
             break
 
         if logger:
-            logger.info(
-                "Decision round %s is review and has recommended replay. Starting auto round %s.",
-                current_round,
-                current_round + 1,
-            )
+            logger.info(f"Decision round {current_round} is review and has recommended replay. Starting auto round {current_round + 1}.")
         args.preflight_params = None
 
     args.preflight_params = original_preflight_params
@@ -467,13 +459,13 @@ def _run_preflight_candidate_sweep(
     candidate_limit = max(1, min(len(candidate_grid), candidate_limit))
     candidates = candidate_grid[:candidate_limit]
 
-    logger.info("Starting preflight candidate sweep: candidates=%s", candidate_limit)
+    logger.info(f"Starting preflight candidate sweep: candidates={candidate_limit}")
     results = []
     best = None
     best_key = (1, 3, float("inf"))
 
     for idx, candidate in enumerate(candidates, 1):
-        logger.info("[%s/%s] sweep candidate=%s", idx, candidate_limit, candidate)
+        logger.info(f"[{idx}/{candidate_limit}] sweep candidate={candidate}")
         try:
             candidate_report = run_preflight_checks(
                 config=config,
@@ -513,7 +505,7 @@ def _run_preflight_candidate_sweep(
                 best = result_item
                 best["index"] = idx
         except Exception as exc:
-            logger.warning("candidate sweep failed: %s", exc)
+            logger.warning(f"candidate sweep failed: {exc}")
             results.append({"candidate": candidate, "overall": "error", "reason": str(exc)})
 
     best_payload = None
@@ -741,7 +733,7 @@ def _run_preflight_if_requested(
     if getattr(args, "preflight_use_best", False):
         best_candidate = selected_best.get("requested_params") if selected_best else None
         if isinstance(best_candidate, dict):
-            logger.info("Applying best candidate from %s for rerun.", selected_best_source or "preflight experiments")
+            logger.info(f"Applying best candidate from {selected_best_source or 'preflight experiments'} for rerun.")
             try:
                 rerun_best = run_preflight_checks(
                     config=config,
@@ -768,7 +760,7 @@ def _run_preflight_if_requested(
                 }
                 report = rerun_best
             except Exception as exc:
-                logger.warning("Failed to rerun with best candidate: %s", exc)
+                logger.warning(f"Failed to rerun with best candidate: {exc}")
                 report["preflight_selected_from_experiment_failed"] = str(exc)
         else:
             logger.warning("preflight_use_best enabled but no valid best candidate from experiments.")
@@ -801,14 +793,7 @@ def _run_preflight_if_requested(
         logger.info("Preflight completed")
         logger.info(f"overall={report['overall']}")
         logger.info(f"advice_level={advice_level}")
-        logger.info(
-            "checks: total=%s pass=%s warn=%s fail=%s skip=%s",
-            report["summary"]["total"],
-            report["summary"]["passed"],
-            report["summary"]["warn"],
-            report["summary"]["failed"],
-            report["summary"]["skipped"],
-        )
+        logger.info(f"checks: total={report['summary']['total']} pass={report['summary']['passed']} warn={report['summary']['warn']} fail={report['summary']['failed']} skip={report['summary']['skipped']}")
         for item in strategy_advice:
             logger.info(f"[strategy-advice] {item}")
 
@@ -821,17 +806,11 @@ def _run_preflight_if_requested(
             if isinstance(sweep_report, dict) and sweep_report.get("best"):
                 logger.info(f"best_candidate={json.dumps(sweep_report['best'], ensure_ascii=False)}")
                 if sweep_report.get("recommended_replay"):
-                    logger.info(
-                        "recommended_replay=%s",
-                        json.dumps(sweep_report["recommended_replay"], ensure_ascii=False),
-                    )
+                    logger.info(f"recommended_replay={json.dumps(sweep_report['recommended_replay'], ensure_ascii=False)}")
                 logger.info("建议优先复用 best candidate 进行下一轮完整预检。")
         if platform_report:
             logger.info(f"preflight_platform={json.dumps(platform_report, ensure_ascii=False)}")
-        logger.info(
-            "release_decision=%s",
-            json.dumps(release_decision, ensure_ascii=False, default=str),
-        )
+        logger.info(f"release_decision={json.dumps(release_decision, ensure_ascii=False, default=str)}")
 
     # Persist preflight output for audit and replay workflows.
     if getattr(args, "preflight_export", None):
@@ -840,7 +819,7 @@ def _run_preflight_if_requested(
                 json.dump(report, fp, ensure_ascii=False, indent=2, default=str)
             logger.info(f"preflight report saved: {args.preflight_export}")
         except Exception as exc:
-            logger.error("Failed to write preflight_export file: %s", exc)
+            logger.error(f"Failed to write preflight_export file: {exc}")
             if preflight_mode == "live" and not getattr(args, "preflight_allow_block", False):
                 return False, release_decision
 
@@ -977,9 +956,9 @@ def main():
                 sys.exit(1)
 
             if preflight_rounds > 1:
-                logger.info("Decision-only mode completed: %s (rounds=%s)", decision_state, preflight_rounds)
+                logger.info(f"Decision-only mode completed: {decision_state} (rounds={preflight_rounds})")
             else:
-                logger.info("Decision-only mode completed: %s", decision_state)
+                logger.info(f"Decision-only mode completed: {decision_state}")
             sys.exit(0)
         if not preflight_passed:
             sys.exit(1)

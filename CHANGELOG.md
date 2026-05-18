@@ -2,9 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-04-09
+## [Unreleased] - 2026-05-18
 
 ### Added
+- Backtest: introduce `EngineBackend` abstraction with `backtrader` and `zipline` (zipline-reloaded) backends; `unified_backtest_framework.py run/grid` accept `--engine {backtrader,zipline}`.
+- Backtest: add custom Zipline data bundle (`src/backtest/zipline_bundle.py`) that ingests existing `get_provider(...)` OHLCV output into `~/.zipline/`.
+- Data: implement `TushareFinancialProvider` and `AkshareFinancialProvider` concrete fundamental data providers with a `get_financial_provider()` factory.
+- Realtime: implement `SinaDataProvider._fetch_tick` HTTP polling against `hq.sinajs.cn` with GBK text parsing.
+- Gateway: add reusable `OrderStateMachine`, exponential-backoff reconnect, and `_safe_call` retry/degrade helper in `BaseLiveGateway`, plus an audit history of state transitions.
+
+### Changed
+- Repository workflow: every task now uses a dedicated `feature/<slug>` branch; direct commits to `main` are prohibited (see `AGENTS.md`).
 - 生产: 为上线预检增加实盘回放一致性评估与策略优化建议，支持回测/回放参数统一映射校验。
 - Gateway: add structured `run_smoke_test()` readiness checks for live gateways so XTP/UFT can reuse the same smoke contract in stub mode or SDK-backed environments.
 - Gateway: add real-SDK integration smoke tests for XTP/UFT with environment-driven account wiring and an explicit live-order opt-in.

@@ -14,6 +14,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+_akshare_available = pytest.importorskip.__module__ and __import__("importlib").util.find_spec("akshare") is not None
+
 from src.core.realtime_data import (
     AKShareDataProvider,
     BarBuilder,
@@ -158,6 +160,7 @@ class TestBarBuilder:
 # Tests: AKShareDataProvider
 # ---------------------------------------------------------------------------
 
+@pytest.mark.skipif(not _akshare_available, reason="akshare not installed")
 class TestAKShareDataProvider:
     def test_connect_returns_false_when_akshare_missing(self):
         provider = AKShareDataProvider(interval=0.05)

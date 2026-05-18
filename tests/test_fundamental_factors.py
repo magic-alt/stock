@@ -166,9 +166,14 @@ class TestDebtToEquity:
 
 class TestFinancialDataProvider:
     def test_stub_returns_empty(self):
-        provider = FinancialDataProvider()
+        # V3.3.0: FinancialDataProvider is now abstract; the null provider
+        # returns an empty DataFrame per requested symbol (was: empty dict).
+        from src.pipeline.fundamental_factors import NullFinancialProvider
+
+        provider = NullFinancialProvider()
         data = provider.load(["600519.SH"], "2024-01-01", "2024-12-31")
-        assert data == {}
+        assert set(data.keys()) == {"600519.SH"}
+        assert data["600519.SH"].empty
 
 
 # ---------------------------------------------------------------------------

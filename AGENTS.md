@@ -26,6 +26,14 @@
 - Markers available: `integration`, `slow` (use `-m integration`).
 - Coverage target in docs is >95% overall; keep new features covered.
 
+## Branch & PR Workflow (Mandatory)
+- **Never commit directly to `main`.** Every new task — features, fixes, refactors, docs — must happen on a dedicated branch.
+- Branch naming: `feature/<short-slug>` for new work, `fix/<short-slug>` for bug fixes, `docs/<short-slug>` for pure documentation. Slugs are lowercase, hyphen-separated, and concise (e.g. `feature/zipline-engine-and-stubs`).
+- One conversation/task = one branch. Bug fixes for an in-flight feature may stay on that feature branch; otherwise cut a new branch from the latest `main`.
+- The push target is always the active fork (`origin` = `magic-alt/stock`). Do **not** push to upstream remotes.
+- Push the feature branch as soon as it reaches a working checkpoint so the user can review. PRs into `main` are opened **manually by the user** — agents must not auto-merge.
+- Before pushing, run the local CI/CD validation described below and ensure it passes.
+
 ## Commit & Pull Request Guidelines
 - Commit history favors Conventional Commits: `feat:`, `fix:`, `docs:`, `test:`, `chore:` with optional scopes (e.g., `feat(ml): ...`).
 - A few historical commits are plain descriptive messages; prefer Conventional Commits for new work.

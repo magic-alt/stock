@@ -51,6 +51,7 @@ class TestDataProviderFaults:
 
     def test_empty_symbol_list(self):
         """Loading zero symbols returns empty dict."""
+        pytest.importorskip("akshare", reason="akshare not installed")
         from src.data_sources.providers import AkshareProvider
         provider = AkshareProvider(cache_dir=tempfile.mkdtemp())
         result = provider.load_stock_daily([], "2024-01-01", "2024-06-30")
