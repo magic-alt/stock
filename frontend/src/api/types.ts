@@ -22,6 +22,32 @@ export interface BacktestMetrics {
   [key: string]: unknown
 }
 
+export interface BacktestRunPayload {
+  strategy: string
+  symbols: string[]
+  start: string
+  end: string
+  cash?: number
+  commission?: number
+  slippage?: number
+  params?: Record<string, unknown>
+  source?: string
+  benchmark_source?: string
+  benchmark?: string
+  adj?: string
+  calendar_mode?: string
+  engine?: string
+}
+
+export interface BacktestJobPayload extends BacktestRunPayload {
+  plot?: boolean
+  report_dir?: string
+  out_dir?: string
+  cache_dir?: string
+  register_data_lake?: boolean
+  data_lake_dir?: string
+}
+
 export interface GatewayStatus {
   status: string
   connected: boolean
@@ -83,6 +109,13 @@ export interface JobInfo {
   task_type: string
   status: string
   created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  cancelled_at?: string | null
+  cancel_requested?: boolean
+  result?: Record<string, unknown> | null
+  error?: string | null
+  payload?: Record<string, unknown>
   [key: string]: unknown
 }
 

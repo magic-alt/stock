@@ -5,11 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-05-18
 
 ### Added
+- Web: 回测工作台新增动态策略参数、同步/异步运行模式、任务状态、错误提示、指标明细和响应式布局。
+- API: FastAPI `api_v2` 新增回测 job 提交/查询/取消端点，并提供 `/api/v2/chart-data` 供前端数据浏览使用。
+- Frontend: Data Browser 从占位页升级为可查询近期 OHLCV 数据的表格视图。
 - Docs: 新增 `docs/BROKER_ACCOUNT_GUIDE.md` — 完整的券商账户开通、商业 SDK 申请、合规清单与申请话术指南（覆盖 QMT/XTP/UFT/CTP/easytrader + L2 行情 + TuShare）。
 - Docs: ROADMAP 大幅扩展 V5.0（商业化 SaaS / 多租户 / 计费 / 策略市场 / L2 行情 / CTP 期货 / 算法母单 / 沙箱）与 V6.0（C++ 撮合 / 监管报送 / 多市场 / AI Agent）路线；新增技术债清单与 OKR 度量。
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- API: `/api/v2/backtest/run` 和 `/api/v2/strategies/run` 现在透传数据源、基准、复权、日历模式和执行引擎参数。
 - README: 版本升级到 V3.3.0；明确双回测引擎（Backtrader + Zipline）、OrderStateMachine、FinancialDataProvider 工厂、4 个实盘网关、5 种部署形态、本地 CI 流程。
 
 ### Added (previous, from feature/zipline-engine-and-stubs, merged in PR #5)
@@ -76,6 +80,7 @@ All notable changes to this project will be documented in this file.
 - Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
 
 ### Tests
+- Tests: 增加 FastAPI 回测 job、chart-data 与扩展回测参数透传覆盖。
 - Backtest: add `tests/test_strategy_backtest_contracts.py` to smoke-test every registered strategy except the external-dependency `qlib_registry` path.
 - Tests: add `tests/test_gateway_xtp_smoke.py` and `tests/test_gateway_uft_smoke.py` for unified gateway smoke assertions, and extend `tests/test_realtime_data.py` with HTTP provider parsing plus failover coverage.
 - Tests: add `tests/test_gateway_xtp_integration.py` and `tests/test_gateway_uft_integration.py` so real broker SDK environments can validate connect/account/position readiness with skip-safe behavior.
