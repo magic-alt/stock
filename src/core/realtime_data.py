@@ -544,19 +544,17 @@ class SimulationDataProvider(BaseDataProvider):
 
 
 # ---------------------------------------------------------------------------
-# Sina Data Provider (Stub)
+# Sina Data Provider
 # ---------------------------------------------------------------------------
 
 class SinaDataProvider(HTTPPollingDataProvider):
-    """
-    新浪财经实时行情 (Stub)
-    
-    实际实现需要:
-    - HTTP 轮询 or WebSocket
-    - 解析新浪行情数据格式
-    
-    Reference:
-    - http://hq.sinajs.cn/list=sh600519
+    """新浪财经实时行情 (HTTP polling).
+
+    Polls ``hq.sinajs.cn`` snapshot endpoint and parses the comma-delimited
+    payload into :class:`TickData`. Symbol normalisation handles both A-share
+    ``600519.SH`` style and bare ``sh600519`` codes.
+
+    Reference: http://hq.sinajs.cn/list=sh600519
     """
     
     def __init__(

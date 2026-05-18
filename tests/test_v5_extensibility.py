@@ -417,6 +417,10 @@ class TestSQLiteRepository:
         assert repo.count() == 2
 
 
+@pytest.mark.skipif(
+    __import__("importlib").util.find_spec("duckdb") is None,
+    reason="duckdb not installed",
+)
 class TestDuckDBRepository:
     """Test DuckDB repository."""
 
@@ -464,6 +468,8 @@ class TestCreateRepository:
         assert isinstance(repo, SQLiteRepository)
 
     def test_create_duckdb(self):
+        if __import__("importlib").util.find_spec("duckdb") is None:
+            pytest.skip("duckdb not installed")
         from src.core.repository import create_repository, DuckDBRepository
         repo = create_repository("duckdb")
         assert isinstance(repo, DuckDBRepository)
