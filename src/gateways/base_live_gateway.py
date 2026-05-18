@@ -404,6 +404,200 @@ class QueryResultCache:
 
 
 # ---------------------------------------------------------------------------
+# Order State Machine
+# ---------------------------------------------------------------------------
+
+
+class InvalidOrderStateTransition(Exception):
+    """Raised when an illegal order state transition is attempted."""
+
+    def __init__(self, client_order_id: str, from_state: OrderStatus, to_state: OrderStatus):
+        super().__init__(
+            f"Illegal order transition for {client_order_id}: {from_state.value} -> {to_state.value}"
+        )
+        self.client_order_id = client_order_id
+        self.from_state = from_state
+        self.to_state = to_state
+
+
+class GatewayUnavailable(RuntimeError):
+    """Raised when a gateway operation is invoked without the underlying SDK."""
+
+
+@dataclass
+class OrderStateTransition:
+    """One transition record for the audit history."""
+
+    client_order_id: str
+    from_state: OrderStatus
+    to_state: OrderStatus
+    timestamp: datetime = field(default_factory=datetime.now)
+    reason: str = ""
+
+
+class OrderStateMachine:
+    """Validates and records order state transitions across all gateways.
+
+    A single state machine is shared by every order tracked by a gateway. The
+    transition table below mirrors the lifecycle documented on :class:`OrderStatus`.
+    Terminal states (``FILLED`` / ``CANCELLED`` / ``REJECTED`` / ``EXPIRED`` /
+    ``ERROR``) have no outgoing transitions.
+
+    The audit history is kept in-memory and bounded to ``history_limit`` entries
+    so long-running gateways do not leak memory.
+    """
+
+    # Legal transitions: source -> set of allowed targets.
+    _TRANSITIONS: Dict[OrderStatus, Set[OrderStatus]] = {
+        OrderStatus.PENDING_SUBMIT: {
+            OrderStatus.SUBMITTED,
+            OrderStatus.REJECTED,
+            OrderStatus.ERROR,
+            OrderStatus.CANCELLED,  # Local cancel before broker ack
+        },
+        OrderStatus.SUBMITTED: {
+            OrderStatus.PARTIALLY_FILLED,
+            OrderStatus.FILLED,
+            OrderStatus.CANCEL_PENDING,
+            OrderStatus.CANCELLED,
+            OrderStatus.REJECTED,
+            OrderStatus.EXPIRED,
+            OrderStatus.ERROR,
+        },
+        OrderStatus.PARTIALLY_FILLED: {
+            OrderStatus.PARTIALLY_FILLED,  # allow incremental fills
+            OrderStatus.FILLED,
+            OrderStatus.CANCEL_PENDING,
+            OrderStatus.CANCELLED,
+            OrderStatus.EXPIRED,
+            OrderStatus.ERROR,
+        },
+        OrderStatus.CANCEL_PENDING: {
+            OrderStatus.CANCELLED,
+            OrderStatus.FILLED,        # Race: fill landed before cancel
+            OrderStatus.PARTIALLY_FILLED,
+            OrderStatus.REJECTED,
+            OrderStatus.ERROR,
+        },
+        # Terminal states — no outgoing transitions.
+        OrderStatus.FILLED: set(),
+        OrderStatus.CANCELLED: set(),
+        OrderStatus.REJECTED: set(),
+        OrderStatus.EXPIRED: set(),
+        OrderStatus.ERROR: set(),
+    }
+
+    TERMINAL_STATES: Set[OrderStatus] = {
+        OrderStatus.FILLED,
+        OrderStatus.CANCELLED,
+        OrderStatus.REJECTED,
+        OrderStatus.EXPIRED,
+        OrderStatus.ERROR,
+    }
+
+    def __init__(self, history_limit: int = 1000):
+        self._history: List[OrderStateTransition] = []
+        self._current: Dict[str, OrderStatus] = {}
+        self._lock = threading.Lock()
+        self._history_limit = history_limit
+
+    # ---- public API -------------------------------------------------------
+
+    def register(self, client_order_id: str, initial: OrderStatus = OrderStatus.PENDING_SUBMIT) -> None:
+        """Register a new order id with its initial state."""
+        with self._lock:
+            self._current[client_order_id] = initial
+
+    def current(self, client_order_id: str) -> Optional[OrderStatus]:
+        with self._lock:
+            return self._current.get(client_order_id)
+
+    def is_terminal(self, client_order_id: str) -> bool:
+        cur = self.current(client_order_id)
+        return cur in self.TERMINAL_STATES
+
+    def can_transition(self, from_state: OrderStatus, to_state: OrderStatus) -> bool:
+        allowed = self._TRANSITIONS.get(from_state, set())
+        return to_state in allowed
+
+    def transition(
+        self,
+        client_order_id: str,
+        to_state: OrderStatus,
+        reason: str = "",
+        *,
+        strict: bool = True,
+    ) -> OrderStateTransition:
+        """Move an order to ``to_state``, recording the transition.
+
+        Args:
+            client_order_id: Order being transitioned.
+            to_state: Target state.
+            reason: Free-form reason (broker error message, etc.).
+            strict: If True, raise :class:`InvalidOrderStateTransition` on
+                illegal transitions; if False, record the transition with a
+                ``[forced]`` reason prefix and continue.
+
+        Returns:
+            The :class:`OrderStateTransition` that was appended to the audit log.
+        """
+        with self._lock:
+            current = self._current.get(client_order_id)
+            if current is None:
+                # First time we see this order — register implicitly.
+                current = OrderStatus.PENDING_SUBMIT
+                self._current[client_order_id] = current
+
+            if current == to_state and to_state != OrderStatus.PARTIALLY_FILLED:
+                # No-op: idempotent (re-asserting same non-partial state).
+                rec = OrderStateTransition(
+                    client_order_id=client_order_id,
+                    from_state=current,
+                    to_state=to_state,
+                    reason=f"[noop] {reason}".strip(),
+                )
+                self._append_history(rec)
+                return rec
+
+            if not self.can_transition(current, to_state):
+                if strict:
+                    raise InvalidOrderStateTransition(client_order_id, current, to_state)
+                # Lenient mode: record the illegal attempt in the audit log
+                # but DO NOT mutate the current state.
+                rec = OrderStateTransition(
+                    client_order_id=client_order_id,
+                    from_state=current,
+                    to_state=to_state,
+                    reason=f"[rejected] {reason}".strip(),
+                )
+                self._append_history(rec)
+                return rec
+
+            self._current[client_order_id] = to_state
+            rec = OrderStateTransition(
+                client_order_id=client_order_id,
+                from_state=current,
+                to_state=to_state,
+                reason=reason,
+            )
+            self._append_history(rec)
+            return rec
+
+    def history(self, client_order_id: Optional[str] = None) -> List[OrderStateTransition]:
+        with self._lock:
+            if client_order_id is None:
+                return list(self._history)
+            return [t for t in self._history if t.client_order_id == client_order_id]
+
+    def _append_history(self, rec: OrderStateTransition) -> None:
+        self._history.append(rec)
+        if len(self._history) > self._history_limit:
+            # Drop oldest 10% in one shot to amortise list-mutation cost.
+            drop = max(1, self._history_limit // 10)
+            del self._history[:drop]
+
+
+# ---------------------------------------------------------------------------
 # Base Live Gateway
 # ---------------------------------------------------------------------------
 
@@ -484,7 +678,13 @@ class BaseLiveGateway(ABC):
         # Callbacks for custom handling
         self._order_callbacks: List[Callable[[OrderUpdate], None]] = []
         self._trade_callbacks: List[Callable[[TradeUpdate], None]] = []
-        
+
+        # V3.3.0: Unified order state machine + transition audit log.
+        self._state_machine = OrderStateMachine()
+        # When False, illegal transitions are logged but not raised (broker
+        # callbacks may legitimately arrive out of order).
+        self._strict_state_machine: bool = False
+
         self.log.info(
             "gateway_initialized",
             broker=config.broker,
@@ -834,7 +1034,8 @@ class BaseLiveGateway(ABC):
             quantity=quantity,
         )
         self._orders[client_order_id] = order_update
-        
+        self._state_machine.register(client_order_id, OrderStatus.PENDING_SUBMIT)
+
         # Publish pending event
         self._publish_event(GatewayEventType.ORDER_SUBMITTED, order_update)
         
@@ -849,6 +1050,9 @@ class BaseLiveGateway(ABC):
                 
                 # Update order
                 order_update.broker_order_id = broker_order_id
+                self._transition_order(
+                    client_order_id, OrderStatus.SUBMITTED, reason="broker_ack"
+                )
                 order_update.status = OrderStatus.SUBMITTED
                 order_update.update_time = datetime.now()
                 
@@ -863,6 +1067,9 @@ class BaseLiveGateway(ABC):
             return client_order_id
             
         except Exception as e:
+            self._transition_order(
+                client_order_id, OrderStatus.ERROR, reason=f"send_order_exception:{e}"
+            )
             order_update.status = OrderStatus.ERROR
             order_update.error_msg = str(e)
             order_update.update_time = datetime.now()
@@ -1148,6 +1355,13 @@ class BaseLiveGateway(ABC):
         # Update local order cache
         if client_order_id in self._orders:
             existing = self._orders[client_order_id]
+            # Validate/record the state transition before applying it.
+            if existing.status != update.status:
+                self._transition_order(
+                    client_order_id,
+                    update.status,
+                    reason=update.error_msg or "broker_update",
+                )
             existing.status = update.status
             existing.filled_quantity = update.filled_quantity
             existing.avg_fill_price = update.avg_fill_price
@@ -1157,6 +1371,15 @@ class BaseLiveGateway(ABC):
             update = existing
         else:
             self._orders[client_order_id] = update
+            # First time seeing this order — seed state machine at PENDING_SUBMIT
+            # then transition straight to whatever broker reported.
+            self._state_machine.register(client_order_id, OrderStatus.PENDING_SUBMIT)
+            if update.status != OrderStatus.PENDING_SUBMIT:
+                self._transition_order(
+                    client_order_id,
+                    update.status,
+                    reason=update.error_msg or "broker_update_first_seen",
+                )
         
         # Update broker order ID mapping
         if update.broker_order_id and client_order_id not in self._client_to_broker:
@@ -1241,6 +1464,115 @@ class BaseLiveGateway(ABC):
         with self._order_seq_lock:
             self._order_seq += 1
             return f"{self.config.broker.upper()}-{self._order_seq:08d}"
+
+    def _transition_order(
+        self,
+        client_order_id: str,
+        to_state: OrderStatus,
+        *,
+        reason: str = "",
+    ) -> Optional[OrderStateTransition]:
+        """Validate + record a state transition through ``OrderStateMachine``.
+
+        In lenient mode (default), illegal transitions are recorded in the
+        audit log with a ``[rejected]`` prefix but the order's current state
+        is left unchanged. In strict mode
+        (``self._strict_state_machine = True``), :class:`InvalidOrderStateTransition`
+        is propagated to the caller.
+        """
+        try:
+            return self._state_machine.transition(
+                client_order_id,
+                to_state,
+                reason=reason,
+                strict=self._strict_state_machine,
+            )
+        except InvalidOrderStateTransition as exc:
+            self.log.warning(
+                "order_state_illegal_transition",
+                client_order_id=client_order_id,
+                from_state=exc.from_state.value,
+                to_state=exc.to_state.value,
+                reason=reason,
+            )
+            if self._strict_state_machine:
+                raise
+            return None
+
+    def order_state_history(
+        self, client_order_id: Optional[str] = None
+    ) -> List[OrderStateTransition]:
+        """Expose the audit log for diagnostics / unit tests."""
+        return self._state_machine.history(client_order_id)
+
+    def _safe_call(
+        self,
+        fn: Callable[..., Any],
+        *args,
+        retry: int = 0,
+        backoff: float = 0.5,
+        on_error: Optional[Callable[[Exception], Any]] = None,
+        degrade_on_missing_sdk: bool = True,
+        sentinel_exceptions: tuple = (ImportError, ModuleNotFoundError, AttributeError),
+        **kwargs,
+    ) -> Any:
+        """Call a broker SDK function with retry + degrade semantics.
+
+        - ``ImportError`` / ``ModuleNotFoundError`` (or any in
+          ``sentinel_exceptions``) trigger immediate degradation: in stub mode
+          we return ``None``; otherwise we raise :class:`GatewayUnavailable`.
+        - Generic exceptions are retried up to ``retry`` times with
+          exponential backoff (``backoff * 2**attempt``).
+        - ``on_error`` is called with the final exception if the retries are
+          exhausted; its return value is returned to the caller.
+        """
+        attempt = 0
+        last_exc: Optional[Exception] = None
+        while True:
+            try:
+                return fn(*args, **kwargs)
+            except sentinel_exceptions as exc:
+                last_exc = exc
+                if self.is_stub_mode or degrade_on_missing_sdk and not self.sdk_available:
+                    self.log.warning(
+                        "gateway_sdk_missing_degrade",
+                        broker=self.config.broker,
+                        func=getattr(fn, "__name__", str(fn)),
+                        error=str(exc),
+                    )
+                    if on_error is not None:
+                        return on_error(exc)
+                    return None
+                raise GatewayUnavailable(
+                    f"{self.config.broker} SDK unavailable: {exc}"
+                ) from exc
+            except Exception as exc:  # noqa: BLE001 - we retry/log everything
+                last_exc = exc
+                if attempt >= retry:
+                    self.log.error(
+                        "gateway_safe_call_failed",
+                        broker=self.config.broker,
+                        func=getattr(fn, "__name__", str(fn)),
+                        attempts=attempt + 1,
+                        error=str(exc),
+                    )
+                    if on_error is not None:
+                        return on_error(exc)
+                    raise
+                sleep_for = backoff * (2 ** attempt)
+                self.log.warning(
+                    "gateway_safe_call_retry",
+                    broker=self.config.broker,
+                    func=getattr(fn, "__name__", str(fn)),
+                    attempt=attempt + 1,
+                    sleep=sleep_for,
+                    error=str(exc),
+                )
+                time.sleep(sleep_for)
+                attempt += 1
+        # Unreachable; appeases linters.
+        if last_exc is not None:  # pragma: no cover
+            raise last_exc
     
     def _rate_limit(self) -> None:
         """Apply rate limiting between orders."""
