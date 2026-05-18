@@ -6,6 +6,7 @@ Extends the base DataLake with:
 - Auto-incrementing version numbers per (symbol, kind)
 - SHA-256 checksum integrity validation
 - Schema capture from DataFrame dtypes
+- Hot/cold tiered storage layout
 - Production promotion gate
 """
 from __future__ import annotations
@@ -40,6 +41,7 @@ class VersionInfo:
     is_production: bool
     created_at: str
     path: str
+    tier: str = "hot"
 
 
 class ParquetDataLake:
@@ -48,7 +50,7 @@ class ParquetDataLake:
 
     Layout::
 
-        {base_dir}/{kind}/{symbol}/v{version}.parquet
+        {base_dir}/{tier}/{kind}/{symbol}/v{version}.parquet
 
     The manifest is maintained by the parent :class:`DataLake` registry.
 
@@ -75,6 +77,8 @@ class ParquetDataLake:
         df: pd.DataFrame,
         kind: str,
         version: Optional[int] = None,
+        tier: str = "hot",
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> DataLakeEntry:
         """
         Serialize *df* to Parquet and register in the manifest.
@@ -85,6 +89,8 @@ class ParquetDataLake:
             kind:   Dataset category key (e.g. ``"price"``, ``"factor"``).
             version: Explicit version number; if ``None``, auto-increments
                      from the highest existing version for this (symbol, kind).
+            tier: Storage tier, one of ``"hot"``, ``"cold"`` or ``"archive"``.
+            metadata: Optional metadata merged into the manifest entry.
 
         Returns:
             :class:`DataLakeEntry` with ``version``, ``checksum``, ``schema``
@@ -93,9 +99,10 @@ class ParquetDataLake:
         if version is None:
             existing = self.list_versions(symbol, kind)
             version = (max(v.version for v in existing) + 1) if existing else 1
+        tier = self._normalize_tier(tier)
 
         # Build target path
-        dir_path = os.path.join(self.base_dir, kind, symbol)
+        dir_path = os.path.join(self.base_dir, tier, kind, symbol)
         os.makedirs(dir_path, exist_ok=True)
         file_path = os.path.join(dir_path, f"v{version}.parquet")
 
@@ -115,6 +122,9 @@ class ParquetDataLake:
         schema = {col: str(dtype) for col, dtype in df.dtypes.items()}
 
         # Register in base DataLake (file path exists now)
+        entry_metadata = dict(metadata or {})
+        entry_metadata.update({"symbol": symbol, "tier": tier})
+
         entry = DataLakeEntry(
             entry_id=str(uuid.uuid4()),
             kind=kind,
@@ -124,7 +134,7 @@ class ParquetDataLake:
             checksum=checksum,
             schema=schema,
             is_production=False,
-            metadata={"symbol": symbol},
+            metadata=entry_metadata,
         )
         self._registry._entries[entry.entry_id] = entry
         self._registry._save()
@@ -139,6 +149,7 @@ class ParquetDataLake:
         symbol: str,
         kind: str,
         version: "int | str" = "latest",
+        tier: Optional[str] = None,
     ) -> pd.DataFrame:
         """
         Read a dataset from Parquet.
@@ -147,6 +158,7 @@ class ParquetDataLake:
             symbol:  Dataset symbol.
             kind:    Dataset kind.
             version: Explicit version int or ``"latest"`` (default).
+            tier: Optional storage tier filter.
 
         Returns:
             Pandas DataFrame.
@@ -154,7 +166,7 @@ class ParquetDataLake:
         Raises:
             FileNotFoundError: if no matching version exists.
         """
-        versions = self.list_versions(symbol, kind)
+        versions = self.list_versions(symbol, kind, tier=tier)
         if not versions:
             raise FileNotFoundError(f"No dataset found for {symbol}/{kind}")
 
@@ -174,11 +186,13 @@ class ParquetDataLake:
     # Version listing
     # ------------------------------------------------------------------
 
-    def list_versions(self, symbol: str, kind: str) -> List[VersionInfo]:
+    def list_versions(self, symbol: str, kind: str, tier: Optional[str] = None) -> List[VersionInfo]:
         """Return all recorded versions for (symbol, kind), sorted ascending."""
+        tier_filter = self._normalize_tier(tier) if tier is not None else None
         results: List[VersionInfo] = []
         for entry in self._registry.list(kind=kind):
-            if entry.metadata.get("symbol") == symbol:
+            entry_tier = entry.metadata.get("tier", "hot")
+            if entry.metadata.get("symbol") == symbol and (tier_filter is None or entry_tier == tier_filter):
                 results.append(
                     VersionInfo(
                         entry_id=entry.entry_id,
@@ -190,6 +204,7 @@ class ParquetDataLake:
                         is_production=entry.is_production,
                         created_at=entry.created_at,
                         path=entry.path,
+                        tier=entry_tier,
                     )
                 )
         return sorted(results, key=lambda v: v.version)
@@ -235,6 +250,28 @@ class ParquetDataLake:
         entry.is_production = True
         self._registry._save()
 
+    def move_to_tier(self, entry_id: str, tier: str) -> DataLakeEntry:
+        """Move a dataset file to another storage tier and update the manifest."""
+        target_tier = self._normalize_tier(tier)
+        entry = self._registry.get(entry_id)
+        if entry is None:
+            raise ValueError(f"Entry {entry_id!r} not found")
+        symbol = entry.metadata.get("symbol")
+        if not symbol:
+            raise ValueError(f"Entry {entry_id!r} has no symbol metadata")
+        if not os.path.exists(entry.path):
+            raise FileNotFoundError(entry.path)
+
+        target_dir = os.path.join(self.base_dir, target_tier, entry.kind, symbol)
+        os.makedirs(target_dir, exist_ok=True)
+        target_path = os.path.join(target_dir, os.path.basename(entry.path))
+        if os.path.abspath(entry.path) != os.path.abspath(target_path):
+            os.replace(entry.path, target_path)
+        entry.path = target_path
+        entry.metadata["tier"] = target_tier
+        self._registry._save()
+        return entry
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
@@ -242,6 +279,13 @@ class ParquetDataLake:
     @staticmethod
     def _make_name(symbol: str, kind: str, version: int) -> str:
         return f"{symbol}/{kind}/v{version}"
+
+    @staticmethod
+    def _normalize_tier(tier: Optional[str]) -> str:
+        value = (tier or "hot").lower()
+        if value not in {"hot", "cold", "archive"}:
+            raise ValueError("tier must be one of: hot, cold, archive")
+        return value
 
 
 __all__ = ["ParquetDataLake", "VersionInfo"]

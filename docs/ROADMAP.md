@@ -51,8 +51,8 @@
 - ✅ 交易日历对齐 / 停复牌填充
 - ✅ 数据质量报告 + 数据血缘记录（lineage）
 - ✅ 基准指数 NAV 计算与回退
-- 🟡 数据版本锁定/快照化（数据湖分区/校验门禁）
-- 🟡 统一列式存储（Parquet）与冷热分层
+- ✅ 数据版本锁定/快照化（数据湖分区/校验门禁）
+- ✅ 统一列式存储（Parquet）与冷热分层
 
 ### 回测与分析
 - ✅ 单策略回测 / 多策略批量 / 网格搜索 / 自动化流程
@@ -62,7 +62,7 @@
 - ✅ 复现快照与报告签名（repro snapshot）
 - ✅ 滑点与手续费插件（CN 规则）
 - ✅ 市场冲击/成交概率/延迟模型（execution_models）
-- 🟡 回测性能提升（向量化/并行/缓存复用）
+- ✅ 回测性能提升（向量化/并行/缓存复用）
 
 ### 交易与执行
 - ✅ MatchingEngine（限价/市价/止损/订单簿）
@@ -79,8 +79,8 @@
 - ✅ 审计日志（Hash Chain）+ RBAC/租户隔离
 - ✅ Snapshot/Restore（OMS）
 - ✅ 事件驱动风控输出
-- 🟡 组合级/多账户风险聚合与资金分配
-- 🟡 实盘/回测一致性自动对账
+- ✅ 组合级/多账户风险聚合与资金分配
+- ✅ 实盘/回测一致性自动对账
 
 ### 事件、监控与运维
 - ✅ EventEngine + 统一事件类型
@@ -196,11 +196,11 @@
 - [x] Phase 3.5 AI 框架接入与 MLOps（Qlib/FinRL/Registry/Inference）
 - [x] Phase 4 MVP 平台化（API/作业编排/分布式/数据湖）
 
-### V4.0-A（架构收敛，4-6 周）
-- [ ] 统一交易链路：TradingGateway ↔ PaperGatewayV3 ↔ LiveGateways 适配器合并
-- [ ] OMS/Risk/Execution 事件规范化与前置风控落地
-- [ ] RealtimeData 实接入：Sina/Eastmoney/Tencent + BarBuilder
-- [ ] 统一配置 Schema + 依赖锁定（requirements lock / seed）
+### V4.0-A（架构收敛，4-6 周）✅ 已完成
+- [x] 统一交易链路：TradingGateway ↔ PaperGatewayV3 ↔ LiveGateways 适配器合并
+- [x] OMS/Risk/Execution 事件规范化与前置风控落地
+- [x] RealtimeData 实接入：Sina/Eastmoney/Tencent + BarBuilder
+- [x] 统一配置 Schema + 依赖锁定（requirements lock / seed）
 
 #### 任务拆解（模块实施清单 + 测试计划）
 - 任务：统一交易链路
@@ -216,11 +216,11 @@
   - 模块实施清单：`src/core/config.py` 定义 schema 校验；`src/core/defaults.py`/`config.yaml.example` 对齐字段；新增 `requirements.lock` 或 `constraints.txt`
   - 测试计划：新增 `tests/test_config_schema.py`；扩展 `tests/test_system_integration.py` 覆盖加载与缺省值
 
-### V4.0-B（性能与数据治理，6-8 周）
-- [ ] BacktestEngine 性能：向量化/Numba、缓存复用、内存基线
-- [ ] 数据湖升级：Parquet 分区、版本化、校验门禁、冷热分层
-- [ ] 回测/实盘一致性自动化：对账、漂移监控、异常回放
-- [ ] 组合级资本分配与风险聚合（多策略/多账户）
+### V4.0-B（性能与数据治理，6-8 周）✅ 已完成
+- [x] BacktestEngine 性能：向量化、缓存复用、内存基线
+- [x] 数据湖升级：Parquet 分区、版本化、校验门禁、冷热分层
+- [x] 回测/实盘一致性自动化：对账、漂移监控、异常回放
+- [x] 组合级资本分配与风险聚合（多策略/多账户）
 
 #### 任务拆解（模块实施清单 + 测试计划）
 - 任务：BacktestEngine 性能提升

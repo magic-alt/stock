@@ -16,7 +16,7 @@ import logging
 import os
 import sqlite3
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -531,6 +531,60 @@ class SQLiteDataManager:
                 extra,
                 datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             ))
+
+    def export_to_parquet_lake(
+        self,
+        base_dir: str,
+        *,
+        data_type: str = "stock",
+        symbols: Optional[List[str]] = None,
+        adj_type: str = "noadj",
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+        kind: Optional[str] = None,
+        tier: str = "hot",
+    ) -> List[Any]:
+        """Export cached SQLite datasets into the versioned Parquet data lake."""
+        if data_type not in {"stock", "index"}:
+            raise ValueError("data_type must be 'stock' or 'index'")
+
+        from src.platform.data_lake_parquet import ParquetDataLake
+
+        lake = ParquetDataLake(base_dir=base_dir)
+        export_symbols = symbols or self.get_all_symbols(data_type=data_type)
+        entries: List[Any] = []
+        dataset_kind = kind or ("price" if data_type == "stock" else "index")
+
+        for symbol in export_symbols:
+            data_range = self.get_data_range(symbol, data_type=data_type, adj_type=adj_type)
+            if data_range is None:
+                continue
+            export_start = start or data_range[0]
+            export_end = end or data_range[1]
+            if data_type == "stock":
+                df = self.load_stock_data(symbol, export_start, export_end, adj_type=adj_type)
+            else:
+                df = self.load_index_data(symbol, export_start, export_end, adj_type=adj_type)
+            if df is None or df.empty:
+                continue
+
+            entries.append(
+                lake.write_dataset(
+                    symbol=symbol,
+                    df=df,
+                    kind=dataset_kind,
+                    tier=tier,
+                    metadata={
+                        "data_type": data_type,
+                        "adj_type": adj_type,
+                        "source_db": self.db_path,
+                        "start": export_start,
+                        "end": export_end,
+                    },
+                )
+            )
+
+        return entries
     
     def get_data_range(
         self,

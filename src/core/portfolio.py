@@ -34,12 +34,15 @@ class PortfolioManager:
         self._risk_free_rate = risk_free_rate
         self._rebalance_days = rebalance_days
         self._strategies: Dict[str, pd.Series] = {}  # strategy_id -> NAV series
+        self._risk_configs: Dict[str, dict] = {}
 
     def add_strategy(self, strategy_id: str, nav_series: pd.Series, risk_config=None) -> None:
         self._strategies[strategy_id] = nav_series
+        self._risk_configs[strategy_id] = dict(risk_config or {})
 
     def remove_strategy(self, strategy_id: str) -> None:
         self._strategies.pop(strategy_id, None)
+        self._risk_configs.pop(strategy_id, None)
 
     def compute_covariance(self) -> pd.DataFrame:
         """Compute annualized covariance matrix from NAV returns."""
@@ -202,6 +205,32 @@ class PortfolioManager:
             "hhi_concentration": hhi,
             "num_strategies": len(account_values),
         }
+
+    def aggregate_multi_account_risk(self, account_values: Dict[str, Dict[str, float]]) -> dict:
+        """Aggregate risk across multiple accounts and their strategy capital buckets."""
+        if not account_values:
+            return {}
+
+        strategy_values: Dict[str, float] = {}
+        account_totals: Dict[str, float] = {}
+        for account_id, values in account_values.items():
+            account_total = float(sum(values.values()))
+            account_totals[account_id] = account_total
+            for strategy_id, value in values.items():
+                strategy_values[strategy_id] = strategy_values.get(strategy_id, 0.0) + float(value)
+
+        risk = self.aggregate_risk(strategy_values)
+        if not risk:
+            return {}
+
+        total_value = float(risk["total_value"])
+        risk["accounts"] = account_totals
+        risk["account_weights"] = {
+            account_id: (value / total_value if total_value > 0 else 0.0)
+            for account_id, value in account_totals.items()
+        }
+        risk["num_accounts"] = len(account_values)
+        return risk
 
     def check_rebalance_needed(
         self,

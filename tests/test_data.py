@@ -235,6 +235,32 @@ class TestDatabaseManager:
             assert loaded is not None
             assert len(loaded) == 5
 
+    def test_export_to_parquet_lake(self):
+        """测试 SQLite 缓存导出到版本化 Parquet 数据湖"""
+        pytest.importorskip("pyarrow", reason="pyarrow required for parquet export")
+        dates = pd.date_range('2024-01-01', periods=5, freq='D')
+        data = pd.DataFrame({
+            'open': [100] * 5,
+            'high': [105] * 5,
+            'low': [95] * 5,
+            'close': [102] * 5,
+            'volume': [1000000] * 5
+        }, index=dates)
+        self.db_manager.save_stock_data("600519.SH", data, "noadj")
+
+        lake_dir = Path(self.temp_dir) / "lake"
+        entries = self.db_manager.export_to_parquet_lake(
+            str(lake_dir),
+            symbols=["600519.SH"],
+            data_type="stock",
+            tier="cold",
+        )
+
+        assert len(entries) == 1
+        assert entries[0].metadata["tier"] == "cold"
+        assert entries[0].metadata["adj_type"] == "noadj"
+        assert Path(entries[0].path).exists()
+
 
 class TestDataPortal:
     """测试数据门户"""

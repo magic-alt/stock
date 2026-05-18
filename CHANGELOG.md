@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- V4.0-B: add cached vectorized BacktestEngine NAV metrics with a memory baseline field for repeated optimization runs.
+- V4.0-B: add tier-aware Parquet data lake writes, cold-tier migration, and SQLite cache export into versioned Parquet datasets.
+- V4.0-B: add reconciliation replay manifests and multi-account portfolio risk aggregation.
 - V4.0-A: add canonical `OrderRequest`, normalized order event payloads, and execution report DTOs for OMS/gateway/execution alignment.
 - V4.0-A: add `PaperGatewayV3Adapter` so `TradingGateway` paper mode routes through the MatchingEngine-backed PaperGatewayV3 contract.
 - V4.0-A: add realtime provider factory and `src/core/realtime_providers/` exports for Sina, Eastmoney, and Tencent providers.
@@ -25,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- Docs: mark roadmap V4.0-A and V4.0-B implementation checklists as completed after validation.
 - V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
 - Config: align `GlobalConfig` schema with `config.yaml.example` by adding database, monitoring, performance, provider-detail, and execution live-gateway fields.
 - CLI: `grid` and `auto` workflows now expose `--engine` and correctly pass fee plugin parameters through to engine execution.
@@ -97,6 +101,7 @@ All notable changes to this project will be documented in this file.
 - Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
 
 ### Tests
+- Tests: expand V4.0-B coverage for metrics cache reuse, Parquet lake tiering, SQLite-to-lake export, replay manifests, and multi-account risk aggregation.
 - Tests: expand gateway unification, risk precheck, realtime provider, and config schema coverage for V4.0-A architecture convergence.
 - Tests: 增加 FastAPI 回测 job、chart-data 与扩展回测参数透传覆盖。
 - Backtest: add `tests/test_strategy_backtest_contracts.py` to smoke-test every registered strategy except the external-dependency `qlib_registry` path.
