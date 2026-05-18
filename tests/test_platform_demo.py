@@ -87,16 +87,3 @@ def test_demo_script_writes_report(tmp_path):
     assert payload["summary"]["trades"] == 1
 
 
-def test_frontend_dashboard_exposes_paper_demo_action():
-    root = Path(__file__).resolve().parents[1]
-    dashboard = (root / "frontend" / "src" / "views" / "Dashboard.vue").read_text(
-        encoding="utf-8"
-    )
-    client = (root / "frontend" / "src" / "api" / "client.ts").read_text(
-        encoding="utf-8"
-    )
-
-    assert "Run Paper Demo" in dashboard
-    assert "Paper Trading Demo" in dashboard
-    assert "/api/v2/demo/paper-trading" in dashboard
-    assert "'ok' in payload" in client

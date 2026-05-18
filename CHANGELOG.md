@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-18
 
+### Removed
+- Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。
+- Platform: 删除 `src/platform/api_v2.py` 中 `legacy_health`/`legacy_ready`/`legacy_metrics` 兼容包装。
+- Platform: 移除纸面交易演示在 v1 API、前端 Dashboard 和文档中的全部入口，统一保留 `scripts/demo_platform_console.py` 与 `/api/v2/demo/paper-trading` 两条路径。
+- Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
+
 ### Added
 - CLI: `unified_backtest_framework.py features|capabilities --json` now lists registered strategies, data sources, backtest engines, financial providers, live gateways, trading brokers, and workflows.
 - Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring commercial SDKs.

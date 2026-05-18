@@ -28,7 +28,6 @@ from src.core.logger import get_logger
 from src.core.monitoring import SystemMonitor
 from src.core.trading_gateway import BrokerType, GatewayConfig, TradingGateway, TradingMode
 from src.core.interfaces import OrderTypeEnum
-from src.platform.demo import run_paper_trading_demo
 from src.platform.backtest_task import run_backtest_job
 from src.platform.job_queue import JobQueue, JobStore
 from src.platform.orchestrator import run_workflow
@@ -638,34 +637,6 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return True
         return False
 
-    def _handle_demo_get(self, *, request_id: str, versioned: bool) -> None:
-        query = self._query_params()
-        symbol = ((query.get("symbol") or ["600519.SH"])[0] or "600519.SH").strip()
-        quantity_raw = ((query.get("quantity") or ["100"])[0] or "100").strip()
-        limit = self._query_int("limit", 20, minimum=1, maximum=50)
-        try:
-            quantity = float(quantity_raw)
-            demo = run_paper_trading_demo(
-                GatewayService(),
-                queue=self.queue,
-                monitor_service=self.monitor_service,
-                metrics=self.metrics,
-                symbol=symbol,
-                quantity=quantity,
-                limit=limit,
-            )
-        except Exception as exc:
-            if versioned:
-                self._error_v1(request_id=request_id, status=500, code=50001, message=str(exc))
-            else:
-                self._json({"error": str(exc)}, status=500)
-            return
-
-        if versioned:
-            self._json_v1(request_id=request_id, data={"demo": demo})
-        else:
-            self._json({"demo": demo})
-
     def _handle_gateway_post_v1(self, path: str, payload: Dict[str, Any], request_id: str) -> bool:
         try:
             if path == f"{API_PREFIX}/gateway/connect":
@@ -754,10 +725,6 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             return
 
         if self._handle_monitor_get_v1(path, request_id):
-            return
-
-        if path == f"{API_PREFIX}/demo/paper-trading":
-            self._handle_demo_get(request_id=request_id, versioned=True)
             return
 
         if path == f"{API_PREFIX}/chart-data":
@@ -852,94 +819,11 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             self._serve_file(safe_path)
             return
 
-        if path == "/health":
-            self._json({"status": "ok"})
-            return
-        if path == "/ready":
-            self._json(self._ready_status())
-            return
-        if path == "/metrics":
-            text = self.metrics.to_prometheus(self.queue)
-            self._json(text, content_type="text/plain; version=0.0.4; charset=utf-8")
-            return
-
         if path.startswith(API_PREFIX):
             if not self._is_authorized_v1(path):
                 self._error_v1(request_id=request_id, status=401, code=40101, message="unauthorized")
                 return
             self._handle_get_v1(path, request_id)
-            return
-
-        if path == "/gateway/status":
-            self._json({"gateway": self.gateway_service.status()})
-            return
-        if path == "/gateway/account":
-            try:
-                self._json({"account": self.gateway_service.account()})
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/positions":
-            try:
-                self._json({"positions": self.gateway_service.positions()})
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/orders":
-            symbol = ((self._query_params().get("symbol") or [""])[0] or "").strip() or None
-            try:
-                self._json({"orders": self.gateway_service.orders(symbol=symbol)})
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/trades":
-            symbol = ((self._query_params().get("symbol") or [""])[0] or "").strip() or None
-            limit = self._query_int("limit", 20, minimum=1, maximum=500)
-            try:
-                self._json({"trades": self.gateway_service.trades(symbol=symbol, limit=limit)})
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/snapshot":
-            limit = self._query_int("limit", 20, minimum=1, maximum=500)
-            self._json({"gateway": self.gateway_service.snapshot(orders_limit=limit, trades_limit=limit)})
-            return
-        if path == "/monitor/summary":
-            limit = self._query_int("limit", 20, minimum=1, maximum=500)
-            self._json(
-                {
-                    "monitor": self.monitor_service.summary(
-                        queue=self.queue,
-                        gateway_service=self.gateway_service,
-                        metrics=self.metrics,
-                        jobs_limit=min(limit, 50),
-                        orders_limit=limit,
-                        trades_limit=limit,
-                    )
-                }
-            )
-            return
-        if path == "/monitor/history":
-            limit = self._query_int("limit", 20, minimum=1, maximum=500)
-            self._json({"history": self.monitor_service.history(limit=limit)})
-            return
-        if path == "/monitor/alerts":
-            limit = self._query_int("limit", 20, minimum=1, maximum=500)
-            self._json({"alerts": self.monitor_service.alerts(limit=limit)})
-            return
-        if path == "/demo/paper-trading":
-            self._handle_demo_get(request_id=request_id, versioned=False)
-            return
-        if path == "/jobs":
-            self._json({"jobs": self._list_jobs()})
-            return
-        if path.startswith("/jobs/"):
-            job_id = path.split("/")[-1]
-            record = self._get_job(job_id)
-            if not record:
-                self._json({"error": "job not found"}, status=404)
-                return
-            self._json({"job": record})
             return
 
         self._json({"error": "not found"}, status=404)
@@ -959,48 +843,6 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             self._handle_post_v1(path, payload, request_id)
             return
 
-        if path == "/jobs/backtest":
-            idem = self._idempotency_key(payload)
-            job_id = self.queue.submit("backtest", run_backtest_job, payload, idempotency_key=idem)
-            self._json({"job_id": job_id}, status=202)
-            return
-        if path == "/jobs/workflow":
-            idem = self._idempotency_key(payload)
-            job_id = self.queue.submit("workflow", run_workflow, payload, idempotency_key=idem)
-            self._json({"job_id": job_id}, status=202)
-            return
-        if path == "/gateway/connect":
-            try:
-                status = self.gateway_service.connect(payload)
-                self._json({"gateway": status})
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/disconnect":
-            status = self.gateway_service.disconnect()
-            self._json({"gateway": status})
-            return
-        if path == "/gateway/order":
-            try:
-                result = self.gateway_service.submit_order(payload)
-                self._json(result, status=202)
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/cancel":
-            try:
-                result = self.gateway_service.cancel_order(payload)
-                self._json(result)
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
-        if path == "/gateway/price":
-            try:
-                result = self.gateway_service.update_price(payload)
-                self._json(result)
-            except Exception as exc:
-                self._json({"error": str(exc)}, status=400)
-            return
         self._json({"error": "not found"}, status=404)
 
 

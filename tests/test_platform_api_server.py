@@ -125,7 +125,7 @@ def test_api_v1_idempotency_key_reuses_job(api_runtime):
     assert payload_1["data"]["job_id"] == payload_2["data"]["job_id"]
 
 
-def test_api_v1_health_metrics_and_legacy_compat(api_runtime):
+def test_api_v1_health_and_cancel_404(api_runtime):
     base_url = api_runtime["base_url"]
 
     status, payload = _http_request(base_url, "GET", "/api/v1/healthz")
@@ -146,14 +146,10 @@ def test_api_v1_health_metrics_and_legacy_compat(api_runtime):
     assert status == 404
     assert payload["code"] == 40401
 
-    status, legacy = _http_request(base_url, "GET", "/health")
+    status, payload = _http_request(base_url, "GET", "/api/v1/metrics")
     assert status == 200
-    assert legacy["status"] == "ok"
-
-    status, metrics = _http_request(base_url, "GET", "/metrics")
-    assert status == 200
-    assert "platform_api_requests_total" in metrics
-    assert "platform_job_queue_delay_ms_p50" in metrics
+    assert payload["code"] == 0
+    assert "uptime_seconds" in payload["data"]
 
 
 def test_api_v1_writes_audit_records(api_runtime):
@@ -279,25 +275,3 @@ def test_api_v1_gateway_snapshot_and_monitor_summary(api_runtime):
     )
     assert status == 200
     assert isinstance(payload["data"]["history"], list)
-
-
-def test_api_v1_paper_trading_demo_isolated(api_runtime):
-    base_url = api_runtime["base_url"]
-
-    status, payload = _http_request(
-        base_url,
-        "GET",
-        "/api/v1/demo/paper-trading?symbol=000001.SZ&quantity=10",
-        token="test-token",
-    )
-    assert status == 200
-    demo = payload["data"]["demo"]
-    assert demo["ok"] is True
-    assert demo["summary"]["filled_orders"] == 1
-    assert demo["summary"]["cancelled_orders"] == 1
-    assert demo["summary"]["trades"] == 1
-    assert demo["snapshot"]["status"]["broker"] == "paper"
-
-    status, payload = _http_request(base_url, "GET", "/gateway/status")
-    assert status == 200
-    assert payload["gateway"]["connected"] is False

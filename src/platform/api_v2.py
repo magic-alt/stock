@@ -270,18 +270,6 @@ if HAS_FASTAPI:
                 logger.error("chart_data_failed", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.get("/health", include_in_schema=False)
-        async def legacy_health():
-            return await health()
-
-        @app.get("/ready", include_in_schema=False)
-        async def legacy_ready():
-            return await readiness()
-
-        @app.get("/metrics", include_in_schema=False)
-        async def legacy_metrics(request: Request):
-            return await metrics(request)
-
         # ---- Strategy endpoints ----
 
         @app.get("/api/v2/strategies", tags=["Strategies"])

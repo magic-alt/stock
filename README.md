@@ -113,9 +113,6 @@ python examples/quick_start.py
 python examples/batch_backtest.py
 python examples/ml_strategy_gallery.py
 python examples/ml_enhanced_examples.py
-
-# 平台控制台功能演示（隔离 Paper 网关）
-python scripts/demo_platform_console.py --out report/platform_console_demo.json
 ```
 
 ---
@@ -224,7 +221,6 @@ stock/
 - `docs/API_REFERENCE.md` - API 参考
 - `docs/LIVE_TRADING_API.md` - 实盘接口说明
 - `docs/STRATEGY_ADMISSION_WORKFLOW.md` - 历史样本回归基线与策略准入流程
-- `docs/PLATFORM_CONSOLE_DEMO.md` - Web 控制台 Paper 交易演示流程
 
 ---
 

@@ -418,7 +418,7 @@ class TestFastAPIEndpoints:
         assert spa.status_code == 200
         assert "release-ui" in spa.text
 
-        health = client.get("/health")
+        health = client.get("/api/v2/health")
         assert health.status_code == 200
         assert health.json()["status"] == "healthy"
 
