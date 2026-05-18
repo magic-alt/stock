@@ -1,9 +1,9 @@
 # 项目路线图 | Project Roadmap
 
 **项目**: 量化回测与实盘系统（Unified Quant Platform）
-**当前版本**: V3.2.0（Phase 3.x 完成）
-**更新日期**: 2026-02-28
-**状态**: 🟢 生产可用 | 商业化升级 P0-P5 大部分完成 | V4.0 技术路线规划中
+**当前版本**: V3.3.0（双引擎 + Gateway 加固完成）
+**更新日期**: 2026-05-18
+**状态**: 🟢 生产可用 | 商业化升级 P0-P5 全部完成 | V5.0 商业化产品规划中
 
 ---
 
@@ -277,6 +277,161 @@
 
 - 路线图以 **代码实现** 为准，优先记录现有能力与缺口
 - 如需落地基金级生产化能力，建议优先完成 **风控、数据治理、审计、回测复现** 四类能力
+
+---
+
+## 8) V5.0 商业化产品路线（2026 Q3 - 2027 Q2）
+
+> 此章节定义本平台从「自用工具 + 开源框架」升级为「**商业级 SaaS / 私有化产品**」
+> 的产品形态、商业模式与技术升级路径。
+
+### 8.1 产品形态
+
+| 形态 | 目标客群 | 定价模式 | 部署 |
+|------|---------|---------|------|
+| **开源版** | 个人量化、学生、教学 | 免费 (MIT) | 本地 / 自建 |
+| **Pro 桌面版** | 个人量化进阶、小型工作室 | 订阅 ¥299-999/月 | 本地客户端 + 云授权 |
+| **Team 云版** | 私募团队、量化俱乐部 (≤20 人) | ¥3,000-15,000/月 (按席位) | 公有云 / 容器化 SaaS |
+| **Enterprise 私有化** | 公募 / 券商 / 资管 / 银行理财 | ¥50 万-500 万/年 | 客户内网 / 专属云 + SLA |
+| **Marketplace 策略市场** | 策略生产者 + 消费者 | 抽佣 15-30% | 内嵌于 Team / Enterprise |
+
+### 8.2 V5.0-A：商业化基础设施（2026 Q3 - Q4）
+
+| 模块 | 目标 | 关键产出 |
+|------|------|---------|
+| 多租户隔离 | 单一部署支持 ≥100 租户、租户级资源/数据隔离 | `src/platform/tenancy/` + Postgres schema 隔离 |
+| 计费与配额 | 按调用次数 / 任务时长 / 数据量计费 | `src/platform/billing/` + Stripe / 支付宝接入 |
+| 用户身份 | OAuth2 / SSO / SAML / 手机短信验证 | 扩展 `src/core/auth.py`，集成 Keycloak |
+| 订阅管理 | 试用、订阅、续费、退款、发票 | `src/platform/subscription/` |
+| 审计合规 | SOC2 Type II / 等保 2.0 三级（私有化版） | 审计哈希链上链选项 + 不可篡改归档 (S3 Object Lock / WORM) |
+| 客户支持 | 工单、知识库、Discord / 企业微信群 | 集成 Zendesk / Crisp |
+
+#### 任务拆解
+- **租户隔离**：`src/platform/tenancy/manager.py`（CRUD）+ Postgres `tenant_id` 行级过滤 + Redis namespace
+- **配额管理**：基于 `JobQueue` 添加配额计数器；超额返回 `429 Too Many Requests`
+- **计费 Hook**：每个 `BacktestTask` 完成时写入 `BillingEvent`；月底批量结算
+- **测试**：`tests/test_tenancy_isolation.py` / `tests/test_billing_events.py` / `tests/test_quota_enforcement.py`
+
+### 8.3 V5.0-B：高级数据与执行（2026 Q4 - 2027 Q1）
+
+| 模块 | 目标 | 关键产出 |
+|------|------|---------|
+| **L2 行情接入** | 上交所/深交所 Level2 实时行情 (10 档 + 逐笔) | `src/data_sources/level2/` + 通过 XTP/UFT 转发 |
+| **多资产支持** | 股票 + ETF + 可转债 + **股指期货 + 商品期货 + 期权** | 新增 `src/gateways/ctp_gateway.py` + `src/instruments/derivatives.py` |
+| **FIX 协议网关** | 海外交易所 / 跨境券商接入 | `src/gateways/fix_gateway.py` (QuickFIX-Python) |
+| **算法母单** | TWAP / VWAP / POV / Iceberg / Sniper 等执行算法 | `src/execution/algos/` + 母单/子单 OMS 扩展 |
+| **跨账户资金分配** | 多账户/多策略统一资金池 + 实时风险预算 | 扩展 `src/core/portfolio.py` + `src/core/capital_allocator.py` |
+| **实时风控 (前置)** | 报单前 <1ms 风控决策；硬熔断 + 软警告 | `src/core/risk_manager_v3.py`（C 扩展或 Cython） |
+
+#### 任务拆解
+- **CTP 集成**：基于 `vnpy-ctp` / `openctp` 实现 `CTPGateway`；先 SimNow 模拟，后真实期货账户
+- **算法母单**：定义 `AlgoOrder` 类（`OrderManager` 子类型），引擎驱动子单按时间/成交量切片
+- **L2 行情**：实现 `Level2DataAdapter`，将 10 档 + 逐笔事件投递到 `EventEngine`；新增 `OrderBookFeature` 工具
+- **测试**：`tests/test_ctp_simnow.py` (skip if no SimNow account) / `tests/test_algo_twap.py` / `tests/test_l2_orderbook.py`
+
+### 8.4 V5.0-C：研究与策略市场（2027 Q1 - Q2）
+
+| 模块 | 目标 | 关键产出 |
+|------|------|---------|
+| **JupyterLab Hub** | 浏览器内研究环境，预装本平台 SDK | K8s + JupyterHub + 自定义 Docker 镜像 |
+| **特征仓库 (Feature Store)** | 在线/离线特征统一存储与服务 | `src/platform/feature_store/` (Feast / 自研) |
+| **策略市场** | 策略发布、订阅、回测验证、收益分成 | `src/platform/marketplace/` + 前端商店页面 |
+| **回测即服务 (BaaS)** | REST API: `POST /backtest` → 返回任务 ID + 报告 | 已有 `/api/v1/jobs`，需上传策略代码沙箱执行 |
+| **策略沙箱** | Docker / gVisor 隔离运行不受信策略代码 | `src/platform/sandbox/` + 安全 evaluator |
+| **协作研究** | 多人共享数据集、Notebook、回测结果 | 工作区 (Workspace) 抽象 + 权限 |
+
+#### 任务拆解
+- **沙箱**：gVisor / Firecracker 微 VM；策略代码白名单 import（禁 socket / subprocess）；CPU/内存配额
+- **特征仓库**：以 Parquet + DuckDB 为离线后端；Redis 为在线服务后端
+- **策略市场前端**：复用 `frontend/`（Vue3 + Vite），增加 store 路由
+- **测试**：`tests/test_sandbox_isolation.py` / `tests/test_feature_store.py` / `tests/test_marketplace_flow.py`
+
+### 8.5 V5.0-D：可观测性与可靠性升级
+
+| 模块 | 目标 | 关键产出 |
+|------|------|---------|
+| OpenTelemetry 全链路追踪 | 跨服务 trace_id 贯穿 (API → Job → Engine → Gateway) | 已有 `TraceContext`，迁移到 OTLP exporter |
+| Grafana / Loki / Tempo | 指标 + 日志 + 追踪统一展示 | `deploy/k8s/observability/` Helm chart |
+| 多区域热备 | 单可用区故障 RTO < 5 min, RPO < 1 min | 跨 region 数据库异步复制 + DNS failover |
+| 混沌工程 | 注入网络/磁盘/进程故障，验证可靠性 | `tests/chaos/` + ChaosMesh integration |
+| Runbook / SLO 仪表盘 | 服务 SLO (99.9% 可用) + 错误预算 | 自动生成 SLO 报告 |
+
+---
+
+## 9) V6.0 企业级 / 监管级（2027 Q3 之后）
+
+> 面向 **公募基金、券商自营、保险资管、跨境机构** 的最高合规与性能要求。
+
+### 9.1 性能与延迟
+
+- **C++ 撮合内核**：将 `MatchingEngine` 核心路径用 C++ / Rust 重写，Python pybind 包装。目标：单线程 100K orders/sec
+- **低延迟 OMS**：报单 → 网关延迟 < 50µs（用户态网络 / DPDK / Solarflare TCPDirect）
+- **FPGA 行情解码**（可选）：与硬件厂商合作，行情 → 策略 < 5µs
+- **GPU 因子计算**：CuDF / RAPIDS 加速横截面因子（>1000 标的 × 100 因子，秒级）
+- **分布式回测集群**：Ray Cluster 千核横向扩展，单次回测 10 年 × 沪深 300 ≤ 30 秒
+
+### 9.2 合规与监管报送
+
+- **CSRC 程序化交易报送** 自动生成报送文件（XML/CSV）
+- **AML / KYC 集成**（机构客户）
+- **可解释性 / Model Card**：每个 ML 模型自动生成 Model Card（数据来源、训练集、性能、偏差报告）
+- **不可篡改审计**：审计哈希链可选上 **联盟链 (Hyperledger Fabric)** 存证
+- **数据本地化**：客户境内数据不出境（私有化版默认；SaaS 版按区域分仓）
+
+### 9.3 多市场扩展
+
+- **港股通 / 沪伦通 / 深港通**：跨境清算适配
+- **美股 / 期货 / 加密货币**：分别通过 FIX / CME / Binance API 接入（仅限合规许可的客户）
+- **数字货币**：可选模块，受所在地法规约束
+
+### 9.4 AI / 大模型增强
+
+- **自然语言策略生成**：用户用中文描述 → LLM 生成策略代码 → 沙箱验证 → 部署
+- **研报智能摘要**：接入研报 + 新闻数据流，LLM 抽取交易信号
+- **代码助手 (Copilot for Quant)**：基于 RAG 检索本仓库 + 私有策略库，辅助策略开发
+- **风险预警 Agent**：LLM Agent 监控市场异动 + 持仓 → 主动告警
+
+---
+
+## 10) 技术债与重构清单（持续）
+
+> 来自 PR review 和实际运营中发现的技术债，优先级标注。
+
+| 优先级 | 项目 | 说明 |
+|--------|------|------|
+| **P0** | `OrderStateMachine` 与 `OrderManager` 状态合并 | 当前两套 enum；统一为单一 SSOT |
+| **P0** | 实盘网关接入 RiskManagerV2 前置风控 | 当前回测/Paper 已接，Live 仅事后审计 |
+| **P1** | 数据湖统一 Parquet 列存 | 当前混合 SQLite + CSV + Parquet |
+| **P1** | 配置 Schema 强校验（Pydantic v2） | 当前部分字段未校验，运行时才报错 |
+| **P1** | 测试套件分层（unit/integration/e2e）显式 marker | 当前部分依赖 import-skip 模式 |
+| **P2** | Zipline 适配器从「向量化回退」升级为完整 TradingAlgorithm 适配 | 当前是简化映射，未完全利用 zipline pipeline |
+| **P2** | GUI 从 tkinter 迁移到 PySide6 / Tauri | tkinter 体验受限 |
+| **P3** | 文档双语化（英文版） | 当前以中文为主 |
+| **P3** | mypy strict 模式 | 当前是 lenient，部分模块未完全类型化 |
+
+---
+
+## 11) 度量与里程碑（OKR 模板）
+
+### 2026 H2 OKR（V5.0-A/B 阶段）
+- **O1**：商业化平台 MVP 上线
+  - KR1：完成多租户基础设施（≥10 试点租户）
+  - KR2：上线计费 / 订阅 / 配额（端到端付费跑通）
+  - KR3：L2 行情接入 + 期货 CTP 模拟联调
+- **O2**：稳定性提升
+  - KR1：API 服务 SLO ≥ 99.9%
+  - KR2：核心回测路径 P95 延迟降低 30%
+  - KR3：测试覆盖率 ≥ 92%（当前 ~88%）
+
+### 2027 H1 OKR（V5.0-C/D 阶段）
+- **O1**：策略市场和研究平台
+  - KR1：JupyterHub 上线，月活研究员 ≥ 100
+  - KR2：策略市场上架 ≥ 50 个策略
+  - KR3：BaaS API 调用 ≥ 100K/月
+- **O2**：可观测与可靠
+  - KR1：完整 OpenTelemetry 覆盖
+  - KR2：完成 1 次跨区域演练（RTO < 5min）
+  - KR3：SOC2 Type II 报告完成
 
 ---
 
