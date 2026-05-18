@@ -205,6 +205,8 @@ class TestFastAPIEndpoints:
 
         def fake_run_strategy(self, **kwargs):
             assert kwargs["strategy"] == "macd"
+            assert kwargs["benchmark"] == "000300.SH"
+            assert kwargs["engine"] == "backtrader"
             return {
                 "strategy": "macd",
                 "cum_return": 0.12,
@@ -222,12 +224,89 @@ class TestFastAPIEndpoints:
                 "symbols": ["600519.SH"],
                 "start": "2024-01-01",
                 "end": "2024-12-31",
+                "benchmark": "000300.SH",
+                "source": "akshare",
+                "engine": "backtrader",
             },
         )
         assert resp.status_code == 200
         body = resp.json()
         assert body["ok"] is True
         assert body["data"]["metrics"]["cum_return"] == 0.12
+
+    def test_backtest_job_endpoints(self, client, monkeypatch):
+        def fake_run_backtest_job(payload):
+            return {
+                "report_dir": "report/unit",
+                "snapshot_path": "report/unit/run_snapshot.json",
+                "metrics": {
+                    "strategy": payload["strategy"],
+                    "cum_return": 0.03,
+                    "sharpe": 1.1,
+                    "trades": 2,
+                },
+            }
+
+        monkeypatch.setattr("src.platform.backtest_task.run_backtest_job", fake_run_backtest_job)
+
+        resp = client.post(
+            "/api/v2/backtest/jobs",
+            json={
+                "strategy": "macd",
+                "symbols": ["600519.SH"],
+                "start": "2024-01-01",
+                "end": "2024-12-31",
+                "plot": True,
+            },
+        )
+        assert resp.status_code == 200
+        job_id = resp.json()["data"]["job_id"]
+        assert job_id
+
+        job_body = None
+        for _ in range(20):
+            job_resp = client.get(f"/api/v2/backtest/jobs/{job_id}")
+            assert job_resp.status_code == 200
+            job_body = job_resp.json()["data"]["job"]
+            if job_body["status"] == "success":
+                break
+            time.sleep(0.05)
+
+        assert job_body is not None
+        assert job_body["status"] == "success"
+        assert job_body["result"]["metrics"]["cum_return"] == 0.03
+
+        list_resp = client.get("/api/v2/backtest/jobs?limit=5")
+        assert list_resp.status_code == 200
+        assert any(job["job_id"] == job_id for job in list_resp.json()["data"]["jobs"])
+
+    def test_chart_data_endpoint(self, client, monkeypatch):
+        pd = pytest.importorskip("pandas")
+
+        class FakeProvider:
+            def load_stock_daily(self, symbols, start, end):
+                assert symbols == ["600519.SH"]
+                index = pd.date_range(start="2024-01-01", periods=2)
+                return {
+                    "600519.SH": pd.DataFrame(
+                        {
+                            "open": [10.0, 11.0],
+                            "close": [10.5, 11.5],
+                            "low": [9.8, 10.8],
+                            "high": [10.8, 11.8],
+                            "volume": [1000, 1200],
+                        },
+                        index=index,
+                    )
+                }
+
+        monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
+
+        resp = client.get("/api/v2/chart-data?symbol=600519.SH&days=10&source=akshare")
+        assert resp.status_code == 200
+        body = resp.json()["data"]
+        assert body["dates"] == ["2024-01-01", "2024-01-02"]
+        assert body["ohlc"][0] == [10.0, 10.5, 9.8, 10.8]
 
     def test_gateway_and_monitor_endpoints(self, client):
         resp = client.post(

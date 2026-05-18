@@ -54,6 +54,8 @@ def _build_repro_command(payload: Dict[str, Any]) -> str:
         tokens.extend(["--cache_dir", str(payload["cache_dir"])])
     if payload.get("calendar_mode"):
         tokens.extend(["--calendar", str(payload["calendar_mode"])])
+    if payload.get("engine"):
+        tokens.extend(["--engine", str(payload["engine"])])
     if payload.get("plot"):
         tokens.append("--plot")
     return " ".join(tokens)
@@ -82,6 +84,7 @@ def run_backtest_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         enable_plot=bool(payload.get("plot", False)),
         calendar_mode=payload.get("calendar_mode"),
         collect_diagnostics=True,
+        engine=payload.get("engine", "backtrader"),
     )
     cerebro = metrics.pop("_cerebro", None)
     quality_report = metrics.pop("_quality_report", None)

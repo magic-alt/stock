@@ -9,6 +9,9 @@ from __future__ import annotations
 import os
 import time
 import threading
+import math
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -58,6 +61,20 @@ if HAS_FASTAPI:
         cash: float = Field(100000, gt=0, description="Initial cash")
         commission: float = Field(0.001, ge=0, le=0.1, description="Commission rate")
         slippage: float = Field(0.001, ge=0, le=0.1, description="Slippage rate")
+        source: str = Field("akshare", description="Market data provider")
+        benchmark_source: Optional[str] = Field(None, description="Benchmark data provider")
+        benchmark: Optional[str] = Field(None, description="Benchmark symbol")
+        adj: Optional[str] = Field(None, description="Adjustment mode passed to the data provider")
+        calendar_mode: Optional[str] = Field(None, description="Trading calendar alignment mode")
+        engine: str = Field("backtrader", description="Execution backend name")
+
+    class BacktestJobRequest(BacktestRequest):
+        plot: bool = Field(False, description="Generate plot/report artifacts")
+        report_dir: Optional[str] = Field(None, description="Optional report output directory")
+        out_dir: Optional[str] = Field(None, description="Optional engine output directory")
+        cache_dir: Optional[str] = Field(None, description="Optional provider cache directory")
+        register_data_lake: bool = Field(True, description="Register report artifacts in the data lake")
+        data_lake_dir: Optional[str] = Field(None, description="Optional data lake directory")
 
     class StrategyValidateRequest(BaseModel):
         code: str = Field(..., min_length=1, description="Python strategy code")
@@ -97,6 +114,27 @@ if HAS_FASTAPI:
     class PriceUpdateRequest(BaseModel):
         symbol: str = Field(..., min_length=1)
         price: float = Field(..., gt=0)
+
+    def _jsonable(value: Any) -> Any:
+        if is_dataclass(value):
+            return {k: _jsonable(v) for k, v in asdict(value).items()}
+        if isinstance(value, dict):
+            return {k: _jsonable(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [_jsonable(v) for v in value]
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+            return None
+        if hasattr(value, "item"):
+            try:
+                return _jsonable(value.item())
+            except Exception:
+                return value
+        return value
+
+    def _model_dump(model: BaseModel, **kwargs: Any) -> Dict[str, Any]:
+        return model.model_dump(**kwargs)
 
     # ------------------------------------------------------------------
     # Application factory
@@ -205,6 +243,33 @@ if HAS_FASTAPI:
         async def metrics(request: Request):
             return ApiEnvelope(data=request.app.state.api_metrics.snapshot(request.app.state.job_queue))
 
+        @app.get("/api/v2/chart-data", tags=["Data"])
+        async def chart_data(symbol: str, days: int = 120, source: str = "akshare"):
+            if not symbol.strip():
+                raise HTTPException(status_code=400, detail="symbol is required")
+            days = max(10, min(days, 500))
+            try:
+                from datetime import datetime, timedelta
+                from src.data_sources.providers import get_provider
+
+                end = datetime.now().strftime("%Y-%m-%d")
+                start = (datetime.now() - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
+                provider = get_provider(source)
+                data_map = provider.load_stock_daily([symbol], start, end)
+                if symbol not in data_map or data_map[symbol].empty:
+                    return ApiEnvelope(data={"dates": [], "ohlc": [], "volumes": []})
+                df = data_map[symbol].tail(days)
+                dates = [str(d.date()) if hasattr(d, "date") else str(d) for d in df.index]
+                ohlc = [
+                    [float(row["open"]), float(row["close"]), float(row["low"]), float(row["high"])]
+                    for _, row in df.iterrows()
+                ]
+                volumes = [float(row.get("volume", 0)) for _, row in df.iterrows()]
+                return ApiEnvelope(data={"dates": dates, "ohlc": ohlc, "volumes": volumes})
+            except Exception as e:
+                logger.error("chart_data_failed", error=str(e))
+                raise HTTPException(status_code=500, detail=str(e))
+
         @app.get("/health", include_in_schema=False)
         async def legacy_health():
             return await health()
@@ -269,7 +334,11 @@ if HAS_FASTAPI:
         async def _run_backtest_impl(req: BacktestRequest):
             try:
                 from src.backtest.engine import BacktestEngine
-                engine = BacktestEngine()
+                engine = BacktestEngine(
+                    source=req.source,
+                    benchmark_source=req.benchmark_source or req.source,
+                    calendar_mode=req.calendar_mode or "off",
+                )
                 result = engine.run_strategy(
                     strategy=req.strategy,
                     symbols=req.symbols,
@@ -279,11 +348,16 @@ if HAS_FASTAPI:
                     cash=req.cash,
                     commission=req.commission,
                     slippage=req.slippage,
+                    benchmark=req.benchmark,
+                    adj=req.adj,
+                    calendar_mode=req.calendar_mode,
+                    engine=req.engine,
                 )
-                clean = {k: v for k, v in result.items() if k not in ("nav", "_cerebro", "_quality_report", "_data_fingerprint")}
-                for k, v in clean.items():
-                    if hasattr(v, "item"):
-                        clean[k] = v.item()
+                clean = {
+                    k: _jsonable(v)
+                    for k, v in result.items()
+                    if k not in ("nav", "_cerebro", "_quality_report", "_data_fingerprint")
+                }
                 return ApiEnvelope(data={"metrics": clean})
             except KeyError as e:
                 raise HTTPException(status_code=404, detail=str(e))
@@ -298,6 +372,53 @@ if HAS_FASTAPI:
         @app.post("/api/v2/strategies/run", tags=["Strategies"])
         async def run_strategy(req: BacktestRequest):
             return await _run_backtest_impl(req)
+
+        @app.post("/api/v2/backtest/jobs", tags=["Backtest"])
+        async def submit_backtest_job(request: Request, req: BacktestJobRequest):
+            from src.platform.backtest_task import run_backtest_job
+
+            payload = _model_dump(req, exclude_none=True)
+            idempotency_key = request.headers.get("X-Idempotency-Key") or None
+            job_id = request.app.state.job_queue.submit(
+                "backtest",
+                run_backtest_job,
+                payload,
+                idempotency_key=idempotency_key,
+            )
+            return ApiEnvelope(data={"job_id": job_id})
+
+        @app.get("/api/v2/backtest/jobs", tags=["Backtest"])
+        async def list_backtest_jobs(request: Request, limit: int = 20):
+            jobs = [
+                _jsonable(job)
+                for job in sorted(
+                    request.app.state.job_queue.store.list(),
+                    key=lambda item: item.created_at,
+                    reverse=True,
+                )
+                if job.task_type == "backtest"
+            ]
+            return ApiEnvelope(data={"jobs": jobs[: max(0, min(limit, 100))]})
+
+        @app.get("/api/v2/backtest/jobs/{job_id}", tags=["Backtest"])
+        async def get_backtest_job(request: Request, job_id: str):
+            record = request.app.state.job_queue.store.get(job_id)
+            if record is None or record.task_type != "backtest":
+                raise HTTPException(status_code=404, detail="job not found")
+            return ApiEnvelope(data={"job": _jsonable(record)})
+
+        @app.post("/api/v2/backtest/jobs/{job_id}/cancel", tags=["Backtest"])
+        async def cancel_backtest_job(request: Request, job_id: str):
+            existing = request.app.state.job_queue.store.get(job_id)
+            if existing is None or existing.task_type != "backtest":
+                raise HTTPException(status_code=404, detail="job not found")
+            try:
+                record = request.app.state.job_queue.cancel(job_id)
+            except KeyError:
+                raise HTTPException(status_code=404, detail="job not found")
+            except RuntimeError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
+            return ApiEnvelope(data={"job": _jsonable(record)})
 
         @app.get("/api/v2/gateway/status", tags=["Trading"])
         async def gateway_status(request: Request):
