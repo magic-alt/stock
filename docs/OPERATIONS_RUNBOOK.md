@@ -3,7 +3,7 @@
 ## 1. 灰度发布流程
 1. 在预发环境运行 `python -m pytest tests -v`。
 2. 启动新版本 API：
-   `python scripts/run_platform_api.py --jobs ./cache/platform/jobs.db --api-token $TOKEN`。
+   `PLATFORM_API_TOKEN=$TOKEN PLATFORM_JOB_STORE=./cache/platform/jobs.db python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000`。
 3. 先将 10% 流量切换到新实例，观察 15 分钟。
 4. 关键指标通过后扩到 50%，再扩到 100%。
 

@@ -18,7 +18,7 @@
 1. 平台 API 契约化
 - 统一 `/api/v1/*` 路由。
 - 统一响应对象与错误码体系。
-- 旧路由兼容保留，发布弃用公告。
+- 未版本化旧路由已完成清理；新能力优先进入 `/api/v2/*`。
 
 2. 鉴权与安全最小闭环
 - 为 v1 路由引入 Bearer Token。
@@ -40,9 +40,10 @@
 - ✅ `/metrics` 可输出核心计数指标（JSON + Prometheus 双格式）。
 - ✅ 新增测试通过且稳定（5 项契约测试全部通过）。
 
-### 代码审计结论（2026-02-28）
+### 代码审计结论（2026-02-28，2026-05-18 复核）
 全部 P0 工作项已落地并通过测试验收：
-- `src/platform/api_server.py`：v1 路由（healthz/readyz/metrics/jobs/gateway）、统一响应信封 `{code, message, data, request_id}`、错误码体系（40101/40001/40401/40901）、旧路由兼容。
+- `src/platform/api_server.py`：v1 路由（healthz/readyz/metrics/jobs/gateway）、统一响应信封 `{code, message, data, request_id}`、错误码体系（40101/40001/40401/40901）。
+- `src/platform/api_v2.py`：FastAPI v2 当前生产入口，提供 `/api/v2/*`、OpenAPI 文档、前端静态托管和安全响应头；未版本化旧路由已不再作为生产入口。
 - Bearer Token 鉴权：`_is_authorized_v1()` 方法，公开端点（healthz/readyz/metrics）免鉴权，其余强制 401。
 - 任务取消：`job_queue.py` `cancel()` 方法，pending 可取消，running 拒绝。
 - 指标端点：JSON（`/api/v1/metrics`）+ Prometheus（`/metrics`）双格式输出。
@@ -302,3 +303,16 @@
 | V4.0-B | ✅ 全部完成 | 向量化 BacktestEngine 指标+网格搜索缓存（test_backtest_performance）、Parquet 数据湖+版本/校验和/Schema（test_data_lake_versioning）、回测/实盘对账（Reconciler+test_reconciliation）、组合风险聚合（PortfolioManager+test_portfolio_risk） | — |
 | V4.0-C | ✅ 全部完成 | 模块化 API Router+RBAC/速率限制/审计中间件（test_platform_api）、DAG 工作流拓扑排序+并行执行（test_platform_orchestrator）、Redis job store backend+TTL（test_platform_job_queue）、Ray/Dask 分布式回测适配器（test_platform_distributed）、OpenTelemetry 兼容 Tracing+MetricCollector（test_observability_hooks） | — |
 | V4.0-D | ✅ 全部完成 | 多账户 RBAC+AccountManager 资金划拨（test_multi_account_routing）、审计日志归档+HMAC-SHA256 签名+保留策略（test_audit_log）、DR FailoverManager 主备切换+DrillRunner 自动化演练（test_dr_restore） | — |
+
+## 中长期规划复核（2026-05-18）
+
+| 原规划项 | 当前状态 | 说明 |
+|----------|----------|------|
+| REST API实现 | ✅ 已完成 | `src/platform/api_v2.py` 已提供 FastAPI `/api/v2/*` REST API、OpenAPI 文档、回测 job、策略、交易网关与监控端点。 |
+| Docker容器化 | ✅ 已完成 | 根目录 `Dockerfile`、`docker-compose.yml`、`frontend/Dockerfile` 和 `deploy/k8s/` 已覆盖单服务、双服务和 K8s 基础部署形态。 |
+| 配置加密 | ✅ 已完成 | `SecurityManager` 与 `LocalFileVault` 已支持敏感值加密和本地加密密钥存储；外部 KMS/Vault 仍为企业增强项。 |
+| Web前端 | ✅ 已完成 | `frontend/` Vue3 SPA 已覆盖核心运维与交易页面；旧 `src/platform/web/` 仍可作为轻量控制台。 |
+| 微服务架构 | 🟡 部分完成 | 当前是模块化单体 + API/Frontend/Redis 容器编排，尚未拆为独立 backtest/data/trading/ml 服务。 |
+| 分布式回测 | 🟡 大部分完成 | `DistributedRunner` 已支持 LocalProcessPool/Ray/Dask；生产集群部署模板和大规模容量验证仍待补齐。 |
+
+详细证据见 [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)。

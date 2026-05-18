@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - CLI: `unified_backtest_framework.py features|capabilities --json` now lists registered strategies, data sources, backtest engines, financial providers, live gateways, trading brokers, and workflows.
 - Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring commercial SDKs.
+- Docs: 新增 `docs/MID_LONG_TERM_STATUS_AUDIT.md`，复核 P2/P3 规划中 REST API、Docker、配置加密、Web 前端、微服务架构和分布式回测的当前实现状态。
 - Web: 回测工作台新增动态策略参数、同步/异步运行模式、任务状态、错误提示、指标明细和响应式布局。
 - API: FastAPI `api_v2` 新增回测 job 提交/查询/取消端点，并提供 `/api/v2/chart-data` 供前端数据浏览使用。
 - Frontend: Data Browser 从占位页升级为可查询近期 OHLCV 数据的表格视图。
@@ -25,6 +26,7 @@ All notable changes to this project will be documented in this file.
 - Gateway: `src.gateways` and `TradingGateway` lazily load concrete commercial SDK gateways; importing CLI/base modules no longer probes XTP/UFT SDKs.
 - Gateway: XtQuant/QMT now supports SDK-less stub mode aligned with XTP/UFT for development, CI, and smoke tests.
 - API: `/api/v2/backtest/run` 和 `/api/v2/strategies/run` 现在透传数据源、基准、复权、日历模式和执行引擎参数。
+- Docs: 同步 ROADMAP、ARCHITECTURE_REVIEW、PLATFORM/API/SECURITY/DEPLOYMENT 等文档中的中长期规划状态，移除“REST API/Docker/Web 前端尚未实现”的过期表述。
 - README: 版本升级到 V3.3.0；明确双回测引擎（Backtrader + Zipline）、OrderStateMachine、FinancialDataProvider 工厂、4 个实盘网关、5 种部署形态、本地 CI 流程。
 
 ### Added (previous, from feature/zipline-engine-and-stubs, merged in PR #5)
