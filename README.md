@@ -5,24 +5,28 @@
 [![CI Status](https://github.com/magic-alt/stock/workflows/CI/badge.svg)](https://github.com/magic-alt/stock/actions)
 [![Code Coverage](https://codecov.io/gh/magic-alt/stock/branch/main/graph/badge.svg)](https://codecov.io/gh/magic-alt/stock)
 
-> 企业级量化回测与实盘系统，基于 Backtrader + 事件驱动架构，支持多数据源、策略库与 ML 策略、自动化流程与本地部署。
+> 企业级量化回测与实盘系统，基于 **Backtrader + Zipline 双引擎** 与事件驱动架构，支持多数据源、策略库与 ML 策略、自动化流程、商业网关接入与本地/容器化部署。
 
-**版本**: V3.2.0 | **更新日期**: 2026-01-30 | **状态**: 🟢 本地部署就绪 | 商业级加固中
+**版本**: V3.3.0 | **更新日期**: 2026-05-18 | **状态**: 🟢 本地/容器部署就绪 | 商业级加固持续推进 | V5.0 商业化规划中
 
 ---
 
 ## ✨ 关键能力
 
-- **多数据源**: AKShare / YFinance / TuShare
-- **策略库**: 趋势、均值回归、动量、组合优化、ML 策略
+- **双回测引擎**: **Backtrader**（默认，事件驱动）+ **Zipline-Reloaded**（向量化，可选安装），统一 `EngineRegistry` 入口（CLI `--engine backtrader|zipline`）
+- **多数据源**: AKShare / YFinance / TuShare（Qlib bundle 可选）
+- **基本面工厂**: `FinancialDataProvider` ABC + `Null/Tushare/Akshare` 实现，通过 `get_financial_provider(name)` 切换
+- **策略库**: 趋势、均值回归、动量、组合优化、ML 策略（共 40+）
 - **ML 策略族**: `ml_walk`, `ml_meta`, `ml_prob_band`, `ml_enhanced`, `ml_ensemble` + DL/RL/特征选择/集成示例
-- **自动化流程**: `run` / `grid` / `auto` / `combo`
+- **自动化流程**: `run` / `grid` / `auto` / `combo` / `baseline` / `admission`
 - **统一架构**: BaseStrategy + EventEngine + 统一接口层
-- **实盘网关**: XtQuant / XTP / Hundsun UFT（SDK 可用时启用）
+- **实盘网关**: XtQuant / XTP / Hundsun UFT / EastMoney（easytrader），无 SDK 时自动进入 **Stub Mode** 便于 CI / 开发
+- **订单状态机**: `OrderStateMachine` 严格/宽松双模式 + 有界审计历史（默认 1000 条）+ 非法转换审计
 - **风险与归因**: VaR/ES、CAPM α/β、跟踪误差、风格暴露
-- **执行建模**: 市场冲击滑点 + 成交概率/延迟模拟
-- **合规与运维**: 审计日志、RBAC 权限隔离、快照恢复（HA/DR）
-- **报告输出**: PNG / Markdown / JSON + 运行快照/数据质量报告；默认写入 `report/`（或 `--out_dir` 指定）
+- **执行建模**: 市场冲击滑点 + 成交概率/延迟模拟（A 股 T+1、涨跌停、整手）
+- **合规与运维**: 审计哈希链、RBAC 权限隔离、快照恢复（HA/DR）、Prometheus `/metrics`
+- **报告输出**: PNG / Markdown / JSON + ECharts 交互图 + 运行快照/数据质量报告；默认写入 `report/`（或 `--out_dir` 指定）
+- **部署形态**: 本地 CLI / GUI、Docker、Docker-Compose、Kubernetes、Render（一键托管）
 
 ---
 
@@ -39,12 +43,19 @@ pip install xgboost torch
 ### 运行（CLI / GUI / 示例）
 
 ```bash
-# CLI: 单策略回测
+# CLI: 单策略回测（默认 backtrader 引擎）
 python unified_backtest_framework.py run \
   --strategy macd \
   --symbols 600519.SH \
   --start 2023-01-01 --end 2024-12-31 \
   --plot
+
+# 使用 Zipline 向量化引擎（需 pip install zipline-reloaded）
+python unified_backtest_framework.py run \
+  --engine zipline \
+  --strategy ma_cross \
+  --symbols 600519.SH \
+  --start 2023-01-01 --end 2024-12-31
 
 # GUI: 图形界面
 python scripts/backtest_gui.py
@@ -114,6 +125,77 @@ pytest tests/ -v
 
 - `pytest.ini` 已启用 ML 模块覆盖率门槛（`--cov-fail-under=90`）
 - 覆盖范围包含 `src/optimizer` 与 ML 策略模块
+
+### 本地 CI / CD
+
+提交前请运行本地 CI 镜像 GitHub Actions：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/local_ci.ps1 -Jobs test -SkipInstall
+```
+
+---
+
+## 🔌 实盘网关接入
+
+本平台内置 4 个商业网关 + 模拟撮合引擎，**所有网关无 SDK 时自动进入 Stub Mode**，便于开发 / CI / 教学。
+
+| 网关 | 适用 | 状态 |
+|------|------|------|
+| **XtQuant / QMT** | 个人量化（券商免费） | ✅ 生产就绪 |
+| **XTP** (中泰证券) | 私募 / 机构低延迟 | ✅ Vega 模拟 + 生产 |
+| **Hundsun UFT** (恒生) | 持牌机构柜台 | ✅ 集成就绪 |
+| **EastMoney** (easytrader) | 个人散户 / 教学 | ✅ 已接入 |
+| **CTP** (期货) | 期货 / 期权 | 🟡 规划中 (V5.0) |
+
+- 技术安装与配置：[docs/GATEWAY_SDK_SETUP.md](docs/GATEWAY_SDK_SETUP.md)
+- **券商账户开通、商业 SDK 申请、合规要求**：[docs/BROKER_ACCOUNT_GUIDE.md](docs/BROKER_ACCOUNT_GUIDE.md)
+- 实盘 API 速查：[docs/LIVE_TRADING_API.md](docs/LIVE_TRADING_API.md)
+
+---
+
+## 🚢 部署
+
+| 形态 | 入口 |
+|------|------|
+| Docker 单机 | `docker build -t stock . && docker run ...` 见 [Dockerfile](Dockerfile) |
+| Docker Compose（API + Web） | `docker-compose up -d` |
+| Kubernetes | [deploy/k8s/](deploy/k8s/) Helm-friendly YAML |
+| Render.com 一键托管 | [render.yaml](render.yaml) |
+| 生产启动脚本 | `scripts/start_production.sh` / `.bat` / `.py` |
+
+详细部署指南：[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) · [docs/QUICK_START_DEPLOYMENT.md](docs/QUICK_START_DEPLOYMENT.md)
+
+---
+
+## 📚 文档地图
+
+| 主题 | 文档 |
+|------|------|
+| 架构总览 | [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md) · [docs/ARCHITECTURE_REVIEW.md](docs/ARCHITECTURE_REVIEW.md) |
+| API 参考 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
+| 策略参考（41 个策略） | [docs/STRATEGY_REFERENCE.md](docs/STRATEGY_REFERENCE.md) |
+| 路线图 | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| 商业化升级路线 | [docs/COMMERCIAL_UPGRADE_ROADMAP.md](docs/COMMERCIAL_UPGRADE_ROADMAP.md) |
+| 商业化差距评估 | [docs/COMMERCIAL_GAP_ASSESSMENT.md](docs/COMMERCIAL_GAP_ASSESSMENT.md) |
+| 运维手册 | [docs/OPERATIONS_RUNBOOK.md](docs/OPERATIONS_RUNBOOK.md) · [docs/SRE_INCIDENT_RESPONSE.md](docs/SRE_INCIDENT_RESPONSE.md) |
+| 安全基线 | [docs/SECURITY_BASELINE.md](docs/SECURITY_BASELINE.md) |
+| 性能基准 | [docs/PERFORMANCE_BENCHMARK_SPEC.md](docs/PERFORMANCE_BENCHMARK_SPEC.md) |
+| 网关接入 | [docs/GATEWAY_SDK_SETUP.md](docs/GATEWAY_SDK_SETUP.md) · [docs/BROKER_ACCOUNT_GUIDE.md](docs/BROKER_ACCOUNT_GUIDE.md) |
+
+---
+
+## 🤝 贡献
+
+本仓库要求所有改动通过 **特性分支 + Pull Request** 流程（不允许直接推送 `main`）。
+约定式提交（feat / fix / docs / test / chore）+ `CHANGELOG.md` 更新 + 本地 CI 通过
+是合并前置条件。详见 [AGENTS.md](AGENTS.md)。
+
+---
+
+## 📝 许可
+
+MIT License — 见 [LICENSE](LICENSE)。
 
 ---
 
