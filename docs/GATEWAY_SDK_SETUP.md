@@ -2,6 +2,12 @@
 
 This guide covers installation and configuration for the three trading gateway SDKs supported by the platform.
 
+> **需要券商账户、商业 SDK 申请、合规要求**？请参阅
+> [BROKER_ACCOUNT_GUIDE.md](BROKER_ACCOUNT_GUIDE.md) — 包含 QMT / XTP / UFT
+> 的开户流程、费用估算、合规清单与申请话术模板。
+>
+> 本文聚焦 **技术安装 / 配置 / 故障排查**，假设你已经持有 SDK 和账号。
+
 ---
 
 ## Overview
@@ -318,3 +324,4 @@ config = GatewayConfig(
     heartbeat_interval=30.0,   # seconds
 )
 ```
+
