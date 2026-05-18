@@ -44,9 +44,6 @@ from src.gateways.base_live_gateway import (
     GatewayConfig as LiveGatewayConfig,
     BaseLiveGateway,
 )
-from src.gateways.xtquant_gateway import XtQuantGateway
-from src.gateways.xtp_gateway import XtpGateway
-from src.gateways.hundsun_uft_gateway import HundsunUftGateway
 
 logger = get_logger("trading_gateway")
 
@@ -345,16 +342,19 @@ class BaseLiveGatewayAdapter:
 
 class XtQuantAdapter(BaseLiveGatewayAdapter):
     def __init__(self, config: GatewayConfig):
+        from src.gateways.xtquant_gateway import XtQuantGateway
         super().__init__(config, XtQuantGateway)
 
 
 class XtpAdapter(BaseLiveGatewayAdapter):
     def __init__(self, config: GatewayConfig):
+        from src.gateways.xtp_gateway import XtpGateway
         super().__init__(config, XtpGateway)
 
 
 class HundsunUftAdapter(BaseLiveGatewayAdapter):
     def __init__(self, config: GatewayConfig):
+        from src.gateways.hundsun_uft_gateway import HundsunUftGateway
         super().__init__(config, HundsunUftGateway)
 
 

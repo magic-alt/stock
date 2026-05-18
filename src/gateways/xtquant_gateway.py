@@ -82,6 +82,7 @@ from src.gateways.mappers import SymbolMapper, OrderMapper
 # Check if xtquant is available
 # Type hints use Any when SDK not installed
 XTQUANT_AVAILABLE = False
+_XTQUANT_IMPORT_ERROR = ""
 xttrader = None
 xtdata = None
 
@@ -91,7 +92,8 @@ try:
     from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback  # type: ignore
     from xtquant.xttype import StockAccount  # type: ignore
     XTQUANT_AVAILABLE = True
-except ImportError:
+except ImportError as exc:
+    _XTQUANT_IMPORT_ERROR = str(exc)
     pass  # Use stub mode
 
 
@@ -138,15 +140,18 @@ class XtQuantGateway(BaseLiveGateway):
             event_queue: Queue for event publishing
             logger: Optional logger instance
         
-        Raises:
-            ImportError: If xtquant is not available
+        Notes:
+            If xtquant is not available, the gateway starts in stub mode so
+            development, CI, and smoke tests can still exercise the unified
+            live-gateway contract.
         """
         super().__init__(config, event_queue, logger)
-        
-        if not XTQUANT_AVAILABLE:
-            raise ImportError(
-                "xtquant package not available. Please ensure QMT/MiniQMT "
-                "terminal is installed and xtquant is in your Python path."
+
+        self._stub_mode = not XTQUANT_AVAILABLE
+        if self._stub_mode:
+            self.log.warning(
+                "xtquant_gateway_stub_mode",
+                detail=_XTQUANT_IMPORT_ERROR or "xtquant SDK not available, running in stub mode",
             )
         
         # XtQuant instances (Any type for SDK objects)
@@ -165,7 +170,13 @@ class XtQuantGateway(BaseLiveGateway):
             "xtquant_gateway_initialized",
             terminal_type=config.terminal_type,
             account_id=config.account_id,
+            stub_mode=self._stub_mode,
         )
+
+    @property
+    def sdk_import_error(self) -> str:
+        """Expose SDK import diagnostics for setup checks."""
+        return _XTQUANT_IMPORT_ERROR
     
     # ---------------------------------------------------------------------------
     # Connection Management
@@ -184,6 +195,10 @@ class XtQuantGateway(BaseLiveGateway):
         Returns:
             True if connection successful
         """
+        if self._stub_mode:
+            self.log.info("xtquant_stub_connected", account=self.config.account_id)
+            return True
+
         try:
             # Create callback handler
             self._callback = _XtQuantCallback(self)
@@ -236,6 +251,10 @@ class XtQuantGateway(BaseLiveGateway):
     
     def _do_disconnect(self) -> None:
         """Disconnect from QMT terminal."""
+        if self._stub_mode:
+            self.log.info("xtquant_stub_disconnected")
+            return
+
         try:
             if self._trader:
                 self._trader.stop()
@@ -280,6 +299,9 @@ class XtQuantGateway(BaseLiveGateway):
         Returns:
             broker_order_id from xtquant
         """
+        if self._stub_mode:
+            return self._stub_send_order(request)
+
         if not self._trader or not self._account:
             raise RuntimeError("Gateway not connected")
         
@@ -343,6 +365,21 @@ class XtQuantGateway(BaseLiveGateway):
             with self._lock:
                 self._pending_orders.pop(request.client_order_id, None)
             raise RuntimeError(f"Order submission failed: {e}")
+
+    def _stub_send_order(self, request: OrderRequest) -> str:
+        """Submit a synthetic order in SDK-less development mode."""
+        broker_order_id = f"XTQ-{int(time.time() * 1000) % 1000000000}"
+        with self._lock:
+            self._pending_orders[request.client_order_id] = request
+        self._client_to_broker[request.client_order_id] = broker_order_id
+        self._broker_to_client[broker_order_id] = request.client_order_id
+
+        self.log.info(
+            "xtquant_stub_order_sent",
+            client_order_id=request.client_order_id,
+            broker_order_id=broker_order_id,
+        )
+        return broker_order_id
     
     def _do_cancel_order(
         self, 
@@ -359,6 +396,9 @@ class XtQuantGateway(BaseLiveGateway):
         Returns:
             True if cancel request sent successfully
         """
+        if self._stub_mode:
+            return self._stub_cancel_order(broker_order_id, client_order_id)
+
         if not self._trader or not self._account:
             raise RuntimeError("Gateway not connected")
         
@@ -386,6 +426,33 @@ class XtQuantGateway(BaseLiveGateway):
                 error=str(e),
             )
             raise
+
+    def _stub_cancel_order(
+        self,
+        broker_order_id: str,
+        client_order_id: str,
+    ) -> bool:
+        """Cancel a synthetic order in SDK-less development mode."""
+        self.log.info(
+            "xtquant_stub_cancel_sent",
+            client_order_id=client_order_id,
+            broker_order_id=broker_order_id,
+        )
+        order = self._orders.get(client_order_id)
+        if order:
+            update = OrderUpdate(
+                client_order_id=client_order_id,
+                broker_order_id=broker_order_id,
+                symbol=order.symbol,
+                side=order.side,
+                status=OrderStatus.CANCELLED,
+                order_type=order.order_type,
+                price=order.price,
+                quantity=order.quantity,
+                filled_quantity=order.filled_quantity,
+            )
+            threading.Timer(0.1, lambda: self._on_order_update(update)).start()
+        return True
     
     # ---------------------------------------------------------------------------
     # Query Methods
@@ -393,6 +460,15 @@ class XtQuantGateway(BaseLiveGateway):
     
     def _do_query_account(self) -> Optional[AccountUpdate]:
         """Query account information from xtquant."""
+        if self._stub_mode:
+            return AccountUpdate(
+                account_id=self.config.account_id,
+                cash=1000000.0,
+                available=950000.0,
+                frozen=50000.0,
+                equity=1100000.0,
+            )
+
         if not self._trader or not self._account:
             return None
         
@@ -421,6 +497,18 @@ class XtQuantGateway(BaseLiveGateway):
     
     def _do_query_positions(self) -> List[PositionUpdate]:
         """Query all positions from xtquant."""
+        if self._stub_mode:
+            return [
+                PositionUpdate(
+                    symbol="600519.SH",
+                    total_quantity=1000,
+                    available_quantity=1000,
+                    avg_price=1800.0,
+                    market_value=1850000.0,
+                    unrealized_pnl=50000.0,
+                )
+            ]
+
         if not self._trader or not self._account:
             return []
         
@@ -460,6 +548,9 @@ class XtQuantGateway(BaseLiveGateway):
     
     def _do_query_orders(self) -> List[OrderUpdate]:
         """Query open orders from xtquant."""
+        if self._stub_mode:
+            return list(self._orders.values())
+
         if not self._trader or not self._account:
             return []
         
