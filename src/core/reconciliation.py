@@ -220,6 +220,33 @@ class Reconciler:
 
         return report
 
+    def build_replay_manifest(
+        self,
+        report: ReconciliationReport,
+        *,
+        backtest_result: Optional[Dict[str, Any]] = None,
+        live_result: Optional[Dict[str, Any]] = None,
+        repro_command: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Build a serializable manifest for replaying reconciliation anomalies."""
+        backtest_result = backtest_result or {}
+        live_result = live_result or {}
+        return {
+            "symbol": report.symbol,
+            "needs_replay": (not report.passed) or bool(report.drift_causes),
+            "repro_command": repro_command,
+            "report": report.to_dict(),
+            "backtest_snapshot": {
+                "pnl": backtest_result.get("pnl"),
+                "trade_count": len(backtest_result.get("trades", [])),
+            },
+            "live_snapshot": {
+                "pnl": live_result.get("pnl"),
+                "trade_count": len(live_result.get("trades", [])),
+            },
+            "generated_at": datetime.now().isoformat(),
+        }
+
     def run_batch(
         self,
         symbols: List[str],

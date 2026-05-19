@@ -166,6 +166,19 @@ class TestGridSearchCaching:
         cache[key] = metrics
         assert cache[key]["sharpe"] == pytest.approx(metrics["sharpe"])
 
+    def test_engine_cached_metrics_reuses_nav_key(self):
+        from src.backtest.engine import BacktestEngine
+
+        engine = BacktestEngine.__new__(BacktestEngine)
+        engine._metrics_cache = {}
+        nav = _make_nav(seed=42)
+
+        first = engine._get_cached_vectorized_metrics(nav)
+        second = engine._get_cached_vectorized_metrics(nav.copy())
+
+        assert len(engine._metrics_cache) == 1
+        assert second["sharpe"] == pytest.approx(first["sharpe"])
+
     def test_different_navs_produce_different_cache_keys(self):
         nav1 = _make_nav(seed=1)
         nav2 = _make_nav(seed=2)
