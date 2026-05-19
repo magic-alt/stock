@@ -21,11 +21,15 @@ from src.platform.data_lake_parquet import ParquetDataLake, VersionInfo
 def _make_price_df(seed: int = 0, rows: int = 20) -> pd.DataFrame:
     rng = np.random.RandomState(seed)
     dates = pd.date_range("2024-01-01", periods=rows)
+    open_ = rng.randint(100, 200, rows).astype(float)
+    close = rng.randint(100, 200, rows).astype(float)
+    low = np.minimum(open_, close) - rng.randint(1, 20, rows).astype(float)
+    high = np.maximum(open_, close) + rng.randint(1, 20, rows).astype(float)
     return pd.DataFrame({
-        "open": rng.randint(100, 200, rows).astype(float),
-        "high": rng.randint(150, 250, rows).astype(float),
-        "low": rng.randint(80, 130, rows).astype(float),
-        "close": rng.randint(100, 200, rows).astype(float),
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
         "volume": rng.randint(1000, 50000, rows).astype(float),
     }, index=dates)
 
@@ -264,6 +268,20 @@ class TestProductionPromotion:
             fh.write(b"\xff\xfe")
         with pytest.raises(ValueError, match="Checksum"):
             lake.promote_to_production(entry.entry_id)
+
+    def test_promote_invalid_ohlc_raises(self, tmp_path):
+        lake = ParquetDataLake(base_dir=str(tmp_path))
+        df = _make_price_df()
+        df.loc[df.index[0], "high"] = df.loc[df.index[0], "low"] - 1
+        entry = lake.write_dataset("BAD", df, kind="price")
+
+        with pytest.raises(ValueError, match="OHLC"):
+            lake.promote_to_production(entry.entry_id)
+
+        updated = lake._registry.get(entry.entry_id)
+        assert updated is not None
+        assert updated.is_production is False
+        assert updated.metadata["quality_gate"]["passed"] is False
 
     def test_move_to_cold_tier_preserves_checksum(self, tmp_path):
         lake = ParquetDataLake(base_dir=str(tmp_path))

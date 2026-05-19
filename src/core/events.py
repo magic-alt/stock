@@ -137,6 +137,8 @@ class EventType:
     # Data events
     DATA_LOADED = "data.loaded"
     DATA_ERROR = "data.error"
+    LEVEL2_SNAPSHOT = "data.level2.snapshot"
+    LEVEL2_TRADE = "data.level2.trade"
     
     # Strategy events
     STRATEGY_INIT = "strategy.init"

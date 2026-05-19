@@ -10,6 +10,7 @@ import os
 import time
 import uuid
 import inspect
+import re
 from datetime import datetime
 from typing import Dict, Any, Optional, List, Callable
 from dataclasses import dataclass, field
@@ -696,11 +697,11 @@ class Tracer:
         self._active_span: Optional[Span] = None
         self._lock = threading.Lock()
 
-    def start_span(self, name: str) -> Span:
+    def start_span(self, name: str, trace_id: str = "", parent_span_id: str = "") -> Span:
         with self._lock:
-            parent_id = self._active_span.span_id if self._active_span else ""
-            trace_id = self._active_span.trace_id if self._active_span else ""
-            span = Span(name, trace_id=trace_id, parent_span_id=parent_id)
+            parent_id = parent_span_id or (self._active_span.span_id if self._active_span else "")
+            active_trace_id = self._active_span.trace_id if self._active_span else ""
+            span = Span(name, trace_id=trace_id or active_trace_id, parent_span_id=parent_id)
             if self._active_span:
                 self._active_span.children.append(span)
             self._spans.append(span)
@@ -723,8 +724,12 @@ class Tracer:
         return self._active_span
 
     @contextmanager
-    def trace(self, name: str):
-        span = self.start_span(name)
+    def trace(self, name: str, trace_context: Optional[TraceContext] = None):
+        span = self.start_span(
+            name,
+            trace_id=trace_context.trace_id if trace_context else "",
+            parent_span_id=trace_context.span_id if trace_context else "",
+        )
         try:
             yield span
         except Exception as exc:
@@ -787,11 +792,111 @@ class MetricCollector:
                     }
             return result
 
+    def to_prometheus(self) -> str:
+        """Export collected metrics in Prometheus text exposition format."""
+        snapshot = self.export()
+        lines: List[str] = []
+        for name, value in sorted(snapshot["counters"].items()):
+            metric_name = _prometheus_metric_name(name, suffix="total")
+            lines.append(f"# TYPE {metric_name} counter")
+            lines.append(f"{metric_name} {float(value)}")
+        for name, value in sorted(snapshot["gauges"].items()):
+            metric_name = _prometheus_metric_name(name)
+            lines.append(f"# TYPE {metric_name} gauge")
+            lines.append(f"{metric_name} {float(value)}")
+        for name, stats in sorted(snapshot["histograms"].items()):
+            metric_name = _prometheus_metric_name(name)
+            lines.append(f"# TYPE {metric_name} summary")
+            lines.append(f"{metric_name}_count {float(stats['count'])}")
+            lines.append(f"{metric_name}_sum {float(stats['mean']) * float(stats['count'])}")
+            lines.append(f'{metric_name}{{quantile="0.5"}} {float(stats["p50"])}')
+            lines.append(f'{metric_name}{{quantile="0.99"}} {float(stats["p99"])}')
+            lines.append(f"{metric_name}_min {float(stats['min'])}")
+            lines.append(f"{metric_name}_max {float(stats['max'])}")
+        return "\n".join(lines) + ("\n" if lines else "")
+
     def reset(self) -> None:
         with self._lock:
             self._counters.clear()
             self._gauges.clear()
             self._histograms.clear()
+
+
+class OtlpJsonSpanExporter:
+    """Optional OTLP/HTTP-compatible JSON span exporter.
+
+    The exporter is intentionally dependency-light. Operators can point it at
+    an OpenTelemetry collector HTTP endpoint; if the endpoint is unavailable,
+    export returns zero and leaves local tracing intact.
+    """
+
+    def __init__(self, endpoint: str, *, service_name: str = "unified-quant-platform") -> None:
+        self.endpoint = endpoint.rstrip("/")
+        self.service_name = service_name
+
+    def export(self, spans: List[Dict[str, Any]]) -> int:
+        if not self.endpoint or not spans:
+            return 0
+        import json
+        import urllib.request
+
+        payload = {
+            "resourceSpans": [
+                {
+                    "resource": {"attributes": [{"key": "service.name", "value": {"stringValue": self.service_name}}]},
+                    "scopeSpans": [
+                        {
+                            "scope": {"name": "src.core.monitoring"},
+                            "spans": [_span_to_otlp_json(span) for span in spans],
+                        }
+                    ],
+                }
+            ]
+        }
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        try:
+            req = urllib.request.Request(
+                self.endpoint,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return len(spans) if 200 <= resp.status < 300 else 0
+        except Exception as exc:
+            logger.warning("otlp_export_failed", endpoint=self.endpoint, error=str(exc))
+            return 0
+
+
+def _prometheus_metric_name(name: str, *, suffix: str = "") -> str:
+    metric = re.sub(r"[^a-zA-Z0-9_:]", "_", name).strip("_") or "metric"
+    if metric[0].isdigit():
+        metric = f"metric_{metric}"
+    if suffix and not metric.endswith(f"_{suffix}"):
+        metric = f"{metric}_{suffix}"
+    return metric
+
+
+def _span_to_otlp_json(span: Dict[str, Any]) -> Dict[str, Any]:
+    start_ns = int(float(span.get("start_time") or 0.0) * 1_000_000_000)
+    end_time = span.get("end_time") or span.get("start_time") or 0.0
+    end_ns = int(float(end_time) * 1_000_000_000)
+    attributes = [
+        {"key": str(key), "value": {"stringValue": str(value)}}
+        for key, value in dict(span.get("attributes") or {}).items()
+    ]
+    if span.get("error"):
+        attributes.append({"key": "error.message", "value": {"stringValue": str(span["error"])}})
+    return {
+        "traceId": str(span.get("trace_id", "")),
+        "spanId": str(span.get("span_id", "")),
+        "parentSpanId": str(span.get("parent_span_id", "")),
+        "name": str(span.get("name", "")),
+        "startTimeUnixNano": str(start_ns),
+        "endTimeUnixNano": str(end_ns),
+        "attributes": attributes,
+        "status": {"code": "STATUS_CODE_ERROR" if span.get("status") == "error" else "STATUS_CODE_OK"},
+    }
 
 
 # Module-level singletons

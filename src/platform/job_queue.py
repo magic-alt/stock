@@ -47,6 +47,13 @@ def _safe_quantile(values: List[float], q: float) -> float:
     return float(ordered[lo] + (ordered[hi] - ordered[lo]) * frac)
 
 
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
 @dataclass
 class JobRecord:
     job_id: str
@@ -301,20 +308,29 @@ class JobStore:
 
     Backend selection:
     - `sqlite:///path/to/jobs.db` -> SQLite
+    - `redis://host:port/db` -> Redis with optional JSON fallback
+    - `postgresql://...` or `postgres://...` -> PostgreSQL with optional JSON fallback
     - `*.db` or `*.sqlite*` -> SQLite
     - other paths -> JSON
     """
 
-    def __init__(self, path: Optional[str] = None) -> None:
+    def __init__(self, path: Optional[str] = None, *, allow_fallback: Optional[bool] = None) -> None:
         self.path = path
         self.backend_type = "json"
+        fallback_enabled = _env_flag("PLATFORM_JOB_STORE_FALLBACK", True) if allow_fallback is None else allow_fallback
 
         if path and path.startswith("redis://"):
             self.backend_type = "redis"
-            backend = _RedisJobStoreBackend(path)
+            backend = _RedisJobStoreBackend(path, allow_fallback=fallback_enabled)
             if backend.is_fallback:
                 self.backend_type = "redis_fallback_json"
             self._backend: _StoreBackend = backend
+        elif path and (path.startswith("postgresql://") or path.startswith("postgres://")):
+            self.backend_type = "postgres"
+            pg_backend = _PostgresJobStoreBackend(path, allow_fallback=fallback_enabled)
+            if pg_backend.is_fallback:
+                self.backend_type = "postgres_fallback_json"
+            self._backend = pg_backend
         elif path and (path.startswith("sqlite:///") or path.endswith(".db") or ".sqlite" in path):
             db_path = path.removeprefix("sqlite:///") if path.startswith("sqlite:///") else path
             self.backend_type = "sqlite"
@@ -459,6 +475,7 @@ class JobQueue:
             in_flight = sum(1 for f in self._futures.values() if not f.done())
 
         return {
+            "backend_type": self.store.backend_type,
             "total_jobs": len(jobs),
             "pending_jobs": status_counter.get("pending", 0),
             "running_jobs": status_counter.get("running", 0),
@@ -489,7 +506,7 @@ class JobQueue:
 class _RedisJobStoreBackend:
     """Redis-backed job store. Falls back to in-memory dict if redis is unavailable."""
 
-    def __init__(self, url: str, ttl_seconds: int = 86400 * 7) -> None:
+    def __init__(self, url: str, ttl_seconds: int = 86400 * 7, *, allow_fallback: bool = True) -> None:
         self.url = url
         self.ttl_seconds = ttl_seconds
         self._redis = None
@@ -500,7 +517,9 @@ class _RedisJobStoreBackend:
             self._redis = redis_mod.Redis.from_url(url, decode_responses=True)
             self._redis.ping()
             self._using_fallback = False
-        except Exception:
+        except Exception as exc:
+            if not allow_fallback:
+                raise RuntimeError(f"Redis job store unavailable: {exc}") from exc
             self._redis = None
             self._using_fallback = True
 
@@ -560,3 +579,215 @@ class _RedisJobStoreBackend:
         if jid:
             return self.get(jid)
         return None
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL-compatible job store backend
+# ---------------------------------------------------------------------------
+
+
+class _PostgresJobStoreBackend:
+    """PostgreSQL-backed job store with optional JSON fallback for local development."""
+
+    _FIELDS = [
+        "job_id",
+        "task_type",
+        "status",
+        "payload",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "cancelled_at",
+        "cancel_requested",
+        "result",
+        "error",
+        "idempotency_key",
+    ]
+
+    def __init__(self, url: str, *, allow_fallback: bool = True) -> None:
+        self.url = url
+        self._conn = None
+        self._fallback = _JsonJobStoreBackend(None)
+        self._using_fallback = True
+        self._lock = threading.Lock()
+        try:
+            try:
+                import psycopg  # type: ignore
+                self._driver = "psycopg"
+                self._conn = psycopg.connect(url)
+                self._conn.autocommit = True
+            except ImportError:
+                import psycopg2  # type: ignore
+                self._driver = "psycopg2"
+                self._conn = psycopg2.connect(url)
+                self._conn.autocommit = True
+            self._init_schema()
+            self._using_fallback = False
+        except Exception as exc:
+            if not allow_fallback:
+                raise RuntimeError(f"Postgres job store unavailable: {exc}") from exc
+            self._conn = None
+            self._using_fallback = True
+
+    @property
+    def is_fallback(self) -> bool:
+        return self._using_fallback
+
+    @staticmethod
+    def _encode(value: Any) -> Optional[str]:
+        if value is None:
+            return None
+        return json.dumps(value, ensure_ascii=False)
+
+    @staticmethod
+    def _decode(text: Optional[str], default: Any) -> Any:
+        if text is None:
+            return default
+        if isinstance(text, (dict, list)):
+            return text
+        return json.loads(text)
+
+    def _init_schema(self) -> None:
+        with self._conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS platform_jobs (
+                    job_id TEXT PRIMARY KEY,
+                    task_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payload JSONB NOT NULL,
+                    created_at TEXT NOT NULL,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    cancelled_at TEXT,
+                    cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+                    result JSONB,
+                    error TEXT,
+                    idempotency_key TEXT
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_platform_jobs_task_idempotency
+                ON platform_jobs (task_type, idempotency_key)
+                """
+            )
+
+    def _row_to_record(self, row: Any) -> JobRecord:
+        data = dict(zip(self._FIELDS, row))
+        return JobRecord(
+            job_id=data["job_id"],
+            task_type=data["task_type"],
+            status=data["status"],
+            payload=self._decode(data["payload"], {}),
+            created_at=data["created_at"],
+            started_at=data["started_at"],
+            finished_at=data["finished_at"],
+            cancelled_at=data["cancelled_at"],
+            cancel_requested=bool(data["cancel_requested"]),
+            result=self._decode(data["result"], None),
+            error=data["error"],
+            idempotency_key=data["idempotency_key"],
+        )
+
+    def add(self, record: JobRecord) -> None:
+        if self._using_fallback:
+            self._fallback.add(record)
+            return
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO platform_jobs (
+                    job_id, task_type, status, payload, created_at,
+                    started_at, finished_at, cancelled_at, cancel_requested,
+                    result, error, idempotency_key
+                ) VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                """,
+                (
+                    record.job_id,
+                    record.task_type,
+                    record.status,
+                    self._encode(record.payload) or "{}",
+                    record.created_at,
+                    record.started_at,
+                    record.finished_at,
+                    record.cancelled_at,
+                    bool(record.cancel_requested),
+                    self._encode(record.result),
+                    record.error,
+                    record.idempotency_key,
+                ),
+            )
+
+    def update(self, job_id: str, **changes: Any) -> JobRecord:
+        if self._using_fallback:
+            return self._fallback.update(job_id, **changes)
+        if not changes:
+            rec = self.get(job_id)
+            if rec is None:
+                raise KeyError(f"Job not found: {job_id}")
+            return rec
+
+        allowed = {
+            "status",
+            "started_at",
+            "finished_at",
+            "cancelled_at",
+            "cancel_requested",
+            "result",
+            "error",
+            "idempotency_key",
+        }
+        sets: List[str] = []
+        values: List[Any] = []
+        for key, value in changes.items():
+            if key not in allowed:
+                continue
+            if key == "result":
+                sets.append("result = %s::jsonb")
+                values.append(self._encode(value))
+            else:
+                sets.append(f"{key} = %s")
+                values.append(bool(value) if key == "cancel_requested" else value)
+        with self._lock, self._conn.cursor() as cur:
+            if sets:
+                values.append(job_id)
+                cur.execute(f"UPDATE platform_jobs SET {', '.join(sets)} WHERE job_id = %s", values)
+            if cur.rowcount == 0 and sets:
+                raise KeyError(f"Job not found: {job_id}")
+        rec = self.get(job_id)
+        if rec is None:
+            raise KeyError(f"Job not found after update: {job_id}")
+        return rec
+
+    def get(self, job_id: str) -> Optional[JobRecord]:
+        if self._using_fallback:
+            return self._fallback.get(job_id)
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(self._FIELDS)} FROM platform_jobs WHERE job_id = %s", (job_id,))
+            row = cur.fetchone()
+        return self._row_to_record(row) if row else None
+
+    def list(self) -> List[JobRecord]:
+        if self._using_fallback:
+            return self._fallback.list()
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(self._FIELDS)} FROM platform_jobs ORDER BY created_at ASC")
+            rows = cur.fetchall()
+        return [self._row_to_record(row) for row in rows]
+
+    def find_by_idempotency(self, task_type: str, idempotency_key: str) -> Optional[JobRecord]:
+        if self._using_fallback:
+            return self._fallback.find_by_idempotency(task_type, idempotency_key)
+        with self._lock, self._conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT {', '.join(self._FIELDS)} FROM platform_jobs
+                WHERE task_type = %s AND idempotency_key = %s
+                ORDER BY created_at DESC LIMIT 1
+                """,
+                (task_type, idempotency_key),
+            )
+            row = cur.fetchone()
+        return self._row_to_record(row) if row else None

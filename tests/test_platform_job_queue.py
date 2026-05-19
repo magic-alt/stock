@@ -85,6 +85,7 @@ def test_job_queue_metrics(tmp_path):
         assert metrics["total_jobs"] >= 1
         assert metrics["success_jobs"] >= 1
         assert metrics["max_workers"] == 1
+        assert metrics["backend_type"] == "json"
         assert "queue_delay_ms_p50" in metrics
         assert "run_duration_ms_p50" in metrics
     finally:
@@ -174,3 +175,37 @@ def test_redis_backend_list_via_fallback():
         assert len(jobs) >= 2
     finally:
         queue.shutdown()
+
+
+def test_redis_backend_hard_fail_when_fallback_disabled(monkeypatch):
+    monkeypatch.setenv("PLATFORM_JOB_STORE_FALLBACK", "false")
+    with pytest.raises(RuntimeError, match="Redis job store unavailable"):
+        JobStore(path="redis://localhost:19999/0")
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL backend tests
+# ---------------------------------------------------------------------------
+
+
+def test_postgres_backend_fallback_to_json(monkeypatch):
+    monkeypatch.setenv("PLATFORM_JOB_STORE_FALLBACK", "true")
+    store = JobStore(path="postgresql://user:pass@localhost:1/stock_test")
+    assert store.backend_type == "postgres_fallback_json"
+
+    queue = JobQueue(store=store, max_workers=1)
+    try:
+        job_id = queue.submit("unit", lambda p: {"v": p["v"] + 1}, {"v": 41})
+        queue.wait(job_id, timeout=5)
+        rec = store.get(job_id)
+        assert rec is not None
+        assert rec.status == "success"
+        assert rec.result == {"v": 42}
+    finally:
+        queue.shutdown()
+
+
+def test_postgres_backend_hard_fail_when_fallback_disabled(monkeypatch):
+    monkeypatch.setenv("PLATFORM_JOB_STORE_FALLBACK", "false")
+    with pytest.raises(RuntimeError, match="Postgres job store unavailable"):
+        JobStore(path="postgresql://user:pass@localhost:1/stock_test")

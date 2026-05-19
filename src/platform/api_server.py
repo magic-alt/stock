@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from src.core.audit import AuditLogger, audit_event
 from src.core.logger import get_logger
 from src.core.monitoring import SystemMonitor
+from src.core.risk_manager_v2 import RiskConfig, RiskManagerV2
 from src.core.trading_gateway import BrokerType, GatewayConfig, TradingGateway, TradingMode
 from src.core.interfaces import OrderTypeEnum
 from src.platform.backtest_task import run_backtest_job
@@ -215,18 +216,21 @@ class GatewayService:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._gateway: Optional[TradingGateway] = None
+        self._risk_manager: Optional[RiskManagerV2] = None
         self._last_error: Optional[str] = None
         self._connected_at: Optional[str] = None
 
     def connect(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         config = self._build_config(payload)
-        gateway = TradingGateway(config)
+        risk_manager = self._build_risk_manager(config, payload) if config.enable_risk_check else None
+        gateway = TradingGateway(config, risk_manager=risk_manager)
         ok = gateway.connect()
         previous_gateway: Optional[TradingGateway] = None
         with self._lock:
             previous_gateway = self._gateway
             if ok or previous_gateway is None:
                 self._gateway = gateway
+                self._risk_manager = risk_manager
             self._last_error = None if ok else "connect_failed"
             if ok:
                 self._connected_at = datetime.now().isoformat()
@@ -258,6 +262,8 @@ class GatewayService:
                 "connected": self._gateway.is_connected(),
                 "mode": self._gateway.config.mode.value,
                 "broker": self._gateway.config.broker.value,
+                "risk_check_enabled": self._gateway.config.enable_risk_check,
+                "risk_manager_attached": self._gateway.risk_manager is not None,
                 "gateway_provider": self._gateway.config.gateway_provider,
                 "qmt_provider": self._gateway.config.qmt_provider,
                 "account": self._gateway.config.account,
@@ -378,6 +384,7 @@ class GatewayService:
     def _build_config(self, payload: Dict[str, Any]) -> GatewayConfig:
         mode = TradingMode(payload.get("mode", "paper"))
         broker = BrokerType(str(payload.get("broker", "paper")).lower())
+        initial_cash = float(payload.get("initial_cash", 1_000_000.0))
         return GatewayConfig(
             mode=mode,
             broker=broker,
@@ -387,10 +394,12 @@ class GatewayService:
             secret=str(payload.get("secret", "")),
             account=str(payload.get("account", "")),
             password=str(payload.get("password", "")),
-            initial_cash=float(payload.get("initial_cash", 1_000_000.0)),
+            initial_cash=initial_cash,
             commission_rate=float(payload.get("commission_rate", 0.0003)),
             slippage=float(payload.get("slippage", 0.0001)),
             enable_risk_check=bool(payload.get("enable_risk_check", True)),
+            max_position_pct=float(payload.get("max_position_pct", 0.3)),
+            max_order_value=float(payload.get("max_order_value", initial_cash)),
             terminal_type=str(payload.get("terminal_type", "QMT")),
             terminal_path=str(payload.get("terminal_path", "")),
             trade_server=str(payload.get("trade_server", "")),
@@ -406,6 +415,22 @@ class GatewayService:
             vnpy_setting=dict(payload.get("vnpy_setting", {}) or {}),
             broker_options=dict(payload.get("broker_options", {}) or {}),
         )
+
+    @staticmethod
+    def _build_risk_manager(config: GatewayConfig, payload: Dict[str, Any]) -> RiskManagerV2:
+        risk_options = dict(payload.get("risk_config", {}) or {})
+        risk_config = RiskConfig(
+            max_position_pct=float(risk_options.get("max_position_pct", payload.get("max_position_pct", float("inf")))),
+            max_order_value=float(risk_options.get("max_order_value", payload.get("max_order_value", float("inf")))),
+            max_order_pct=float(risk_options.get("max_order_pct", payload.get("max_order_pct", float("inf")))),
+            daily_loss_limit_pct=float(risk_options.get("daily_loss_limit_pct", 0.05)),
+            price_deviation_limit=float(risk_options.get("price_deviation_limit", 0.05)),
+            min_order_interval_sec=int(risk_options.get("min_order_interval_sec", 0)),
+            max_positions=int(risk_options.get("max_positions", 10)),
+            strict_mode=bool(risk_options.get("strict_mode", True)),
+            enabled=bool(risk_options.get("enabled", True)),
+        )
+        return RiskManagerV2(risk_config)
 
 
 class PlatformAPIHandler(BaseHTTPRequestHandler):

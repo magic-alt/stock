@@ -25,6 +25,7 @@ __all__ = [
     "LiveTradingConfig",
     "RealtimeDataConfig",
     "PortfolioConfig",
+    "PlatformConfig",
     "DatabaseConfig",
     "MonitoringConfig",
     "PerformanceConfig",
@@ -47,6 +48,7 @@ class DataConfig(BaseModel):
     start_date: str = Field("2024-01-01", description="Default start date")
     end_date: str = Field("2024-12-31", description="Default end date")
     providers: Dict[str, Dict[str, Any]] = Field(default_factory=dict, description="Provider-specific options")
+    level2: Dict[str, Any] = Field(default_factory=dict, description="Level2 provider options")
 
 
 class BacktestConfig(BaseModel):
@@ -78,6 +80,7 @@ class RiskConfig(BaseModel):
     max_drawdown_limit: float = Field(0.20, description="Maximum account drawdown", gt=0, le=1.0)
     max_order_value: float = Field(100000.0, description="Maximum order notional value", gt=0)
     min_order_value: float = Field(1000.0, description="Minimum order notional value", ge=0)
+    min_order_interval_sec: int = Field(0, description="Minimum interval between orders for the same symbol", ge=0)
 
 
 class ExecutionConfig(BaseModel):
@@ -171,6 +174,7 @@ class RealtimeDataConfig(BaseModel):
     interval_seconds: float = 3.0
     request_timeout_seconds: float = 5.0
     bar_intervals: List[int] = Field(default_factory=lambda: [1, 5])
+    level2_provider: str = "stub"
 
     @validator("provider")
     def provider_must_be_valid(cls, v):
@@ -184,6 +188,13 @@ class RealtimeDataConfig(BaseModel):
         valid = {"simulation", "akshare", "sina", "eastmoney", "tencent"}
         if v not in valid:
             raise ValueError(f"fallback provider must be one of {valid}")
+        return v
+
+    @validator("level2_provider")
+    def level2_provider_must_be_valid(cls, v):
+        valid = {"stub", "mock", "xtp", "hundsun", "uft", "qmt", "xtquant"}
+        if v not in valid:
+            raise ValueError(f"level2_provider must be one of {valid}")
         return v
 
     @validator("interval_seconds")
@@ -209,6 +220,7 @@ class PortfolioConfig(BaseModel):
     max_weight_per_strategy: float = 0.4
     min_weight_per_strategy: float = 0.05
     optimization_objective: str = "sharpe"  # sharpe, min_vol, equal_risk
+    capital_allocation: Dict[str, Any] = Field(default_factory=dict)
 
     @validator("max_weight_per_strategy")
     def max_weight_valid(cls, v):
@@ -238,12 +250,24 @@ class DatabaseConfig(BaseModel):
         extra = "forbid"
 
 
+class PlatformConfig(BaseModel):
+    """Platform orchestration configuration."""
+    job_store: str = "./cache/platform/jobs.json"
+    job_store_fallback: bool = True
+    job_max_workers: int = Field(2, gt=0)
+
+    class Config:
+        extra = "forbid"
+
+
 class MonitoringConfig(BaseModel):
     """Runtime monitoring configuration."""
     enabled: bool = True
     health_check_interval: int = Field(60, gt=0)
     metrics_port: int = Field(9090, ge=0, le=65535)
     alert_email: str = ""
+    otlp_endpoint: str = ""
+    alert_channels: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         extra = "forbid"
@@ -272,6 +296,7 @@ class GlobalConfig(BaseModel):
     realtime_data: RealtimeDataConfig = Field(default_factory=RealtimeDataConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    platform: PlatformConfig = Field(default_factory=PlatformConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
 
