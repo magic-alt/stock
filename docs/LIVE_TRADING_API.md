@@ -191,6 +191,13 @@ class GatewayConfig:
     # Hundsun UFT 配置
     td_front: Optional[str]      # 交易前置 tcp://ip:port
     md_front: Optional[str]      # 行情前置
+
+    # Provider routing
+    gateway_provider: str = "self"  # self, vnpy, third_party
+    qmt_provider: str = "self"      # self/xtquant, vnpy_qmt
+    vnpy_gateway: str = ""          # CTP, QMT, XTP, or a custom vn.py gateway name
+    vnpy_setting: Dict[str, Any]    # passed to vn.py MainEngine.connect
+    broker_options: Dict[str, Any]  # e.g. vnpy_gateway_class
     
     # 连接配置
     auto_reconnect: bool = True  # 自动重连
@@ -450,8 +457,13 @@ code, exchange_id = SymbolMapper.to_uft("600519.SH")
 ```yaml
 live_trading:
   enabled: true
-  broker: "xtquant"
+  broker: "qmt"
   account_id: "YOUR_ACCOUNT"
+  gateway_provider: "self"  # self, vnpy, third_party
+  qmt_provider: "self"      # self/xtquant keeps the built-in adapter; vnpy_qmt routes to vn.py
+  vnpy_gateway: ""          # e.g. CTP, QMT, XTP
+  vnpy_setting: {}
+  broker_options: {}
   
   # XtQuant/QMT 配置
   xtquant:

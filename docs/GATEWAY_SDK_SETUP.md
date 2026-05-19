@@ -15,10 +15,43 @@ This guide covers installation and configuration for the three trading gateway S
 | Gateway | SDK | Status | Notes |
 |---------|-----|--------|-------|
 | XtQuant/QMT | xtquant | Production | Bundled with QMT client |
+| vn.py | vnpy + gateway package | Optional | Use `gateway_provider="vnpy"` for CTP/XTP/custom gateways |
+| vn.py QMT | vnpy + QMT gateway package | Optional | Use `qmt_provider="vnpy_qmt"` for standardized third-party QMT adapters |
 | XTP | xtp-api | Integration smoke ready | Requires broker SDK license |
 | Hundsun UFT | hundsun-uft-sdk | Integration smoke ready | Requires broker SDK license |
 
 All gateways support **stub mode** for development and testing when the real SDK is unavailable. Stub mode simulates order lifecycle callbacks with synthetic data.
+
+---
+
+## Provider Routing
+
+`TradingGateway` keeps the project-owned implementation as the default:
+
+```python
+from src.core.trading_gateway import BrokerType, GatewayConfig, TradingGateway, TradingMode
+
+gateway = TradingGateway(GatewayConfig(mode=TradingMode.LIVE, broker=BrokerType.QMT))
+# Uses the built-in XtQuant/QMT adapter.
+```
+
+Switch QMT to a third-party vn.py gateway explicitly:
+
+```python
+config = GatewayConfig(
+    mode=TradingMode.LIVE,
+    broker=BrokerType.QMT,
+    gateway_provider="third_party",
+    qmt_provider="vnpy_qmt",
+    vnpy_gateway="QMT",
+    vnpy_setting={"account": "YOUR_ACCOUNT"},
+    broker_options={"vnpy_gateway_class": "your_qmt_package.QmtGateway"},
+)
+gateway = TradingGateway(config)
+```
+
+For standard vn.py gateways such as CTP/XTP, set `broker=BrokerType.VNPY` or `gateway_provider="vnpy"`,
+then provide `vnpy_gateway`, `vnpy_setting`, and optionally `broker_options.vnpy_gateway_class`.
 
 ---
 

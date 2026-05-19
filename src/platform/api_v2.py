@@ -106,6 +106,12 @@ if HAS_FASTAPI:
         client_id: int = 1
         td_front: str = ""
         md_front: str = ""
+        sdk_path: str = ""
+        sdk_log_path: str = ""
+        gateway_provider: str = "self"
+        qmt_provider: str = "self"
+        vnpy_gateway: str = ""
+        vnpy_setting: Dict[str, Any] = Field(default_factory=dict)
         broker_options: Dict[str, Any] = Field(default_factory=dict)
 
     class CancelRequest(BaseModel):
