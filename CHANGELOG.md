@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- Platform: 补齐基金级能力闭环，新增 Level2 行情模型/provider 契约、Postgres JobStore fallback、Prometheus/trace 导出、多账户 API 与 CapitalAllocator 资金分配预览。
+- DataLake: Parquet production promotion 新增 checksum + schema + 缺失率 + OHLC + 索引质量门禁，并记录 quality gate 结果。
+- API: FastAPI v2 新增账户创建/列表/划拨/风险摘要与组合资金分配预览端点，`/api/v2/metrics?format=prometheus` 输出 Prometheus 文本。
 - Web: 回测结果新增 CLI 风格 K线多面板图，展示 MA/BOLL、成交量、RSI、MACD、KDJ 和买卖点标记，并保留权益/回撤曲线作为兜底。
 - Web: 回测结果 API 和前端新增权益曲线/回撤曲线数据，用于恢复浏览器端回测图表展示。
 - Gateway: add provider routing for vn.py and standardized third-party QMT integrations while keeping the built-in XtQuant/QMT adapter as the default.
@@ -33,6 +36,8 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- Gateway: GatewayService 连接 TradingGateway 时按配置注入 RiskManagerV2，确保平台 API 纸面/实盘路径进入 adapter 前共享前置风控。
+- Config/Docs: 更新基金级能力配置样例、ROADMAP 真实状态和运维 Runbook，明确 Level2 SDK、Redis/Postgres、OTLP 与资金分配生产要求。
 - CLI: feature discovery now lists `qmt`, `vnpy`, and `vnpy_qmt` trading broker/provider options.
 - Docs: mark roadmap V4.0-A and V4.0-B implementation checklists as completed after validation.
 - V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
@@ -111,6 +116,7 @@ All notable changes to this project will be documented in this file.
 - Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
 
 ### Tests
+- Tests: 新增数据湖质量门禁、JobQueue Postgres/Redis fallback、API trace/Prometheus、多账户 API、Level2 provider 和 CapitalAllocator 覆盖。
 - Tests: expand V4.0-B coverage for metrics cache reuse, Parquet lake tiering, SQLite-to-lake export, replay manifests, and multi-account risk aggregation.
 - Tests: expand gateway unification, risk precheck, realtime provider, and config schema coverage for V4.0-A architecture convergence.
 - Tests: 增加 FastAPI 回测 job、chart-data 与扩展回测参数透传覆盖。

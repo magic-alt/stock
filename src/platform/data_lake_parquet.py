@@ -44,6 +44,118 @@ class VersionInfo:
     tier: str = "hot"
 
 
+@dataclass
+class QualityGateResult:
+    """Result of validating a dataset before production promotion."""
+    passed: bool
+    checks: Dict[str, bool]
+    errors: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    metrics: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class QualityGate:
+    """Data quality gate for production data lake promotion."""
+
+    def __init__(
+        self,
+        *,
+        required_columns: Optional[List[str]] = None,
+        max_missing_ratio: float = 0.05,
+        require_monotonic_index: bool = True,
+        enforce_ohlc: bool = False,
+    ) -> None:
+        self.required_columns = required_columns or []
+        self.max_missing_ratio = max_missing_ratio
+        self.require_monotonic_index = require_monotonic_index
+        self.enforce_ohlc = enforce_ohlc
+
+    def validate(
+        self,
+        df: pd.DataFrame,
+        *,
+        expected_schema: Optional[Dict[str, Any]] = None,
+    ) -> QualityGateResult:
+        checks: Dict[str, bool] = {}
+        errors: List[str] = []
+        warnings: List[str] = []
+        total_cells = int(df.shape[0] * df.shape[1]) if df is not None else 0
+        missing_cells = int(df.isna().sum().sum()) if total_cells else 0
+        missing_ratio = float(missing_cells / total_cells) if total_cells else 0.0
+        metrics = {
+            "rows": int(len(df)),
+            "columns": int(len(df.columns)),
+            "missing_cells": missing_cells,
+            "missing_ratio": missing_ratio,
+            "duplicate_index_count": int(df.index.duplicated().sum()),
+        }
+
+        checks["non_empty"] = len(df) > 0 and len(df.columns) > 0
+        if not checks["non_empty"]:
+            errors.append("dataset is empty")
+
+        missing_required = [col for col in self.required_columns if col not in df.columns]
+        checks["required_columns"] = not missing_required
+        if missing_required:
+            errors.append(f"missing required columns: {', '.join(missing_required)}")
+
+        checks["missing_ratio"] = missing_ratio <= self.max_missing_ratio
+        if not checks["missing_ratio"]:
+            errors.append(
+                f"missing ratio {missing_ratio:.4f} exceeds threshold {self.max_missing_ratio:.4f}"
+            )
+
+        checks["unique_index"] = metrics["duplicate_index_count"] == 0
+        if not checks["unique_index"]:
+            errors.append("index contains duplicate labels")
+
+        if self.require_monotonic_index:
+            checks["monotonic_index"] = bool(df.index.is_monotonic_increasing)
+            if not checks["monotonic_index"]:
+                errors.append("index is not monotonic increasing")
+
+        if expected_schema:
+            actual_schema = {col: str(dtype) for col, dtype in df.dtypes.items()}
+            missing_schema_cols = [col for col in expected_schema if col not in actual_schema]
+            type_mismatches = [
+                col
+                for col, dtype in expected_schema.items()
+                if col in actual_schema and str(dtype) != actual_schema[col]
+            ]
+            checks["schema"] = not missing_schema_cols and not type_mismatches
+            if missing_schema_cols:
+                errors.append(f"schema columns missing from dataset: {', '.join(missing_schema_cols)}")
+            if type_mismatches:
+                warnings.append(f"schema dtype drift detected: {', '.join(type_mismatches)}")
+
+        if self.enforce_ohlc and all(col in df.columns for col in ["open", "high", "low", "close"]):
+            high_floor = df[["open", "low", "close"]].max(axis=1)
+            low_ceiling = df[["open", "high", "close"]].min(axis=1)
+            ohlc_ok = bool(((df["high"] >= high_floor) & (df["low"] <= low_ceiling)).all())
+            checks["ohlc_bounds"] = ohlc_ok
+            if not ohlc_ok:
+                errors.append("OHLC bounds are invalid")
+            if "volume" in df.columns:
+                volume_ok = bool((df["volume"] >= 0).all())
+                checks["non_negative_volume"] = volume_ok
+                if not volume_ok:
+                    errors.append("volume contains negative values")
+        elif self.enforce_ohlc:
+            checks["ohlc_bounds"] = False
+            errors.append("OHLC validation requires open/high/low/close columns")
+
+        return QualityGateResult(
+            passed=not errors,
+            checks=checks,
+            errors=errors,
+            warnings=warnings,
+            metrics=metrics,
+        )
+
+
 class ParquetDataLake:
     """
     Parquet-backed data lake with versioning and checksum gates.
@@ -233,22 +345,49 @@ class ParquetDataLake:
     # Production promotion
     # ------------------------------------------------------------------
 
-    def promote_to_production(self, entry_id: str) -> None:
-        """
-        Mark entry as production-ready (checksum must pass first).
-
-        Raises:
-            ValueError: if entry not found or checksum fails.
-        """
+    def validate_quality(
+        self,
+        entry_id: str,
+        quality_gate: Optional[QualityGate] = None,
+    ) -> QualityGateResult:
+        """Validate a data lake entry against the configured production gate."""
         entry = self._registry.get(entry_id)
         if entry is None:
             raise ValueError(f"Entry {entry_id!r} not found")
         if not self.validate_checksum(entry_id):
-            raise ValueError(
-                f"Checksum validation failed for {entry_id!r}; cannot promote"
+            return QualityGateResult(
+                passed=False,
+                checks={"checksum": False},
+                errors=[f"Checksum validation failed for {entry_id!r}"],
             )
+        df = pd.read_parquet(entry.path)
+        gate = quality_gate or self._default_quality_gate(entry)
+        result = gate.validate(df, expected_schema=entry.schema)
+        result.checks = {"checksum": True, **result.checks}
+        entry.metadata["quality_gate"] = result.to_dict()
+        self._registry._save()
+        return result
+
+    def promote_to_production(
+        self,
+        entry_id: str,
+        quality_gate: Optional[QualityGate] = None,
+    ) -> QualityGateResult:
+        """
+        Mark entry as production-ready (checksum and quality gate must pass first).
+
+        Raises:
+            ValueError: if entry not found, checksum fails, or the quality gate fails.
+        """
+        entry = self._registry.get(entry_id)
+        if entry is None:
+            raise ValueError(f"Entry {entry_id!r} not found")
+        result = self.validate_quality(entry_id, quality_gate=quality_gate)
+        if not result.passed:
+            raise ValueError(f"Quality gate failed for {entry_id!r}: {'; '.join(result.errors)}")
         entry.is_production = True
         self._registry._save()
+        return result
 
     def move_to_tier(self, entry_id: str, tier: str) -> DataLakeEntry:
         """Move a dataset file to another storage tier and update the manifest."""
@@ -287,5 +426,14 @@ class ParquetDataLake:
             raise ValueError("tier must be one of: hot, cold, archive")
         return value
 
+    @staticmethod
+    def _default_quality_gate(entry: DataLakeEntry) -> QualityGate:
+        price_kinds = {"price", "prices", "ohlcv", "bar", "bars", "daily"}
+        is_price_like = entry.kind.lower() in price_kinds
+        return QualityGate(
+            required_columns=["open", "high", "low", "close"] if is_price_like else [],
+            enforce_ohlc=is_price_like,
+        )
 
-__all__ = ["ParquetDataLake", "VersionInfo"]
+
+__all__ = ["ParquetDataLake", "QualityGate", "QualityGateResult", "VersionInfo"]

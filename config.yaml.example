@@ -21,6 +21,14 @@ data:
       enabled: false  # 需要token
       token: ""  # 从环境变量 TUSHARE_TOKEN 读取
 
+  # Level2 行情配置（真实 SDK 需券商授权；stub 用于开发/CI）
+  level2:
+    provider: stub  # stub, xtp, hundsun, qmt
+    enabled: false
+    sdk_path: ""
+    symbols: []
+    depth: 10
+
 # 回测配置
 backtest:
   initial_cash: 200000.0  # 初始资金（元）
@@ -41,6 +49,13 @@ risk:
   max_order_value: 100000.0  # 单笔最大订单金额
   min_order_value: 1000.0  # 单笔最小订单金额
   max_price_deviation_pct: 0.05  # 最大价格偏差（5%）
+  min_order_interval_sec: 0  # 平台默认不节流；实盘可设为 1 或更高
+
+# 平台任务队列配置
+platform:
+  job_store: ./cache/platform/jobs.json  # json path, sqlite:///jobs.db, redis://, postgresql://
+  job_store_fallback: true  # 生产可设为 false，Redis/Postgres 不可用时直接失败
+  job_max_workers: 2
 
 # 执行配置
 execution:
@@ -87,6 +102,10 @@ monitoring:
   health_check_interval: 60  # 健康检查间隔（秒）
   metrics_port: 9090  # Prometheus metrics端口（0表示禁用）
   alert_email: ""  # 告警邮箱（可选）
+  otlp_endpoint: ""  # e.g. http://otel-collector:4318/v1/traces
+  alert_channels:
+    webhook_url: ""
+    webhook_platform: generic  # generic, wecom, dingtalk
 
 # 性能配置
 performance:
@@ -118,6 +137,7 @@ realtime_data:
   interval_seconds: 3.0
   request_timeout_seconds: 5.0
   bar_intervals: [1, 5]
+  level2_provider: "stub"  # stub, xtp, hundsun, qmt
 
 # Portfolio Configuration (V4.0)
 portfolio:
@@ -126,3 +146,7 @@ portfolio:
   max_weight_per_strategy: 0.4
   min_weight_per_strategy: 0.05
   optimization_objective: "sharpe"  # sharpe, min_vol, equal_risk
+  capital_allocation:
+    min_cash_buffer_pct: 0.05
+    max_account_weight: 1.0
+    max_strategy_weight: 0.5

@@ -5,6 +5,7 @@ import time
 
 from src.core.monitoring import (
     MetricCollector,
+    OtlpJsonSpanExporter,
     Span,
     TraceContext,
     Tracer,
@@ -109,6 +110,15 @@ class TestTracer:
         assert len(completed) >= 2
         tracer.reset()
 
+    def test_trace_context_is_propagated(self):
+        tracer = Tracer()
+        ctx = TraceContext(trace_id="trace-123", span_id="parent-456")
+        with tracer.trace("http.request", trace_context=ctx) as span:
+            pass
+        assert span.trace_id == "trace-123"
+        assert span.parent_span_id == "parent-456"
+        tracer.reset()
+
 
 class TestMetricCollector:
     def test_counter_increment(self):
@@ -151,6 +161,22 @@ class TestMetricCollector:
         mc.reset()
         export = mc.export()
         assert export["counters"] == {}
+
+    def test_prometheus_export(self):
+        mc = MetricCollector()
+        mc.counter("api.requests", 3)
+        mc.gauge("queue_depth", 2)
+        mc.histogram("latency.ms", 10)
+        text = mc.to_prometheus()
+        assert "api_requests_total 3.0" in text
+        assert "queue_depth 2.0" in text
+        assert "latency_ms_count 1.0" in text
+
+
+class TestOtlpExporter:
+    def test_export_empty_spans_is_noop(self):
+        exporter = OtlpJsonSpanExporter("http://127.0.0.1:4318/v1/traces")
+        assert exporter.export([]) == 0
 
 
 class TestTracerSingleton:

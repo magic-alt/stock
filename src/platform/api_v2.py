@@ -10,13 +10,17 @@ import os
 import time
 import threading
 import math
+import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.core.account_manager import AccountManager
+from src.core.capital_allocator import CapitalAllocator
 from src.core.logger import get_logger
+from src.core.monitoring import TraceContext, get_metric_collector, get_tracer
 from src.platform.api_server import APIMetrics, GatewayService, MonitorService
 from src.platform.job_queue import JobQueue, JobStore
 
@@ -99,6 +103,9 @@ if HAS_FASTAPI:
         commission_rate: float = 0.0003
         slippage: float = 0.0001
         enable_risk_check: bool = True
+        max_position_pct: float = 0.3
+        max_order_value: float = 100000.0
+        risk_config: Dict[str, Any] = Field(default_factory=dict)
         terminal_type: str = "QMT"
         terminal_path: str = ""
         trade_server: str = ""
@@ -120,6 +127,25 @@ if HAS_FASTAPI:
     class PriceUpdateRequest(BaseModel):
         symbol: str = Field(..., min_length=1)
         price: float = Field(..., gt=0)
+
+    class AccountCreateRequest(BaseModel):
+        tenant_id: str = Field("default", min_length=1)
+        owner_id: str = Field("api", min_length=1)
+        initial_cash: float = Field(0.0, ge=0)
+        metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    class FundTransferRequest(BaseModel):
+        from_account_id: str = Field(..., min_length=1)
+        to_account_id: str = Field(..., min_length=1)
+        amount: float = Field(..., gt=0)
+
+    class CapitalAllocationPreviewRequest(BaseModel):
+        tenant_id: str = Field("default", min_length=1)
+        strategy_weights: Dict[str, float] = Field(..., min_length=1)
+        total_capital: Optional[float] = Field(None, gt=0)
+        min_cash_buffer_pct: float = Field(0.05, ge=0, lt=1)
+        max_account_weight: float = Field(1.0, gt=0, le=1)
+        max_strategy_weight: float = Field(0.5, gt=0, le=1)
 
     def _jsonable(value: Any) -> Any:
         if is_dataclass(value):
@@ -197,6 +223,10 @@ if HAS_FASTAPI:
         app.state.gateway_service = GatewayService()
         app.state.monitor_service = MonitorService()
         app.state.api_metrics = APIMetrics()
+        app.state.metric_collector = get_metric_collector()
+        app.state.tracer = get_tracer()
+        app.state.account_manager = AccountManager()
+        app.state.capital_allocator = CapitalAllocator()
 
         if enable_cors:
             app.add_middleware(
@@ -207,14 +237,31 @@ if HAS_FASTAPI:
                 allow_headers=["*"],
             )
 
-        # Request ID middleware
+        # Request/trace context middleware
         @app.middleware("http")
-        async def add_request_id(request: Request, call_next):
-            import uuid
-            request_id = str(uuid.uuid4())[:8]
+        async def add_request_context(request: Request, call_next):
+            request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:8]
+            trace_id = request.headers.get("X-Trace-ID") or request_id
+            parent_span_id = request.headers.get("X-Span-ID") or ""
             request.state.request_id = request_id
-            response = await call_next(request)
+            request.state.trace_id = trace_id
+            request.state.trace_context = TraceContext(trace_id=trace_id, span_id=parent_span_id)
+            started_at = time.time()
+            with request.app.state.tracer.trace(
+                f"{request.method} {request.url.path}",
+                trace_context=request.state.trace_context,
+            ) as span:
+                span.set_attribute("http.method", request.method)
+                span.set_attribute("http.path", request.url.path)
+                span.set_attribute("request_id", request_id)
+                response = await call_next(request)
+                duration_ms = (time.time() - started_at) * 1000.0
+                span.set_attribute("http.status_code", response.status_code)
+                request.app.state.metric_collector.counter("platform_api_requests", 1)
+                request.app.state.metric_collector.counter(f"platform_api_status_{response.status_code}", 1)
+                request.app.state.metric_collector.histogram("platform_api_request_duration_ms", duration_ms)
             response.headers["X-Request-ID"] = request_id
+            response.headers["X-Trace-ID"] = trace_id
             return response
 
         @app.middleware("http")
@@ -246,7 +293,11 @@ if HAS_FASTAPI:
             return {"ready": True}
 
         @app.get("/api/v2/metrics", tags=["Operations"])
-        async def metrics(request: Request):
+        async def metrics(request: Request, format: str = "json"):
+            if format.lower() in {"prometheus", "prom"}:
+                body = request.app.state.api_metrics.to_prometheus(request.app.state.job_queue)
+                body += request.app.state.metric_collector.to_prometheus()
+                return Response(content=body, media_type="text/plain; version=0.0.4")
             return ApiEnvelope(data=request.app.state.api_metrics.snapshot(request.app.state.job_queue))
 
         @app.get("/api/v2/chart-data", tags=["Data"])
@@ -446,7 +497,7 @@ if HAS_FASTAPI:
         @app.post("/api/v2/gateway/connect", tags=["Trading"])
         async def gateway_connect(request: Request, payload: ConnectRequest):
             try:
-                status = request.app.state.gateway_service.connect(payload.model_dump())
+                status = request.app.state.gateway_service.connect(payload.model_dump(exclude_unset=True))
                 return ApiEnvelope(data={"gateway": status})
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
@@ -520,6 +571,61 @@ if HAS_FASTAPI:
                 return ApiEnvelope(data=result)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
+
+        @app.post("/api/v2/accounts", tags=["Accounts"])
+        async def create_account(request: Request, payload: AccountCreateRequest):
+            account = request.app.state.account_manager.create_account(
+                payload.tenant_id,
+                payload.owner_id,
+                payload.initial_cash,
+            )
+            account.metadata.update(payload.metadata)
+            return ApiEnvelope(data={"account": _jsonable(account)})
+
+        @app.get("/api/v2/accounts", tags=["Accounts"])
+        async def list_accounts(request: Request, tenant_id: str = "default"):
+            accounts = request.app.state.account_manager.list_accounts(tenant_id)
+            return ApiEnvelope(data={"accounts": _jsonable(accounts)})
+
+        @app.get("/api/v2/accounts/{account_id}/risk", tags=["Accounts"])
+        async def account_risk(request: Request, account_id: str):
+            try:
+                summary = request.app.state.account_manager.get_account_risk_summary(account_id)
+                return ApiEnvelope(data={"risk": summary})
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+
+        @app.post("/api/v2/accounts/transfer", tags=["Accounts"])
+        async def transfer_funds(request: Request, payload: FundTransferRequest):
+            try:
+                result = request.app.state.account_manager.fund_transfer(
+                    payload.from_account_id,
+                    payload.to_account_id,
+                    payload.amount,
+                )
+                return ApiEnvelope(data={"transfer": result})
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
+        @app.post("/api/v2/portfolio/capital-allocation/preview", tags=["Portfolio"])
+        async def preview_capital_allocation(request: Request, payload: CapitalAllocationPreviewRequest):
+            accounts = request.app.state.account_manager.list_accounts(payload.tenant_id)
+            allocator = CapitalAllocator(
+                min_cash_buffer_pct=payload.min_cash_buffer_pct,
+                max_account_weight=payload.max_account_weight,
+                max_strategy_weight=payload.max_strategy_weight,
+            )
+            try:
+                result = allocator.allocate(
+                    accounts,
+                    payload.strategy_weights,
+                    total_capital=payload.total_capital,
+                )
+                return ApiEnvelope(data={"allocation": _jsonable(result)})
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
 
         @app.get("/api/v2/monitor/summary", tags=["Monitoring"])
         async def monitor_summary(request: Request, limit: int = 20):

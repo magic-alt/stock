@@ -139,13 +139,19 @@
 - 实盘网关接口层（XTP/XtQuant/UFT，SDK 依赖）
 - 平台化 MVP（API/JobQueue/Distributed）
 
-### 🟡 需要补齐的基金级能力
-- 统一交易链路（TradingGateway/PaperGateway/LiveGateways）与前置风控
-- 实时报价与行情接入（Sina/Eastmoney/Tencent/Level2）
-- 数据湖版本化、列式存储与质量门禁
-- 分布式调度与可扩展队列（非本地）
-- 可观测性体系（metrics/tracing/alert）
-- 多账户/组合级风控与资金分配
+### ✅ 已补齐的基金级能力（2026-05-19 复核）
+- 统一交易链路（TradingGateway/PaperGateway/LiveGateways）与前置风控：GatewayService 连接时注入 RiskManagerV2，Paper/Live adapter 进入报单前共享风险检查路径。
+- 实时报价与行情接入（Sina/Eastmoney/Tencent/Level2）：L1 provider 已实接入，Level2 建立 SDK 无关模型、provider 协议、mock/stub adapter 与事件投递契约。
+- 数据湖版本化、列式存储与质量门禁：ParquetDataLake promotion 强制 checksum + schema + 缺失率 + OHLC + 索引质量门禁。
+- 分布式调度与可扩展队列（非本地）：JobStore 支持 JSON/SQLite/Redis/Postgres DSN，生产可关闭 fallback，并在监控指标中暴露 backend 类型。
+- 可观测性体系（metrics/tracing/alert）：MetricCollector 支持 Prometheus 文本导出，FastAPI v2 贯穿 request_id/trace_id，并保留可选 OTLP/HTTP exporter。
+- 多账户/组合级风控与资金分配：AccountManager API、组合资金分配预览与 CapitalAllocator 已落地，支持现金缓冲、账户权重、策略权重和风险预算约束。
+
+### 🟡 后续生产增强项
+- 真实 Level2 商业 SDK 联调与延迟/丢包基准（需要券商账号、权限与 SDK 路径）。
+- Postgres/Redis 高可用部署、跨服务队列调度与容量基准。
+- OpenTelemetry Collector/Grafana/Loki/Tempo 部署模板与 SLO 仪表盘。
+- 实盘多账户清算/对账/回放与长期不可篡改归档。
 
 ### 🔴 尚未实现（基金级“生产化”必要项）
 - 微服务拆分后的权限/审计/隔离完备实现
