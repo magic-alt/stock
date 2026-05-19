@@ -32,6 +32,15 @@ sys.path.insert(0, str(project_root))
 from src.core.logger import configure_logging, get_logger
 from src.core.config import ConfigManager, get_config
 from src.core.defaults import ensure_directories, PATHS
+from src.backtest.admission_gates import (
+    DEFAULT_STRATEGY_GATE_ROOT,
+    MissingStrategyGateStage,
+    build_strategy_gate_summary,
+    load_strategy_gate,
+    promote_strategy_gate,
+    require_strategy_stage,
+    strategy_gate_path,
+)
 from scripts.health_check import HealthChecker
 from scripts.preflight_check import run_preflight_checks
 from scripts.preflight_experiment_platform import (
@@ -40,6 +49,136 @@ from scripts.preflight_experiment_platform import (
 )
 
 logger = None
+
+
+def _resolve_strategy_gate_root(path: Optional[str]) -> str:
+    normalized = str(path or "").strip()
+    if not normalized:
+        normalized = DEFAULT_STRATEGY_GATE_ROOT
+    return os.path.abspath(normalized)
+
+
+def _resolve_strategy_gate_params(
+    config: Any,
+    *,
+    explicit_params: Optional[Dict[str, Any]] = None,
+    report: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if isinstance(report, dict):
+        config_payload = report.get("config", {})
+        if isinstance(config_payload, dict):
+            requested = config_payload.get("strategy_params_requested")
+            if isinstance(requested, dict):
+                return dict(requested)
+
+    if isinstance(explicit_params, dict) and explicit_params:
+        return dict(explicit_params)
+
+    strategy_cfg = getattr(config, "strategy", None)
+    configured = getattr(strategy_cfg, "params", {}) if strategy_cfg is not None else {}
+    return dict(configured) if isinstance(configured, dict) else {}
+
+
+def _resolve_runtime_strategy(config: Any) -> str:
+    strategy_cfg = getattr(config, "strategy", None)
+    token = getattr(strategy_cfg, "name", None)
+    normalized = str(token or "macd").strip().lower()
+    return normalized or "macd"
+
+
+def _paper_smoke_passed(report: Dict[str, Any]) -> bool:
+    checks = report.get("checks", []) if isinstance(report, dict) else []
+    for item in checks:
+        if isinstance(item, dict) and item.get("name") == "paper_smoke":
+            return item.get("status") == "pass"
+    return False
+
+
+def _strategy_gate_summary(
+    strategy_name: str,
+    params: Dict[str, Any],
+    gate_root: str,
+    payload: Optional[Dict[str, Any]],
+    *,
+    required_stage: Optional[str] = None,
+) -> Dict[str, Any]:
+    summary = build_strategy_gate_summary(payload)
+    summary.update(
+        {
+            "strategy": strategy_name,
+            "gate_root": gate_root,
+            "path": strategy_gate_path(strategy_name, params=params, gate_root=gate_root),
+        }
+    )
+    if required_stage:
+        summary["required_stage"] = required_stage
+    return summary
+
+
+def _build_strategy_gate_block_decision(
+    *,
+    strategy_name: str,
+    params: Dict[str, Any],
+    gate_root: str,
+    required_stage: str,
+    current_payload: Optional[Dict[str, Any]],
+    reason: str,
+) -> Dict[str, Any]:
+    return {
+        "decision_state": "block",
+        "decision_reasons": [reason],
+        "required_overrides": [],
+        "recommended_replay": None,
+        "next_actions": [
+            f"请先完成策略门禁阶段：{required_stage}",
+            "使用 unified_backtest_framework.py baseline/admission 和 paper/live preflight 逐步推进阶段。",
+        ],
+        "summary": {
+            "overall": "unhealthy",
+            "advice_level": "block",
+            "warn_count": 0,
+            "failed_count": 1,
+            "platform_ran": False,
+            "sweep_ran": False,
+            "selected_best_source": None,
+        },
+        "strategy_gate": _strategy_gate_summary(
+            strategy_name,
+            params,
+            gate_root,
+            current_payload,
+            required_stage=required_stage,
+        ),
+    }
+
+
+def _require_live_launch_gate(config: Any, args: argparse.Namespace) -> Dict[str, Any]:
+    strategy_name = _resolve_runtime_strategy(config)
+    params = _resolve_strategy_gate_params(config)
+    gate_root = _resolve_strategy_gate_root(getattr(args, "preflight_gate_root", None))
+    return require_strategy_stage(
+        strategy_name,
+        "live_candidate",
+        params=params,
+        gate_root=gate_root,
+    )
+
+
+def _mark_live_production_gate(config: Any, args: argparse.Namespace) -> Dict[str, Any]:
+    strategy_name = _resolve_runtime_strategy(config)
+    params = _resolve_strategy_gate_params(config)
+    gate_root = _resolve_strategy_gate_root(getattr(args, "preflight_gate_root", None))
+    return promote_strategy_gate(
+        strategy_name,
+        "production",
+        params=params,
+        gate_root=gate_root,
+        source="startup.live",
+        details={
+            "mode": "live",
+            "config_path": args.config,
+        },
+    )
 
 
 def _extract_replay_params_from_decision(decision: object) -> Dict[str, Any]:
@@ -662,6 +801,36 @@ def _run_preflight_if_requested(
             getattr(args, "preflight_decision_seed_file", None)
         )
 
+    gate_root = _resolve_strategy_gate_root(getattr(args, "preflight_gate_root", None))
+    effective_gate_params = _resolve_strategy_gate_params(
+        config,
+        explicit_params=preflight_params,
+    )
+    required_stage = None
+    current_gate = load_strategy_gate(
+        preflight_strategy,
+        params=effective_gate_params,
+        gate_root=gate_root,
+    )
+    if preflight_mode == "live":
+        required_stage = "paper_validated" if args.preflight_skip_paper else "admission_passed"
+        try:
+            require_strategy_stage(
+                preflight_strategy,
+                required_stage,
+                params=effective_gate_params,
+                gate_root=gate_root,
+            )
+        except MissingStrategyGateStage as exc:
+            return False, _build_strategy_gate_block_decision(
+                strategy_name=preflight_strategy,
+                params=effective_gate_params,
+                gate_root=gate_root,
+                required_stage=required_stage,
+                current_payload=current_gate,
+                reason=f"实盘预检门禁未通过：{exc}",
+            )
+
     report = run_preflight_checks(
         config=config,
         strategy=preflight_strategy,
@@ -785,6 +954,22 @@ def _run_preflight_if_requested(
         selected_best=selected_best if selected_best else None,
         selected_best_source=selected_best_source,
     )
+    final_gate_params = _resolve_strategy_gate_params(
+        config,
+        explicit_params=preflight_params,
+        report=report,
+    )
+    release_decision["strategy_gate"] = _strategy_gate_summary(
+        preflight_strategy,
+        final_gate_params,
+        gate_root,
+        load_strategy_gate(
+            preflight_strategy,
+            params=final_gate_params,
+            gate_root=gate_root,
+        ),
+        required_stage=required_stage,
+    )
     report["release_decision"] = release_decision
 
     if args.preflight_json:
@@ -835,6 +1020,61 @@ def _run_preflight_if_requested(
     if report["overall"] != "healthy":
         logger.error("Preflight failed; aborting startup.")
         return False, release_decision
+
+    paper_gate_ready = False
+    if _paper_smoke_passed(report):
+        gate_payload = promote_strategy_gate(
+            preflight_strategy,
+            "paper_validated",
+            params=final_gate_params,
+            gate_root=gate_root,
+            source="startup.preflight.paper",
+            details={
+                "mode": preflight_mode,
+                "overall": report.get("overall"),
+                "advice_level": advice_level,
+                "decision_state": release_decision.get("decision_state"),
+            },
+            artifacts={"preflight_export": args.preflight_export} if args.preflight_export else {},
+        )
+        paper_gate_ready = True
+        release_decision["strategy_gate"] = _strategy_gate_summary(
+            preflight_strategy,
+            final_gate_params,
+            gate_root,
+            gate_payload,
+            required_stage=required_stage,
+        )
+    elif preflight_mode == "live":
+        existing_gate = load_strategy_gate(
+            preflight_strategy,
+            params=final_gate_params,
+            gate_root=gate_root,
+        )
+        paper_gate_ready = existing_gate is not None and build_strategy_gate_summary(existing_gate).get("current_stage_index", 0) >= 3
+
+    if preflight_mode == "live" and paper_gate_ready:
+        gate_payload = promote_strategy_gate(
+            preflight_strategy,
+            "live_candidate",
+            params=final_gate_params,
+            gate_root=gate_root,
+            source="startup.preflight.live",
+            details={
+                "mode": preflight_mode,
+                "overall": report.get("overall"),
+                "advice_level": advice_level,
+                "decision_state": release_decision.get("decision_state"),
+            },
+            artifacts={"preflight_export": args.preflight_export} if args.preflight_export else {},
+        )
+        release_decision["strategy_gate"] = _strategy_gate_summary(
+            preflight_strategy,
+            final_gate_params,
+            gate_root,
+            gate_payload,
+            required_stage=required_stage,
+        )
 
     return release_decision.get("decision_state") != "block", release_decision
 
@@ -906,6 +1146,8 @@ def main():
                        help="回测与回放 NAV 漂移硬失败阈值")
     parser.add_argument("--preflight-json", action="store_true",
                        help="仅输出 JSON 格式的预检报告")
+    parser.add_argument("--preflight-gate-root", default=DEFAULT_STRATEGY_GATE_ROOT,
+                       help="策略阶段门禁 registry 根目录")
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                        help="日志级别")
     
@@ -979,7 +1221,18 @@ def main():
         elif args.mode == "paper":
             start_paper_trading_mode(config)
         elif args.mode == "live":
+            try:
+                _require_live_launch_gate(config, args)
+            except MissingStrategyGateStage as exc:
+                logger.error("Live launch blocked by strategy gate: %s", exc)
+                sys.exit(1)
             start_live_trading_mode(config)
+            gate_payload = _mark_live_production_gate(config, args)
+            logger.info(
+                "Strategy gate promoted: %s (%s)",
+                gate_payload.get("current_stage"),
+                gate_payload.get("params_signature"),
+            )
         
         logger.info("System started successfully")
         logger.info("Press Ctrl+C to stop")

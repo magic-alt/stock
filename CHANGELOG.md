@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- Strategy: add parameter-signature-scoped strategy admission gate registry so baseline/admission/live rollout must progress through `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`.
+- Launch: wire `scripts/start_production.py` live preflight into the strategy admission gate workflow, promoting `paper_validated` and `live_candidate` only after successful preflight and blocking live startup until `live_candidate` exists.
 - Gateway: 新增共享订单生命周期状态机与规范状态映射，统一 OMS、纸面交易和实盘网关的 `created -> submitted -> accepted -> partial_filled -> terminal` 链路。
 - Gateway: 新增 `pre_trade_risk` 共享前置风控入口，TradingGateway、PaperGatewayV3 和 OMS 提交路径统一进入 `RiskManagerV2.check_order`。
 - Tests: 新增 XtQuant/QMT stub smoke 与 real-SDK skip-safe integration smoke，并将 XtQuant/XTP/UFT stub smoke、mock SDK 与 realtime 检查纳入 `runtime-smoke`。

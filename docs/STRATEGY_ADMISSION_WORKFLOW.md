@@ -68,6 +68,42 @@ python unified_backtest_framework.py admission \
 
 如果显式传了 `--baseline-file`，CLI 会优先使用该文件；否则会自动从 `report/strategy_baselines/<strategy>/<alias>/` 解析单策略基线。
 
+## 强制门禁阶段
+
+策略上线阶段现在按同一组参数签名强制推进：
+
+- `research`
+- `baseline_registered`
+- `admission_passed`
+- `paper_validated`
+- `live_candidate`
+- `production`
+
+阶段状态保存在 `report/strategy_admission_gates/<strategy>/<params_signature>/gate_status.json`。
+
+- 运行 `baseline` 只会记录 `research` 阶段；只有带 `--register-strategy-baseline` 才会推进到 `baseline_registered`。
+- 运行 `admission` 只有在对应参数已完成 `baseline_registered` 且报告 `overall_status=PASS` 时，才会推进到 `admission_passed`。
+- `scripts/start_production.py --preflight --mode live` 会要求当前策略参数至少达到 `admission_passed`，并在 paper smoke 通过后推进到 `paper_validated`/`live_candidate`。
+- 真正进入 live 启动前，`start_production.py` 会再次检查 `live_candidate`；启动成功后才会写入 `production`。
+
+如果重新注册 baseline 或重新跑 admission，同一参数签名下的后续阶段会被回退到对应门禁点，要求重新完成后续验证。
+
+## Live Preflight
+
+```bash
+python scripts/start_production.py \
+  --mode live \
+  --preflight \
+  --preflight-strategy macd \
+  --preflight-symbols 600519.SH
+```
+
+当 live preflight 需要复用非默认 gate 目录时，可追加：
+
+```bash
+python scripts/start_production.py --mode live --preflight --preflight-gate-root ./report/strategy_admission_gates
+```
+
 输出目录默认在 `report/<strategy>_admission_<timestamp>/`，包含：
 
 - `current_historical_snapshot.json`
