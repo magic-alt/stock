@@ -30,6 +30,12 @@ from src.backtest.admission import (
     write_admission_artifacts,
     write_baseline_artifacts,
 )
+from src.backtest.admission_gates import (
+    DEFAULT_STRATEGY_GATE_ROOT,
+    MissingStrategyGateStage,
+    promote_strategy_gate,
+    require_strategy_stage,
+)
 from src.data_sources.providers import get_provider, PROVIDER_NAMES
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
 from src.backtest.engine import BacktestEngine
@@ -171,6 +177,8 @@ def parse_args() -> argparse.Namespace:
                             help="Root directory for registered single-strategy baselines")
     baseline_p.add_argument("--baseline-alias", default="default",
                             help="Alias under the strategy baseline registry")
+    baseline_p.add_argument("--gate-root", default=DEFAULT_STRATEGY_GATE_ROOT,
+                            help="Root directory for staged strategy admission gate records")
     baseline_p.add_argument("--register-strategy-baseline", action="store_true",
                             help="Register this snapshot as the canonical baseline for the strategy/alias")
     baseline_p.add_argument("--calendar", choices=["off", "fill"], default=None,
@@ -199,6 +207,8 @@ def parse_args() -> argparse.Namespace:
                              help="Root directory for registered single-strategy baselines")
     admission_p.add_argument("--baseline-alias", default="default",
                              help="Alias under the strategy baseline registry to resolve when --baseline-file is omitted")
+    admission_p.add_argument("--gate-root", default=DEFAULT_STRATEGY_GATE_ROOT,
+                             help="Root directory for staged strategy admission gate records")
     admission_p.add_argument("--calendar", choices=["off", "fill"], default=None,
                              help="Override trading calendar alignment for selected samples")
 
@@ -462,6 +472,20 @@ def main() -> None:
         )
         report_dir = _build_report_dir(args)
         artifacts = write_baseline_artifacts(report_dir, snapshot)
+        promote_strategy_gate(
+            args.strategy,
+            "research",
+            params=snapshot.get("params", {}),
+            gate_root=args.gate_root,
+            source="cli.baseline",
+            details={
+                "command": "baseline",
+                "report_dir": os.path.abspath(report_dir),
+                "register_strategy_baseline": bool(args.register_strategy_baseline),
+                "baseline_alias": args.baseline_alias,
+            },
+            artifacts={"baseline": artifacts},
+        )
         logger.info(json.dumps(snapshot, indent=2))
         _log_artifacts("Historical baseline artifacts:", artifacts)
         if args.register_strategy_baseline:
@@ -470,7 +494,27 @@ def main() -> None:
                 baseline_root=args.baseline_root,
                 alias=args.baseline_alias,
             )
+            gate_payload = promote_strategy_gate(
+                args.strategy,
+                "baseline_registered",
+                params=snapshot.get("params", {}),
+                gate_root=args.gate_root,
+                source="cli.baseline.register",
+                details={
+                    "command": "baseline",
+                    "baseline_alias": args.baseline_alias,
+                    "baseline_root": os.path.abspath(args.baseline_root),
+                    "sample_count": len(snapshot.get("samples", [])),
+                },
+                artifacts={"baseline_registry": registry_artifacts},
+                allow_reset=True,
+            )
             _log_artifacts("Registered strategy baseline artifacts:", registry_artifacts)
+            logger.info(
+                "Strategy gate promoted: %s (%s)",
+                gate_payload.get("current_stage"),
+                gate_payload.get("params_signature"),
+            )
         return
 
     # ===== admission command =====
@@ -529,9 +573,62 @@ def main() -> None:
             prefix="current_historical_snapshot",
         )
         report_artifacts = write_admission_artifacts(report_dir, report)
+        promote_strategy_gate(
+            args.strategy,
+            "research",
+            params=report.get("params", {}),
+            gate_root=args.gate_root,
+            source="cli.admission",
+            details={
+                "command": "admission",
+                "report_dir": os.path.abspath(report_dir),
+                "overall_status": report.get("overall_status"),
+                "profile": args.profile,
+                "baseline_mode": report.get("baseline", {}).get("mode"),
+            },
+            artifacts={
+                "current_snapshot": snapshot_artifacts,
+                "admission_report": report_artifacts,
+            },
+        )
         logger.info(json.dumps(report, indent=2))
         _log_artifacts("Historical snapshot artifacts:", snapshot_artifacts)
         _log_artifacts("Admission report artifacts:", report_artifacts)
+        if report.get("overall_status") == "PASS":
+            try:
+                require_strategy_stage(
+                    args.strategy,
+                    "baseline_registered",
+                    params=report.get("params", {}),
+                    gate_root=args.gate_root,
+                )
+            except MissingStrategyGateStage as exc:
+                logger.warning("Admission report passed but gate promotion blocked: %s", exc)
+            else:
+                gate_payload = promote_strategy_gate(
+                    args.strategy,
+                    "admission_passed",
+                    params=report.get("params", {}),
+                    gate_root=args.gate_root,
+                    source="cli.admission.pass",
+                    details={
+                        "command": "admission",
+                        "overall_status": report.get("overall_status"),
+                        "profile": args.profile,
+                        "baseline_mode": report.get("baseline", {}).get("mode"),
+                        "baseline_usable_for_regression": report.get("baseline", {}).get("usable_for_regression"),
+                    },
+                    artifacts={
+                        "current_snapshot": snapshot_artifacts,
+                        "admission_report": report_artifacts,
+                    },
+                    allow_reset=True,
+                )
+                logger.info(
+                    "Strategy gate promoted: %s (%s)",
+                    gate_payload.get("current_stage"),
+                    gate_payload.get("params_signature"),
+                )
         return
 
     # ===== grid command =====
