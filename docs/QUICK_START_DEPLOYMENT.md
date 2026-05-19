@@ -2,6 +2,32 @@
 
 ## 🚀 5分钟快速部署
 
+### Docker / Web API 快速启动
+
+如果只想验证当前平台化能力，优先使用容器栈：
+
+```bash
+docker compose up -d
+```
+
+启动后访问：
+
+- Web 前端：`http://127.0.0.1:3000`
+- API 健康检查：`http://127.0.0.1:8000/api/v2/health`
+- API 文档：`http://127.0.0.1:8000/api/v2/docs`
+
+也可以使用单服务模式，由 FastAPI 直接托管已构建的 `frontend/dist`：
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
+```
+
+当前 P2/P3 规划状态：REST API、Docker 容器化、配置加密和 Web 前端已落地；微服务架构仍为长期演进项。详见 [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)。
+
 ### Windows用户
 
 1. **安装Python**

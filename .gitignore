@@ -8,6 +8,7 @@ report
 logs/
 .coverage
 .pytest_cache/
+pytest-cache-files-*/
 test_output/
 frontend/dist/
 frontend/.vite/

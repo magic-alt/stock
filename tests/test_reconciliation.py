@@ -240,6 +240,19 @@ class TestGenerateReport:
         report = r.generate_report("TEST.SH", {"pnl": 100, "trades": []}, {"pnl": 100, "trades": []})
         assert report.symbol == "TEST.SH"
 
+    def test_build_replay_manifest_for_failed_report(self):
+        r = Reconciler(tolerance_pct=0.05)
+        bt = {"pnl": 1000.0, "trades": _make_trades(n=10, pnl_per_trade=100.0)}
+        lv = {"pnl": 800.0, "trades": _make_trades(n=7, pnl_per_trade=80.0)}
+        report = r.generate_report("600519.SH", bt, lv)
+
+        manifest = r.build_replay_manifest(report, backtest_result=bt, live_result=lv, repro_command="python run.py")
+
+        assert manifest["needs_replay"] is True
+        assert manifest["repro_command"] == "python run.py"
+        assert manifest["backtest_snapshot"]["trade_count"] == 10
+        assert manifest["live_snapshot"]["trade_count"] == 7
+
 
 # ---------------------------------------------------------------------------
 # Tests: run_batch

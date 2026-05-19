@@ -298,6 +298,18 @@ class TestAggregateRisk:
         risk = pm.aggregate_risk(account_values)
         assert risk["num_strategies"] == 3
 
+    def test_aggregate_multi_account_risk(self):
+        pm = _make_pm_3strats()
+        risk = pm.aggregate_multi_account_risk({
+            "acct_a": {"s1": 100_000.0, "s2": 50_000.0},
+            "acct_b": {"s2": 50_000.0, "s3": 100_000.0},
+        })
+
+        assert risk["total_value"] == pytest.approx(300_000.0)
+        assert risk["num_accounts"] == 2
+        assert risk["accounts"]["acct_a"] == pytest.approx(150_000.0)
+        assert abs(sum(risk["account_weights"].values()) - 1.0) < 1e-9
+
 
 # ---------------------------------------------------------------------------
 # Tests: rebalance detection

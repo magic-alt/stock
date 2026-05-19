@@ -91,7 +91,9 @@ def test_api_v1_submit_and_get_workflow_job(api_runtime):
     assert payload["code"] == 0
 
     job_id = payload["data"]["job_id"]
-    status, job_payload = _http_request(base_url, "GET", f"/api/v1/jobs/{job_id}", token="test-token")
+    status, job_payload = _http_request(
+        base_url, "GET", f"/api/v1/jobs/{job_id}", token="test-token"
+    )
     assert status == 200
     assert job_payload["code"] == 0
     assert job_payload["data"]["job"]["job_id"] == job_id
@@ -123,7 +125,7 @@ def test_api_v1_idempotency_key_reuses_job(api_runtime):
     assert payload_1["data"]["job_id"] == payload_2["data"]["job_id"]
 
 
-def test_api_v1_health_metrics_and_legacy_compat(api_runtime):
+def test_api_v1_health_and_cancel_404(api_runtime):
     base_url = api_runtime["base_url"]
 
     status, payload = _http_request(base_url, "GET", "/api/v1/healthz")
@@ -144,14 +146,10 @@ def test_api_v1_health_metrics_and_legacy_compat(api_runtime):
     assert status == 404
     assert payload["code"] == 40401
 
-    status, legacy = _http_request(base_url, "GET", "/health")
+    status, payload = _http_request(base_url, "GET", "/api/v1/metrics")
     assert status == 200
-    assert legacy["status"] == "ok"
-
-    status, metrics = _http_request(base_url, "GET", "/metrics")
-    assert status == 200
-    assert "platform_api_requests_total" in metrics
-    assert "platform_job_queue_delay_ms_p50" in metrics
+    assert payload["code"] == 0
+    assert "uptime_seconds" in payload["data"]
 
 
 def test_api_v1_writes_audit_records(api_runtime):
@@ -190,7 +188,12 @@ def test_api_v1_gateway_snapshot_and_monitor_summary(api_runtime):
         base_url,
         "POST",
         "/api/v1/gateway/connect",
-        payload={"mode": "paper", "broker": "paper", "account": "paper", "initial_cash": 100000},
+        payload={
+            "mode": "paper",
+            "broker": "paper",
+            "account": "paper",
+            "initial_cash": 100000,
+        },
         token="test-token",
     )
     assert status == 200

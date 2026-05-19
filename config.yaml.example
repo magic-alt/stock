@@ -112,9 +112,11 @@ live_trading:
 
 # Real-time Data Configuration (V4.0)
 realtime_data:
-  provider: "simulation"  # simulation, akshare, sina
+  provider: "simulation"  # simulation, akshare, sina, eastmoney, tencent
   symbols: []
+  fallback_providers: []
   interval_seconds: 3.0
+  request_timeout_seconds: 5.0
   bar_intervals: [1, 5]
 
 # Portfolio Configuration (V4.0)

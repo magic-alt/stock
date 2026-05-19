@@ -7,6 +7,7 @@ Handles data loading, strategy execution, metrics calculation, and result output
 from __future__ import annotations
 
 import itertools
+import hashlib
 import json
 import math
 import os
@@ -143,6 +144,36 @@ def _compute_metrics_vectorized(
     }
 
 
+def _compute_metrics_cached(
+    nav_series: pd.Series,
+    *,
+    metrics_cache: Optional[Dict[str, Dict[str, float]]] = None,
+    risk_free: float = 0.0,
+    ann_factor: float = 252.0,
+) -> Dict[str, float]:
+    """Compute vectorized NAV metrics with optional hash-based cache reuse."""
+    if metrics_cache is None:
+        return _compute_metrics_vectorized(nav_series, risk_free=risk_free, ann_factor=ann_factor)
+
+    try:
+        nav_values = np.asarray(nav_series.ffill().values, dtype=np.float64)
+        finite_values = nav_values[np.isfinite(nav_values)]
+        digest = hashlib.sha256()
+        digest.update(finite_values.tobytes())
+        digest.update(f"|{risk_free:.12g}|{ann_factor:.12g}".encode("ascii"))
+        cache_key = digest.hexdigest()
+    except Exception:
+        return _compute_metrics_vectorized(nav_series, risk_free=risk_free, ann_factor=ann_factor)
+
+    cached = metrics_cache.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+
+    metrics = _compute_metrics_vectorized(nav_series, risk_free=risk_free, ann_factor=ann_factor)
+    metrics_cache[cache_key] = dict(metrics)
+    return dict(metrics)
+
+
 # --- Custom KDJ Indicator for Plotting ---
 class KDJ(bt.Indicator):
     """
@@ -254,6 +285,22 @@ class BacktestEngine:
         # B-1: Metrics cache for grid-search result reuse
         self._metrics_cache: Dict[str, Dict[str, float]] = {}
 
+    def _get_cached_vectorized_metrics(
+        self,
+        nav_series: pd.Series,
+        risk_free: float = 0.0,
+        ann_factor: float = 252.0,
+    ) -> Dict[str, float]:
+        """Return vectorized NAV metrics, reusing cached results for identical NAV arrays."""
+        if not hasattr(self, "_metrics_cache"):
+            self._metrics_cache = {}
+        return _compute_metrics_cached(
+            nav_series,
+            metrics_cache=self._metrics_cache,
+            risk_free=risk_free,
+            ann_factor=ann_factor,
+        )
+
     def _load_data(
         self,
         symbols: Sequence[str],
@@ -319,6 +366,7 @@ class BacktestEngine:
         slippage: float,
         benchmark_nav: Optional[pd.Series],
         return_cerebro: bool = False,
+        metrics_cache: Optional[Dict[str, Dict[str, float]]] = None,
     ) -> Tuple[pd.Series, Dict[str, Any], Optional[bt.Cerebro]]:
         """Internal helper that executes a single backtest run.
         
@@ -498,6 +546,7 @@ class BacktestEngine:
             nav.name = "strategy"
         except Exception as e:
             warnings.warn(f"Failed to calculate NAV: {str(e)}")
+            timeret = pd.Series(dtype=float)
             nav = pd.Series([1.0], index=[pd.Timestamp.now()], name="strategy")
         
         metrics: Dict[str, Any] = {
@@ -505,29 +554,31 @@ class BacktestEngine:
             "final_value": float(cerebro.broker.getvalue()),
         }
         
+        ann_factor = 252.0
+        perf_metrics = _compute_metrics_cached(nav, metrics_cache=metrics_cache, ann_factor=ann_factor)
+
         # Sharpe ratio
         try:
             sharpe_val = strat.analyzers.sharpe.get_analysis().get("sharperatio")
         except Exception:
             sharpe_val = None
             
-        ann_factor = 252.0
         avg = float(timeret.mean()) if len(timeret) else float("nan")
         std = float(timeret.std(ddof=1)) if len(timeret) > 1 else float("nan")
         sharpe_calc = (avg / std * math.sqrt(ann_factor)) if (std and std == std and std > 0) else float("nan")
-        metrics["sharpe"] = float(sharpe_val) if sharpe_val is not None else sharpe_calc
+        metrics["sharpe"] = float(sharpe_val) if sharpe_val is not None else perf_metrics.get("sharpe", sharpe_calc)
         
         # Annualized metrics
-        metrics["ann_return"] = float((1 + timeret).prod() ** (ann_factor / max(len(timeret), 1)) - 1) if len(timeret) else float("nan")
-        metrics["ann_vol"] = float(std * math.sqrt(ann_factor)) if std == std else float("nan")
-        metrics["mdd"] = float(-((nav / nav.cummax()) - 1).min()) if len(nav) else float("nan")
+        metrics["ann_return"] = perf_metrics.get("cagr", float("nan"))
+        metrics["ann_vol"] = perf_metrics.get("vol", float("nan"))
+        metrics["mdd"] = perf_metrics.get("max_drawdown", float("nan"))
+        metrics["nav_memory_bytes"] = int(nav.memory_usage(deep=True)) if hasattr(nav, "memory_usage") else 0
 
         # Risk metrics (VaR / ES)
-        var_95, es_95 = compute_var_es(timeret, level=0.95)
         var_99, es_99 = compute_var_es(timeret, level=0.99)
         metrics.update({
-            "var_95": float(var_95),
-            "es_95": float(es_95),
+            "var_95": float(perf_metrics.get("var_95", float("nan"))),
+            "es_95": float(perf_metrics.get("es_95", float("nan"))),
             "var_99": float(var_99),
             "es_99": float(es_99),
         })
@@ -689,6 +740,7 @@ class BacktestEngine:
                 slippage=slippage,
                 benchmark_nav=benchmark_nav,
                 return_cerebro=enable_plot,
+                metrics_cache=self._metrics_cache,
             )
         
         if benchmark_nav is not None and out_dir:

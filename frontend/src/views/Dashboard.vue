@@ -83,11 +83,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useTradingStore } from '@/stores/trading'
 import { useBacktestStore } from '@/stores/backtest'
 import client, { unwrapApiData } from '@/api/client'
-import { ref } from 'vue'
 
 const tradingStore = useTradingStore()
 const backtestStore = useBacktestStore()

@@ -6,6 +6,8 @@
 **代码规模**: 50,000+ 行 Python + Vue3 前端（120+ 个 .py 模块 + Vue3 SPA）
 **测试规模**: 67 个测试文件，1054+ 测试用例
 
+> 2026-05-18 复核说明：本文早期“差距评估”章节保留为 V5 升级前基线，当前代码已经完成其中多项规划。REST API、Docker 容器化、配置加密、Vue3 Web 前端和框架级分布式回测已落地；微服务架构仍处于模块化单体 + 容器编排阶段。最新逐项证据见 [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md)。
+
 ### 实施进度
 
 | 阶段 | 状态 | 通过测试 | 说明 |
@@ -71,7 +73,7 @@
 **本系统劣势**:
 1. **数据时间粒度** - 仅支持日线级别，缺少分钟/Tick级回测
 2. **行情实时性** - HTTP轮询而非推送流，延迟大
-3. **Web UI 成熟度** - 单页原生JS，无现代前端框架
+3. **Web UI 成熟度** - Vue3 SPA 已落地，但在线 IDE、复杂组合分析和工作流可视化仍待增强
 4. **策略开发体验** - 无在线IDE、无策略调试器、无可视化编排
 5. **数据覆盖** - 仅A股日线，缺少期货/期权/基金/债券
 6. **社区生态** - 无策略市场、无社区论坛、无教程体系
@@ -88,40 +90,39 @@
 |------|------|------|------|
 | 认证鉴权 | Bearer Token + RBAC 5角色 | 8/10 | 缺少 OAuth2/OIDC、JWT刷新令牌、MFA |
 | 授权控制 | 9权限 + tenant/account隔离 | 8/10 | 缺少细粒度资源级ACL、动态权限策略 |
-| 数据加密 | 无传输加密、无静态加密 | 3/10 | 缺少 TLS、数据库加密、配置加密 |
-| 密钥管理 | 环境变量 + config.yaml | 4/10 | 缺少 Vault/KMS 集成、密钥轮换 |
+| 数据加密 | 敏感值加密 + 本地加密 Vault 已实现 | 6/10 | 缺少外部 KMS、数据库静态加密、全配置透明加密 |
+| 密钥管理 | 环境变量 + LocalFileVault + Token 轮换 | 6/10 | 缺少 HashiCorp Vault/KMS 托管、密钥生命周期审计 |
 | 输入验证 | RequestValidator JSON Schema | 7/10 | 缺少 SQL注入/XSS 全链路防护 |
 | 审计追踪 | 哈希链+HMAC+归档+保留策略 | 9/10 | 缺少不可篡改存储（区块链/WORM） |
-| 网络安全 | HTTPServer 无TLS | 3/10 | 缺少 HTTPS、CORS、CSP、HSTS |
+| 网络安全 | FastAPI v2 + CORS + 安全响应头 | 6/10 | 缺少生产 TLS 自动化、CSP/CSRF 策略、边界网关策略 |
 | 速率限制 | 令牌桶 RateLimiter | 7/10 | 缺少分布式限流、IP黑名单、DDoS防护 |
 | 会话管理 | 无状态 Token | 6/10 | 缺少会话过期、强制登出、并发控制 |
 | 依赖安全 | 无扫描 | 2/10 | 缺少 Dependabot/Snyk、SBOM |
 
-**关键安全风险**:
-- `api_server.py` 使用 `http.server.ThreadingHTTPServer`，无 TLS 支持
-- 配置文件中 API Token 明文存储
-- 无 CORS 策略，Web 前端面临 CSRF 风险
-- 无依赖漏洞扫描流程
+**当前剩余安全风险**:
+- FastAPI v2 已替代主要生产 API，但 OAuth2/OIDC、MFA 和分布式限流仍未完成。
+- `SecurityManager` / `Vault` 已支持本地敏感值加密；外部 KMS/Vault 和数据库静态加密仍需生产化。
+- CORS 与安全响应头已具备基础实现；CSP、CSRF 策略和依赖 SBOM/漏洞扫描仍需持续完善。
 
 ### 2.2 可用性评估 (Usability) — 评分: 58/100
 
 | 子项 | 现状 | 评分 | 差距 |
 |------|------|------|------|
 | 策略开发体验 | Python API + BaseStrategy | 7/10 | 无IDE支持、无实时调试、无自动补全提示 |
-| 安装部署 | pip install + config.yaml | 6/10 | 无Docker镜像、无一键部署、无配置向导 |
+| 安装部署 | pip + Docker/Compose + 单服务 API 托管前端 | 8/10 | 缺少 Helm Chart、镜像发布流水线、配置向导 |
 | 文档体系 | 10+ 文档文件 | 7/10 | 缺少交互式教程、视频教程、Cookbook |
 | 错误提示 | 统一异常体系+结构化日志 | 8/10 | 缺少用户友好错误消息、修复建议 |
 | 数据管理 | DataPortal + 自动缓存 | 6/10 | 缺少数据浏览器、数据导入向导 |
 | 报告导出 | Markdown/JSON/PNG | 5/10 | 缺少 PDF/Excel/交互式HTML报告 |
 | CLI 体验 | run/grid/auto/combo/list | 6/10 | 缺少自动补全、交互模式、进度条 |
-| API 文档 | API_REFERENCE.md | 5/10 | 缺少 OpenAPI/Swagger、Postman集合 |
+| API 文档 | API_REFERENCE.md + FastAPI OpenAPI/Swagger | 8/10 | 缺少 Postman 集合、客户端 SDK |
 | 多语言 | 中英混合 | 4/10 | 缺少完整国际化(i18n)方案 |
 | 新手引导 | quick_start 示例 | 5/10 | 缺少 Wizard、Playground、Notebook模板 |
 
-**关键可用性问题**:
+**当前关键可用性问题**:
 - 策略开发无实时反馈循环（编写→运行→查看需手动流程）
-- 回测结果查看需打开本地文件，无统一仪表板
-- 无 Docker 容器化支持，环境配置依赖手动操作
+- Vue3 仪表板和数据浏览已落地，但在线 IDE、策略调试器和可视化编排仍缺失
+- Docker/Compose 已落地，但生产 secrets、Helm Chart 和镜像发布流水线仍需完善
 - 参数调优无可视化界面
 
 ### 2.3 可扩展性评估 (Extensibility) — 评分: 73/100
@@ -158,13 +159,13 @@
 | 数据库性能 | SQLite单文件 | 4/10 | 缺少连接池、读写分离、分片 |
 | 缓存策略 | L1内存+L2 SQLite | 7/10 | 缺少分布式缓存（Redis Cluster） |
 | 向量化计算 | 部分Numba+Numpy | 6/10 | 缺少Polars/Arrow替代Pandas |
-| 基准测试 | benchmark_platform.py | 7/10 | 缺少持续性能追踪大盘(Dashboard) |
+| 基准测试 | benchmark_platform.py + Web Dashboard 基础入口 | 7/10 | 缺少持续性能追踪专用大盘 |
 
-**关键性能问题**:
+**当前关键性能问题**:
 - Pandas DataFrame 是主要性能瓶颈，大数据集内存占用高
 - SQLite 单文件数据库在并发写入时锁竞争
 - 回测引擎逐日迭代，未利用向量化批处理
-- HTTP API 使用 ThreadingHTTPServer，并发能力有限
+- FastAPI v2 已作为主要 API；v1 ThreadingHTTPServer 兼容入口不应承载高并发生产流量
 
 ### 2.5 使用性评估 (Developer Experience) — 评分: 62/100
 
@@ -175,32 +176,32 @@
 | API 一致性 | 内部API风格不统一 | 5/10 | 缺少统一返回值/错误/命名规范 |
 | 调试支持 | structlog + error_handler | 6/10 | 缺少 debug模式、断点回测 |
 | 测试辅助 | pytest + fixtures | 7/10 | 缺少 test factories、snapshot testing |
-| 代码生成 | 无 | 2/10 | 缺少策略/因子脚手架工具 |
+| 代码生成 | CLI scaffold 基础能力 | 5/10 | 缺少完整策略/因子向导和模板市场 |
 | 版本兼容 | 无 | 3/10 | 缺少 API 版本弃用策略、迁移工具 |
 | 配置验证 | Pydantic schema | 7/10 | 缺少配置 diff、配置迁移 |
 | 依赖管理 | requirements.txt | 5/10 | 缺少 poetry/pdm、锁文件、可选依赖组 |
-| CI/CD | GitHub Actions | 7/10 | 缺少自动发布、Docker构建、Helm Chart |
+| CI/CD | GitHub Actions + Docker validate | 8/10 | 缺少自动发布和 Helm Chart |
 
 ### 2.6 UI/交互评估 (UI/UX) — 评分: 42/100
 
 | 子项 | 现状 | 评分 | 差距 |
 |------|------|------|------|
-| Web Dashboard | 单页HTML+原生JS | 4/10 | 缺少现代SPA框架、组件化、响应式 |
+| Web Dashboard | Vue3 SPA + legacy HTML 控制台 | 7/10 | 缺少策略 IDE、工作流可视化和移动端优化 |
 | 桌面GUI | Tkinter backtest_gui | 4/10 | 缺少现代UI框架（Electron/Tauri） |
 | 图表可视化 | ECharts K线+Matplotlib | 6/10 | 缺少交互式Portfolio分析、实时图表 |
 | 策略编辑器 | 无 | 1/10 | 缺少在线代码编辑器、语法高亮 |
-| 仪表板 | 无 | 1/10 | 缺少系统监控大盘、交易大盘 |
+| 仪表板 | Dashboard/Monitor/Trading 页面已实现 | 6/10 | 缺少 SLO/容量/组合风险专用大盘 |
 | 回测报告 | Markdown + 静态PNG | 4/10 | 缺少交互式HTML报告 |
 | 工作流编排 | API调用 | 3/10 | 缺少可视化DAG编辑器 |
 | 移动端 | 无 | 0/10 | 缺少响应式布局、PWA |
 | 通知中心 | 告警外发 | 5/10 | 缺少Web内通知、消息中心 |
 | 主题/风格 | 暗色CSS主题 | 5/10 | 缺少浅色主题切换、自定义主题 |
 
-**关键UI问题**:
-- Web前端使用原生JS(ES5语法)，无模块化、无组件复用
-- 无统一的数据可视化仪表板
+**当前UI问题**:
+- Vue3 + TypeScript 前端已落地，旧 `src/platform/web/` 原生 JS 控制台仅作为轻量兼容入口
+- 已有 Dashboard、Backtest、Trading、Strategies、Data、Monitor、Settings 页面，但策略 IDE 和工作流编排仍缺失
 - Tkinter GUI 过时，不支持现代UI交互模式
-- 无策略回测结果的交互式浏览
+- 回测结果已有 Web 工作台入口，组合归因和报告深度交互仍需增强
 
 ---
 
@@ -488,7 +489,7 @@ class DuckDBTimeSeriesStore:
 **迁移策略**:
 - 保持所有 `/api/v1/*` 路由兼容
 - 新增 `/api/v2/*` 路由（FastAPI原生）
-- 旧 `api_server.py` 保留为 legacy（6个月弃用期）
+- 当前生产入口为 `src/platform/api_v2.py`；`api_server.py` 保留 v1 兼容和平台服务类，未版本化旧路由不再作为生产入口。
 
 **新增能力**:
 ```python

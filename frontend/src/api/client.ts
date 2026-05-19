@@ -30,6 +30,14 @@ export function unwrapApiData<T>(payload: unknown): T {
   ) {
     return (payload as unknown as VersionedApiEnvelope<T>).data
   }
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'ok' in payload &&
+    'data' in payload
+  ) {
+    return (payload as unknown as ApiResponse<T>).data as T
+  }
   return payload as T
 }
 

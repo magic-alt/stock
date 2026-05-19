@@ -51,8 +51,8 @@
 - ✅ 交易日历对齐 / 停复牌填充
 - ✅ 数据质量报告 + 数据血缘记录（lineage）
 - ✅ 基准指数 NAV 计算与回退
-- 🟡 数据版本锁定/快照化（数据湖分区/校验门禁）
-- 🟡 统一列式存储（Parquet）与冷热分层
+- ✅ 数据版本锁定/快照化（数据湖分区/校验门禁）
+- ✅ 统一列式存储（Parquet）与冷热分层
 
 ### 回测与分析
 - ✅ 单策略回测 / 多策略批量 / 网格搜索 / 自动化流程
@@ -62,7 +62,7 @@
 - ✅ 复现快照与报告签名（repro snapshot）
 - ✅ 滑点与手续费插件（CN 规则）
 - ✅ 市场冲击/成交概率/延迟模型（execution_models）
-- 🟡 回测性能提升（向量化/并行/缓存复用）
+- ✅ 回测性能提升（向量化/并行/缓存复用）
 
 ### 交易与执行
 - ✅ MatchingEngine（限价/市价/止损/订单簿）
@@ -79,8 +79,8 @@
 - ✅ 审计日志（Hash Chain）+ RBAC/租户隔离
 - ✅ Snapshot/Restore（OMS）
 - ✅ 事件驱动风控输出
-- 🟡 组合级/多账户风险聚合与资金分配
-- 🟡 实盘/回测一致性自动对账
+- ✅ 组合级/多账户风险聚合与资金分配
+- ✅ 实盘/回测一致性自动对账
 
 ### 事件、监控与运维
 - ✅ EventEngine + 统一事件类型
@@ -101,14 +101,23 @@
 - 🟡 在线推理服务弹性与批量推理
 
 ### 平台 / API / 分布式
-- ✅ JobQueue / Orchestrator / Distributed（本地线程/进程）
-- ✅ Minimal API Server（HTTP）+ 版本化 `/api/v1/*` 路由
+- ✅ JobQueue / Orchestrator / Distributed（本地线程/进程 + Ray/Dask 适配器）
+- ✅ FastAPI v2 REST API（`/api/v2/*` + OpenAPI）与版本化 `/api/v1/*` 兼容入口
 - ✅ DataLake（manifest）
 - ✅ API Bearer Token 鉴权 + `request_id` 透传 + 审计注入
 - ✅ SQLite JobStore（幂等提交、事务恢复）+ 队列分位指标
 - ✅ 工作流超时/重试/失败策略
 - ✅ `/readyz` 健康探针 + `/metrics`（JSON + Prometheus）指标端点
-- 🟡 任务编排 DAG、持久队列与多租户（Redis/Postgres backend）
+- ✅ DAG 拓扑排序与并行执行、Redis JobStore backend（含 fallback）
+- 🟡 多租户生产化、Postgres backend 与跨服务调度
+
+### 部署 / 安全 / 前端（中长期规划复核）
+- ✅ REST API：`src/platform/api_v2.py` 提供 `/api/v2/*` 生产入口，`/api/v2/docs` 暴露 OpenAPI。
+- ✅ Docker 容器化：根目录 `Dockerfile` 多阶段生产镜像，`docker-compose.yml` 编排 API/Frontend/Redis，`frontend/Dockerfile` 支持独立前端镜像。
+- ✅ 配置加密：`src/core/security.py` + `src/core/vault.py` 已提供敏感值加密与本地加密 vault。
+- ✅ Web 前端：`frontend/` Vue3 SPA 已覆盖回测、交易、策略、数据与监控页面。
+- 🟡 微服务架构：当前为模块化单体 + 容器编排，尚未拆分为独立 backtest/data/trading/ml 服务。
+- 🟡 分布式回测生产化：框架级 LocalProcessPool/Ray/Dask 已完成，集群部署、容量基准和任务数据治理仍待补齐。
 
 ### GUI / CLI / Examples
 - ✅ CLI：`run/grid/auto/combo/list`
@@ -139,7 +148,7 @@
 - 多账户/组合级风控与资金分配
 
 ### 🔴 尚未实现（基金级“生产化”必要项）
-- 服务化 API 的权限/审计/隔离完备实现
+- 微服务拆分后的权限/审计/隔离完备实现
 - 高可用集群与自动故障切换（多节点）
 - 统一清算/对账/回放体系
 - 合规与审计存证（长期不可篡改存储）
@@ -173,6 +182,8 @@
 - [x] **P5** 负载测试（`test_load.py`）+ 故障场景测试（`test_fault_scenarios.py`）+ E2E 测试
 - [x] **P5** CI 性能回归门禁（`performance` job，基线缓存 + 阈值断言 + 回归检测）
 - [x] **P5** 策略参考文档（41 个策略，`docs/STRATEGY_REFERENCE.md`）
+- [x] **中期 P2** REST API / Docker 容器化 / 配置加密复核完成（见 `docs/MID_LONG_TERM_STATUS_AUDIT.md`）
+- [~] **长期 P3** Web 前端已完成，分布式回测框架已完成，微服务化仍在规划中
 
 ---
 
@@ -185,11 +196,11 @@
 - [x] Phase 3.5 AI 框架接入与 MLOps（Qlib/FinRL/Registry/Inference）
 - [x] Phase 4 MVP 平台化（API/作业编排/分布式/数据湖）
 
-### V4.0-A（架构收敛，4-6 周）
-- [ ] 统一交易链路：TradingGateway ↔ PaperGatewayV3 ↔ LiveGateways 适配器合并
-- [ ] OMS/Risk/Execution 事件规范化与前置风控落地
-- [ ] RealtimeData 实接入：Sina/Eastmoney/Tencent + BarBuilder
-- [ ] 统一配置 Schema + 依赖锁定（requirements lock / seed）
+### V4.0-A（架构收敛，4-6 周）✅ 已完成
+- [x] 统一交易链路：TradingGateway ↔ PaperGatewayV3 ↔ LiveGateways 适配器合并
+- [x] OMS/Risk/Execution 事件规范化与前置风控落地
+- [x] RealtimeData 实接入：Sina/Eastmoney/Tencent + BarBuilder
+- [x] 统一配置 Schema + 依赖锁定（requirements lock / seed）
 
 #### 任务拆解（模块实施清单 + 测试计划）
 - 任务：统一交易链路
@@ -205,11 +216,11 @@
   - 模块实施清单：`src/core/config.py` 定义 schema 校验；`src/core/defaults.py`/`config.yaml.example` 对齐字段；新增 `requirements.lock` 或 `constraints.txt`
   - 测试计划：新增 `tests/test_config_schema.py`；扩展 `tests/test_system_integration.py` 覆盖加载与缺省值
 
-### V4.0-B（性能与数据治理，6-8 周）
-- [ ] BacktestEngine 性能：向量化/Numba、缓存复用、内存基线
-- [ ] 数据湖升级：Parquet 分区、版本化、校验门禁、冷热分层
-- [ ] 回测/实盘一致性自动化：对账、漂移监控、异常回放
-- [ ] 组合级资本分配与风险聚合（多策略/多账户）
+### V4.0-B（性能与数据治理，6-8 周）✅ 已完成
+- [x] BacktestEngine 性能：向量化、缓存复用、内存基线
+- [x] 数据湖升级：Parquet 分区、版本化、校验门禁、冷热分层
+- [x] 回测/实盘一致性自动化：对账、漂移监控、异常回放
+- [x] 组合级资本分配与风险聚合（多策略/多账户）
 
 #### 任务拆解（模块实施清单 + 测试计划）
 - 任务：BacktestEngine 性能提升
@@ -336,7 +347,7 @@
 | **JupyterLab Hub** | 浏览器内研究环境，预装本平台 SDK | K8s + JupyterHub + 自定义 Docker 镜像 |
 | **特征仓库 (Feature Store)** | 在线/离线特征统一存储与服务 | `src/platform/feature_store/` (Feast / 自研) |
 | **策略市场** | 策略发布、订阅、回测验证、收益分成 | `src/platform/marketplace/` + 前端商店页面 |
-| **回测即服务 (BaaS)** | REST API: `POST /backtest` → 返回任务 ID + 报告 | 已有 `/api/v1/jobs`，需上传策略代码沙箱执行 |
+| **回测即服务 (BaaS)** | REST API 提交任务 → 返回任务 ID + 报告 | 已有 `/api/v2/backtest/jobs`，需上传策略代码沙箱执行 |
 | **策略沙箱** | Docker / gVisor 隔离运行不受信策略代码 | `src/platform/sandbox/` + 安全 evaluator |
 | **协作研究** | 多人共享数据集、Notebook、回测结果 | 工作区 (Workspace) 抽象 + 权限 |
 

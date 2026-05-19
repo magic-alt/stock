@@ -4,10 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-18
 
+### Removed
+- Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。
+- Platform: 删除 `src/platform/api_v2.py` 中 `legacy_health`/`legacy_ready`/`legacy_metrics` 兼容包装。
+- Platform: 移除纸面交易演示在 v1 API、前端 Dashboard 和文档中的全部入口，统一保留 `scripts/demo_platform_console.py` 与 `/api/v2/demo/paper-trading` 两条路径。
+- Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
+
 ### Added
 - Gateway: add provider routing for vn.py and standardized third-party QMT integrations while keeping the built-in XtQuant/QMT adapter as the default.
-- Web: gateway connection form now exposes provider selection, QMT provider selection, SDK paths, and vn.py connection settings.
+- Web: gateway connection form now exposes provider selection, QMT provider selection, SDK paths, vn.py connection settings, and broker options JSON.
 - Tests: add provider-routing coverage for default QMT, vn.py QMT routing, missing vn.py dependency errors, and API config propagation.
+- V4.0-B: add cached vectorized BacktestEngine NAV metrics with a memory baseline field for repeated optimization runs.
+- V4.0-B: add tier-aware Parquet data lake writes, cold-tier migration, and SQLite cache export into versioned Parquet datasets.
+- V4.0-B: add reconciliation replay manifests and multi-account portfolio risk aggregation.
+- V4.0-A: add canonical `OrderRequest`, normalized order event payloads, and execution report DTOs for OMS/gateway/execution alignment.
+- V4.0-A: add `PaperGatewayV3Adapter` so `TradingGateway` paper mode routes through the MatchingEngine-backed PaperGatewayV3 contract.
+- V4.0-A: add realtime provider factory and `src/core/realtime_providers/` exports for Sina, Eastmoney, and Tencent providers.
+- V4.0-A: add `constraints.txt` as a dependency resolution seed aligned with runtime/test requirements.
 - CLI: `unified_backtest_framework.py features|capabilities --json` now lists registered strategies, data sources, backtest engines, financial providers, live gateways, trading brokers, and workflows.
 - Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring commercial SDKs.
 - Web: 回测工作台新增动态策略参数、同步/异步运行模式、任务状态、错误提示、指标明细和响应式布局。
@@ -19,6 +32,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - CLI: feature discovery now lists `qmt`, `vnpy`, and `vnpy_qmt` trading broker/provider options.
+- Docs: mark roadmap V4.0-A and V4.0-B implementation checklists as completed after validation.
+- V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
+- Config: align `GlobalConfig` schema with `config.yaml.example` by adding database, monitoring, performance, provider-detail, and execution live-gateway fields.
 - CLI: `grid` and `auto` workflows now expose `--engine` and correctly pass fee plugin parameters through to engine execution.
 - Gateway: `src.gateways` and `TradingGateway` lazily load concrete commercial SDK gateways; importing CLI/base modules no longer probes XTP/UFT SDKs.
 - Gateway: XtQuant/QMT now supports SDK-less stub mode aligned with XTP/UFT for development, CI, and smoke tests.
@@ -89,6 +105,8 @@ All notable changes to this project will be documented in this file.
 - Data: use the Shanghai exchange trading calendar for A-share quality checks/alignment so legal market holidays are not counted as missing sessions in baseline/admission reports.
 
 ### Tests
+- Tests: expand V4.0-B coverage for metrics cache reuse, Parquet lake tiering, SQLite-to-lake export, replay manifests, and multi-account risk aggregation.
+- Tests: expand gateway unification, risk precheck, realtime provider, and config schema coverage for V4.0-A architecture convergence.
 - Tests: 增加 FastAPI 回测 job、chart-data 与扩展回测参数透传覆盖。
 - Backtest: add `tests/test_strategy_backtest_contracts.py` to smoke-test every registered strategy except the external-dependency `qlib_registry` path.
 - Tests: add `tests/test_gateway_xtp_smoke.py` and `tests/test_gateway_uft_smoke.py` for unified gateway smoke assertions, and extend `tests/test_realtime_data.py` with HTTP provider parsing plus failover coverage.

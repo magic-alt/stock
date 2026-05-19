@@ -43,6 +43,16 @@ class TestParquetDataLake:
         assert os.path.exists(entry.path)
         assert entry.path.endswith(".parquet")
 
+    def test_write_records_hot_tier_by_default(self, tmp_path):
+        lake = ParquetDataLake(base_dir=str(tmp_path))
+        df = _make_price_df(seed=11)
+        entry = lake.write_dataset("600519.SH", df, kind="price")
+        versions = lake.list_versions("600519.SH", kind="price", tier="hot")
+
+        assert entry.metadata["tier"] == "hot"
+        assert len(versions) == 1
+        assert versions[0].tier == "hot"
+
     def test_read_returns_dataframe(self, tmp_path):
         lake = ParquetDataLake(base_dir=str(tmp_path))
         df = _make_price_df(seed=2)
@@ -254,3 +264,15 @@ class TestProductionPromotion:
             fh.write(b"\xff\xfe")
         with pytest.raises(ValueError, match="Checksum"):
             lake.promote_to_production(entry.entry_id)
+
+    def test_move_to_cold_tier_preserves_checksum(self, tmp_path):
+        lake = ParquetDataLake(base_dir=str(tmp_path))
+        df = _make_price_df(seed=12)
+        entry = lake.write_dataset("COLD", df, kind="price")
+
+        updated = lake.move_to_tier(entry.entry_id, "cold")
+
+        assert updated.metadata["tier"] == "cold"
+        assert os.path.exists(updated.path)
+        assert lake.validate_checksum(entry.entry_id) is True
+        assert len(lake.list_versions("COLD", kind="price", tier="cold")) == 1

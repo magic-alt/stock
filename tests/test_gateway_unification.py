@@ -93,14 +93,15 @@ def _build_simulation_modules():
     }
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def simulation_module_patch():
-    """Session-scoped fixture: inject simulation mocks once for all tests."""
+    """Inject simulation mocks only for the test that requests them."""
     fake_mods = _build_simulation_modules()
     with patch.dict(sys.modules, fake_mods):
         # Force paper_gateway_v3 to be re-evaluated with mocks in place.
         sys.modules.pop("src.core.paper_gateway_v3", None)
         yield fake_mods
+    sys.modules.pop("src.core.paper_gateway_v3", None)
 
 
 @pytest.fixture
@@ -454,3 +455,48 @@ class TestGatewayBehaviorConsistency:
         assert gw.is_connected is True
         gw.disconnect()
         assert gw.is_connected is False
+
+
+class TestTradingGatewayUnifiedAdapter:
+    """TradingGateway should route paper mode through the V3 adapter contract."""
+
+    def test_create_paper_uses_v3_adapter(self):
+        from src.core.trading_gateway import PaperGatewayV3Adapter, TradingGateway
+
+        gateway = TradingGateway.create_paper(initial_cash=100_000.0)
+
+        assert isinstance(gateway._adapter, PaperGatewayV3Adapter)
+
+    def test_market_order_routes_through_unified_gateway(self):
+        from src.core.interfaces import OrderStatusEnum, OrderTypeEnum
+        from src.core.trading_gateway import TradingGateway
+
+        gateway = TradingGateway.create_paper(initial_cash=100_000.0)
+        gateway.connect()
+        gateway.update_price("600519.SH", 100.0)
+
+        order_id = gateway.buy("600519.SH", 100, order_type=OrderTypeEnum.MARKET)
+
+        order = gateway.get_order(order_id)
+        assert order is not None
+        assert order.status in {OrderStatusEnum.SUBMITTED, OrderStatusEnum.FILLED}
+        assert order.symbol == "600519.SH"
+
+    def test_submit_order_request_accepts_canonical_dto(self):
+        from src.core.interfaces import OrderRequest, OrderTypeEnum, Side
+        from src.core.trading_gateway import TradingGateway
+
+        gateway = TradingGateway.create_paper(initial_cash=100_000.0)
+        gateway.connect()
+        gateway.update_price("600519.SH", 100.0)
+
+        request = OrderRequest(
+            symbol="600519.SH",
+            side=Side.BUY,
+            quantity=100,
+            order_type=OrderTypeEnum.MARKET,
+        )
+        order_id = gateway.submit_order_request(request)
+
+        assert order_id.startswith("PAPER-")
+        assert gateway.get_order(order_id) is not None

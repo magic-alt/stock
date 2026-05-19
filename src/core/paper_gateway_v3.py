@@ -27,7 +27,7 @@ import logging
 from src.core.events import Event, EventEngine, EventType
 from src.core.interfaces import (
     TradeGateway, PositionInfo, AccountInfo, OrderInfo, TradeInfo,
-    Side, OrderTypeEnum, OrderStatusEnum
+    Side, OrderTypeEnum, OrderStatusEnum, ExecutionReport
 )
 
 # Simulation components
@@ -426,6 +426,25 @@ class PaperGateway(TradeGateway):
                     "create_time": order.create_time,
                 })
         return result
+
+    def query_order(self, order_id: str) -> Optional[Dict[str, Any]]:
+        """Query a single order by ID."""
+        order = self._orders.get(order_id)
+        if order is None:
+            return None
+        return {
+            "order_id": order.order_id,
+            "symbol": order.symbol,
+            "side": order.side.value,
+            "order_type": order.order_type.value,
+            "price": order.price,
+            "quantity": order.quantity,
+            "filled_quantity": order.filled_quantity,
+            "avg_fill_price": order.avg_fill_price,
+            "status": order.status.value,
+            "create_time": order.create_time,
+            "update_time": order.update_time,
+        }
     
     # ---------------------------------------------------------------------------
     # Trade Handling
@@ -481,6 +500,12 @@ class PaperGateway(TradeGateway):
             timestamp=pd.Timestamp.now(),
         )
         self._trades.append(trade_info)
+
+        self.events.put(Event(EventType.TRADE_EXECUTED, trade_info))
+        self.events.put(Event(
+            EventType.EXECUTION_REPORT,
+            ExecutionReport.from_trade_info(trade_info, source="paper_gateway_v3").to_dict(),
+        ))
         
         # Update last price
         self._last_prices[trade.symbol] = trade.price

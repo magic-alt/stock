@@ -276,18 +276,6 @@ if HAS_FASTAPI:
                 logger.error("chart_data_failed", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @app.get("/health", include_in_schema=False)
-        async def legacy_health():
-            return await health()
-
-        @app.get("/ready", include_in_schema=False)
-        async def legacy_ready():
-            return await readiness()
-
-        @app.get("/metrics", include_in_schema=False)
-        async def legacy_metrics(request: Request):
-            return await metrics(request)
-
         # ---- Strategy endpoints ----
 
         @app.get("/api/v2/strategies", tags=["Strategies"])
@@ -527,6 +515,27 @@ if HAS_FASTAPI:
         @app.get("/api/v2/monitor/alerts", tags=["Monitoring"])
         async def monitor_alerts(request: Request, limit: int = 20):
             return ApiEnvelope(data={"alerts": request.app.state.monitor_service.alerts(limit=limit)})
+
+        @app.get("/api/v2/demo/paper-trading", tags=["Demo"])
+        async def demo_paper_trading(
+            request: Request,
+            symbol: str = "600519.SH",
+            quantity: float = 100.0,
+            limit: int = 20,
+        ):
+            from src.platform.demo import run_paper_trading_demo
+
+            demo_gateway = GatewayService()
+            demo = run_paper_trading_demo(
+                demo_gateway,
+                queue=request.app.state.job_queue,
+                monitor_service=request.app.state.monitor_service,
+                metrics=request.app.state.api_metrics,
+                symbol=symbol,
+                quantity=quantity,
+                limit=max(1, min(limit, 50)),
+            )
+            return ApiEnvelope(data={"demo": demo})
 
         frontend_dist = _resolve_frontend_dist()
         if frontend_dist is not None:
