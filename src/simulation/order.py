@@ -13,11 +13,16 @@ from typing import Optional
 
 class OrderStatus(Enum):
     """订单状态枚举"""
+    CREATED = "created"          # 已创建
     PENDING = "pending"          # 挂单中
+    SUBMITTED = "submitted"      # 已报
+    ACCEPTED = "accepted"        # 已受理
     PARTIAL = "partial"          # 部分成交
+    PARTIALLY_FILLED = "partial_filled"  # 部分成交（规范状态）
     FILLED = "filled"            # 完全成交
     CANCELLED = "cancelled"      # 已撤单
     REJECTED = "rejected"        # 已拒绝
+    EXPIRED = "expired"          # 已过期
 
 
 class OrderType(Enum):
@@ -104,7 +109,14 @@ class Order:
     @property
     def is_active(self) -> bool:
         """订单是否仍活跃（未完全成交或撤单）"""
-        return self.status in (OrderStatus.PENDING, OrderStatus.PARTIAL)
+        return self.status in (
+            OrderStatus.CREATED,
+            OrderStatus.PENDING,
+            OrderStatus.SUBMITTED,
+            OrderStatus.ACCEPTED,
+            OrderStatus.PARTIAL,
+            OrderStatus.PARTIALLY_FILLED,
+        )
     
     def __repr__(self) -> str:
         """字符串表示"""

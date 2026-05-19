@@ -36,9 +36,11 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from src.core.interfaces import (
     OrderInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
-    OrderRequest, OrderEventPayload,
+    OrderRequest, OrderEventPayload, is_active_order_status, normalize_order_status,
 )
 from src.core.events import EventEngine, Event, EventType
+from src.core.order_state import OrderStateMachine, OrderStatus, to_lifecycle_status
+from src.core.pre_trade_risk import evaluate_pre_trade_risk
 from src.core.audit import AuditLogger, audit_event
 from src.core.auth import Authorizer, Permission, ResourceScope, Subject
 from src.core.logger import get_logger
@@ -83,7 +85,7 @@ class ManagedOrder:
     # Execution info
     filled_quantity: float = 0.0
     avg_fill_price: float = 0.0
-    status: OrderStatusEnum = OrderStatusEnum.PENDING
+    status: OrderStatusEnum = OrderStatusEnum.CREATED
     
     # Timestamps
     create_time: datetime = field(default_factory=datetime.now)
@@ -108,11 +110,7 @@ class ManagedOrder:
     
     @property
     def is_active(self) -> bool:
-        return self.status in (
-            OrderStatusEnum.PENDING,
-            OrderStatusEnum.SUBMITTED,
-            OrderStatusEnum.PARTIAL
-        )
+        return is_active_order_status(self.status)
     
     @property
     def is_filled(self) -> bool:
@@ -216,6 +214,7 @@ class OrderManager:
         allowed_strategies: Optional[Set[str]] = None,
         authorizer: Optional[Authorizer] = None,
         audit_logger: Optional[AuditLogger] = None,
+        risk_manager: Optional[Any] = None,
     ):
         """
         Initialize order manager.
@@ -234,6 +233,7 @@ class OrderManager:
         self.allowed_strategies = allowed_strategies
         self.authorizer = authorizer
         self.audit_logger = audit_logger
+        self.risk_manager = risk_manager
         
         # Order storage
         self._orders: Dict[str, ManagedOrder] = {}
@@ -243,6 +243,7 @@ class OrderManager:
         self._orders_by_symbol: Dict[str, Set[str]] = defaultdict(set)
         self._orders_by_strategy: Dict[str, Set[str]] = defaultdict(set)
         self._orders_by_status: Dict[OrderStatusEnum, Set[str]] = defaultdict(set)
+        self._state_machine = OrderStateMachine()
         
         # Trade records
         self._trades: List[TradeInfo] = []
@@ -329,7 +330,8 @@ class OrderManager:
         # Store and index
         self._orders[order_id] = order
         self._orders_by_symbol[symbol].add(order_id)
-        self._orders_by_status[OrderStatusEnum.PENDING].add(order_id)
+        self._orders_by_status[order.status].add(order_id)
+        self._state_machine.register(order_id, to_lifecycle_status(order.status))
         if strategy_id:
             self._orders_by_strategy[strategy_id].add(order_id)
         
@@ -438,7 +440,7 @@ class OrderManager:
             logger.error("Order not found", order_id=order_id)
             return False
         
-        if order.status != OrderStatusEnum.PENDING:
+        if normalize_order_status(order.status) != OrderStatusEnum.CREATED:
             logger.error("Order already submitted", order_id=order_id, status=order.status.value)
             return False
         
@@ -446,6 +448,7 @@ class OrderManager:
             self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(
                 tenant_id=order.tenant_id, strategy_id=order.strategy_id
             ))
+            self._check_pre_trade_risk(order)
             # Submit to gateway
             if self.gateway:
                 submit_request = getattr(self.gateway, "submit_order_request", None)
@@ -462,21 +465,62 @@ class OrderManager:
                 order.broker_order_id = broker_id
             
             # Update status
-            self._update_order_status(order, OrderStatusEnum.SUBMITTED)
+            self._update_order_status(order, OrderStatusEnum.SUBMITTED, reason="gateway_submit")
             order.submit_time = datetime.now()
             
             logger.info("Order submitted", order_id=order_id)
             self._publish_order_event(order, OrderEvent.SUBMITTED)
+            self._update_order_status(order, OrderStatusEnum.ACCEPTED, reason="gateway_ack")
+            self._publish_order_event(order, OrderEvent.ACCEPTED)
             self._audit("order.submit", order, result="ok", subject=subject)
             return True
             
         except Exception as e:
             order.reject_reason = str(e)
-            self._update_order_status(order, OrderStatusEnum.REJECTED)
+            self._update_order_status(order, OrderStatusEnum.REJECTED, reason=str(e))
             logger.error("Order submission failed", order_id=order_id, error=str(e))
             self._publish_order_event(order, OrderEvent.REJECTED)
             self._audit("order.submit", order, result="error", subject=subject, details={"error": str(e)})
             return False
+
+    def _check_pre_trade_risk(self, order: ManagedOrder) -> None:
+        if self.risk_manager is None:
+            return
+
+        account = AccountInfo(account_id=order.tenant_id or self.tenant_id or "oms")
+        positions: Dict[str, PositionInfo] = {}
+        if self.gateway:
+            get_account = getattr(self.gateway, "get_account", None)
+            get_positions = getattr(self.gateway, "get_positions", None)
+            if callable(get_account):
+                account = get_account()
+            if callable(get_positions):
+                positions = get_positions()
+
+        price = float(order.price or order.avg_fill_price or 0.0)
+        decision = evaluate_pre_trade_risk(
+            self.risk_manager,
+            order.to_order_request(),
+            account=account,
+            positions=positions,
+            price=price,
+        )
+        if self.event_engine:
+            payload = {
+                "order_id": order.order_id,
+                "symbol": order.symbol,
+                "side": order.side.value,
+                "quantity": order.quantity,
+                "price": price,
+                "passed": decision.passed,
+                "rule": decision.rule_name,
+                "reason": decision.reason,
+            }
+            self.event_engine.put(Event(EventType.RISK_CHECKED, payload))
+            if not decision.passed:
+                self.event_engine.put(Event(EventType.RISK_REJECTED, payload))
+        if not decision.passed:
+            raise PermissionError(f"Risk check failed: {decision.reason}")
     
     def submit_all_pending(self, symbol: Optional[str] = None, subject: Optional[Subject] = None) -> int:
         """
@@ -489,7 +533,9 @@ class OrderManager:
             Number of orders submitted
         """
         count = 0
-        for order_id in list(self._orders_by_status[OrderStatusEnum.PENDING]):
+        pending_ids = set(self._orders_by_status[OrderStatusEnum.CREATED])
+        pending_ids.update(self._orders_by_status[OrderStatusEnum.PENDING])
+        for order_id in list(pending_ids):
             order = self._orders[order_id]
             if symbol is None or order.symbol == symbol:
                 if self.submit_order(order_id, subject=subject):
@@ -529,7 +575,7 @@ class OrderManager:
                 self.gateway.cancel(order.broker_order_id)
             
             # Update status
-            self._update_order_status(order, OrderStatusEnum.CANCELLED)
+            self._update_order_status(order, OrderStatusEnum.CANCELLED, reason=reason or "cancelled")
             order.reject_reason = reason
             
             # Cancel child orders
@@ -566,7 +612,14 @@ class OrderManager:
         
         # Get active orders
         active_ids = set()
-        for status in (OrderStatusEnum.PENDING, OrderStatusEnum.SUBMITTED, OrderStatusEnum.PARTIAL):
+        for status in (
+            OrderStatusEnum.CREATED,
+            OrderStatusEnum.PENDING,
+            OrderStatusEnum.SUBMITTED,
+            OrderStatusEnum.ACCEPTED,
+            OrderStatusEnum.PARTIALLY_FILLED,
+            OrderStatusEnum.PARTIAL,
+        ):
             active_ids.update(self._orders_by_status[status])
         
         for order_id in active_ids:
@@ -583,6 +636,24 @@ class OrderManager:
         
         logger.info("Batch cancel completed", count=count, symbol=symbol, strategy_id=strategy_id)
         return count
+
+    def _expire_order(self, order: ManagedOrder, reason: str = "Timeout") -> bool:
+        if not order.is_active:
+            return False
+
+        try:
+            if self.gateway and order.broker_order_id:
+                self.gateway.cancel(order.broker_order_id)
+            self._update_order_status(order, OrderStatusEnum.EXPIRED, reason=reason)
+            order.reject_reason = reason
+            logger.info("Order expired", order_id=order.order_id, reason=reason)
+            self._publish_order_event(order, OrderEvent.EXPIRED)
+            self._audit("order.expire", order, result="ok", details={"reason": reason})
+            return True
+        except Exception as e:
+            logger.error("Order expiration failed", order_id=order.order_id, error=str(e))
+            self._audit("order.expire", order, result="error", details={"error": str(e)})
+            return False
     
     # ---------------------------------------------------------------------------
     # Order Updates
@@ -638,7 +709,7 @@ class OrderManager:
         
         # Update status
         if order.filled_quantity >= order.quantity:
-            self._update_order_status(order, OrderStatusEnum.FILLED)
+            self._update_order_status(order, OrderStatusEnum.FILLED, reason="fill_complete")
             order.fill_time = datetime.now()
             self._publish_order_event(order, OrderEvent.FILLED)
             self._audit("order.fill", order, result="filled", details={"trade_id": trade.trade_id})
@@ -650,7 +721,7 @@ class OrderManager:
                 avg_price=order.avg_fill_price
             )
         else:
-            self._update_order_status(order, OrderStatusEnum.PARTIAL)
+            self._update_order_status(order, OrderStatusEnum.PARTIALLY_FILLED, reason="partial_fill")
             self._publish_order_event(order, OrderEvent.PARTIAL_FILL)
             self._audit("order.fill.partial", order, result="partial", details={"trade_id": trade.trade_id})
             logger.info(
@@ -660,16 +731,32 @@ class OrderManager:
                 remaining=order.remaining
             )
     
-    def _update_order_status(self, order: ManagedOrder, new_status: OrderStatusEnum) -> None:
+    def _update_order_status(self, order: ManagedOrder, new_status: OrderStatusEnum, reason: str = "") -> None:
         """Update order status and indexes."""
         old_status = order.status
+        canonical_status = normalize_order_status(new_status)
+        self._transition_lifecycle(order, canonical_status, reason=reason)
         
         # Update indexes
         self._orders_by_status[old_status].discard(order.order_id)
-        self._orders_by_status[new_status].add(order.order_id)
+        self._orders_by_status[canonical_status].add(order.order_id)
         
-        order.status = new_status
+        order.status = canonical_status
         order.update_time = datetime.now()
+
+    def _transition_lifecycle(self, order: ManagedOrder, new_status: OrderStatusEnum, *, reason: str = "") -> None:
+        target = to_lifecycle_status(new_status)
+        current = self._state_machine.current(order.order_id)
+        if current is None:
+            self._state_machine.register(order.order_id, to_lifecycle_status(order.status))
+            current = self._state_machine.current(order.order_id)
+
+        if current == OrderStatus.PENDING_SUBMIT and target in {OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED}:
+            self._state_machine.transition(order.order_id, OrderStatus.SUBMITTED, reason="implicit_submit_before_fill")
+            current = OrderStatus.SUBMITTED
+
+        if current != target:
+            self._state_machine.transition(order.order_id, target, reason=reason)
     
     # ---------------------------------------------------------------------------
     # Queries
@@ -732,7 +819,14 @@ class OrderManager:
     def get_active_orders(self, symbol: Optional[str] = None) -> List[ManagedOrder]:
         """Get all active orders."""
         active = []
-        for status in (OrderStatusEnum.PENDING, OrderStatusEnum.SUBMITTED, OrderStatusEnum.PARTIAL):
+        for status in (
+            OrderStatusEnum.CREATED,
+            OrderStatusEnum.PENDING,
+            OrderStatusEnum.SUBMITTED,
+            OrderStatusEnum.ACCEPTED,
+            OrderStatusEnum.PARTIALLY_FILLED,
+            OrderStatusEnum.PARTIAL,
+        ):
             active.extend(self.get_orders(symbol=symbol, status=status))
         return active
     
@@ -893,10 +987,12 @@ class OrderManager:
         now = datetime.now()
         count = 0
         
-        for order_id in list(self._orders_by_status[OrderStatusEnum.SUBMITTED]):
+        timeout_ids = set(self._orders_by_status[OrderStatusEnum.SUBMITTED])
+        timeout_ids.update(self._orders_by_status[OrderStatusEnum.ACCEPTED])
+        for order_id in list(timeout_ids):
             order = self._orders[order_id]
             if order.submit_time and (now - order.submit_time) > self.order_timeout:
-                if self.cancel_order(order_id, "Timeout"):
+                if self._expire_order(order, "Timeout"):
                     count += 1
         
         return count
@@ -969,6 +1065,7 @@ class OrderManager:
             if order.strategy_id:
                 self._orders_by_strategy[order.strategy_id].add(order.order_id)
             self._orders_by_status[order.status].add(order.order_id)
+            self._state_machine.register(order.order_id, to_lifecycle_status(order.status))
 
         for data in payload.get("trades", []):
             trade = self._deserialize_trade(data)
@@ -1015,7 +1112,7 @@ class OrderManager:
             quantity=float(data.get("quantity", 0)),
             filled_quantity=float(data.get("filled_quantity", 0)),
             avg_fill_price=float(data.get("avg_fill_price", 0)),
-            status=OrderStatusEnum(data.get("status", OrderStatusEnum.PENDING.value)),
+            status=normalize_order_status(data.get("status", OrderStatusEnum.CREATED.value)),
             strategy_id=data.get("strategy_id", ""),
             tenant_id=data.get("tenant_id", ""),
             parent_order_id=data.get("parent_order_id", ""),

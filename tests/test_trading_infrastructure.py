@@ -379,6 +379,20 @@ class TestOrderManagerModule:
         # 取消
         result = manager.cancel_order(order.order_id)
         assert result is True
+
+    def test_order_manager_timeout_marks_expired(self):
+        """测试超时订单进入 expired 终态"""
+        from src.core.order_manager import OrderManager
+        from src.core.interfaces import OrderStatusEnum, Side
+
+        manager = OrderManager(order_timeout_minutes=1)
+        order = manager.create_order("600519.SH", Side.BUY, 100, 1800.0)
+
+        assert manager.submit_order(order.order_id) is True
+        order.submit_time = datetime.now() - timedelta(minutes=2)
+
+        assert manager.check_timeouts() == 1
+        assert order.status == OrderStatusEnum.EXPIRED
     
     def test_order_manager_get_active_orders(self):
         """测试获取活跃订单"""

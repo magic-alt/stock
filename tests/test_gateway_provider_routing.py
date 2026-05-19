@@ -200,7 +200,7 @@ def test_vnpy_adapter_maps_order_and_queries(monkeypatch):
     assert request.type.name == "LIMIT"
     assert adapter.query_account().available == 900
     assert adapter.query_positions()["600519.SSE"].size == 100
-    assert adapter.query_orders()[0].status == OrderStatusEnum.SUBMITTED
+    assert adapter.query_orders()[0].status == OrderStatusEnum.ACCEPTED
     assert adapter.query_trades(limit=1)[0].order_id == "QMT.1"
 
 

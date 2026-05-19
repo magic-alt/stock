@@ -1,6 +1,6 @@
 from src.core.interfaces import AccountInfo, PositionInfo, Side, OrderStatusEnum
 from src.core.risk_manager_v2 import RiskConfig, RiskManagerV2
-from src.core.trading_gateway import _map_live_order_status
+from src.core.trading_gateway import _map_live_order_status, _map_vnpy_order_status
 from src.simulation.order import OrderStatus as SimOrderStatus
 
 
@@ -16,8 +16,22 @@ def test_order_status_mapping_consistency():
         "expired",
         "error",
     ]
+    assert _map_live_order_status("pending_submit") == OrderStatusEnum.CREATED
+    assert _map_live_order_status("submitted") == OrderStatusEnum.SUBMITTED
+    assert _map_live_order_status("accepted") == OrderStatusEnum.ACCEPTED
+    assert _map_live_order_status("partial_fill") == OrderStatusEnum.PARTIALLY_FILLED
+    assert _map_live_order_status("filled") == OrderStatusEnum.FILLED
+    assert _map_live_order_status("cancel_pending") == OrderStatusEnum.ACCEPTED
+    assert _map_live_order_status("cancelled") == OrderStatusEnum.CANCELLED
+    assert _map_live_order_status("rejected") == OrderStatusEnum.REJECTED
+    assert _map_live_order_status("expired") == OrderStatusEnum.EXPIRED
+    assert _map_live_order_status("error") == OrderStatusEnum.REJECTED
+
     mapped = {_map_live_order_status(s) for s in live_statuses}
     assert mapped.issubset(set(OrderStatusEnum))
+    assert _map_vnpy_order_status("SUBMITTING") == OrderStatusEnum.SUBMITTED
+    assert _map_vnpy_order_status("NOTTRADED") == OrderStatusEnum.ACCEPTED
+    assert _map_vnpy_order_status("PARTTRADED") == OrderStatusEnum.PARTIALLY_FILLED
 
     sim_status_values = {s.value for s in SimOrderStatus}
     core_status_values = {s.value for s in OrderStatusEnum}

@@ -60,6 +60,12 @@ Standard v2 envelope:
 
 Related status audit: [中长期规划实现状态审计](MID_LONG_TERM_STATUS_AUDIT.md).
 
+Standard order lifecycle values returned by gateway/OMS APIs:
+
+`created -> submitted -> accepted -> partial_filled -> filled/cancelled/rejected/expired`
+
+Legacy inbound gateway values are normalized for compatibility: `pending` and `pending_submit` become `created`; `partial` and `partial_fill` become `partial_filled`; `cancel_pending` becomes `accepted`; `error` becomes `rejected`.
+
 ---
 
 ## Quick Start

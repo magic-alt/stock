@@ -39,10 +39,13 @@ from src.core.interfaces import (
     Side, OrderTypeEnum, OrderStatusEnum,
     OrderRequest as CoreOrderRequest,
     OrderEventPayload,
+    is_active_order_status,
+    normalize_order_status,
 )
 from src.core.logger import get_logger
 from src.core.audit import AuditLogger, audit_event
 from src.core.auth import Authorizer, Permission, ResourceScope, Subject
+from src.core.pre_trade_risk import evaluate_pre_trade_risk
 from src.gateways.base_live_gateway import (
     GatewayConfig as LiveGatewayConfig,
     BaseLiveGateway,
@@ -387,7 +390,7 @@ class PaperGatewayV3Adapter:
             quantity=float(data.get("quantity", 0.0)),
             filled_quantity=float(data.get("filled_quantity", 0.0)),
             avg_fill_price=float(data.get("avg_fill_price", 0.0)),
-            status=OrderStatusEnum(data.get("status", OrderStatusEnum.PENDING.value)),
+            status=normalize_order_status(data.get("status", OrderStatusEnum.CREATED.value)),
             create_time=data.get("create_time"),
             update_time=data.get("update_time"),
         )
@@ -1091,7 +1094,7 @@ class PaperTradingAdapter:
     def _execute_order(self, order_id: str, fill_price: float) -> None:
         """Execute order at given price."""
         order = self._orders.get(order_id)
-        if not order or order.status not in (OrderStatusEnum.SUBMITTED, OrderStatusEnum.PENDING):
+        if not order or not is_active_order_status(order.status):
             return
         
         # Apply slippage
@@ -1175,7 +1178,7 @@ class PaperTradingAdapter:
         self._orders = {o.order_id: o for o in (self._deserialize_order(d) for d in payload.get("orders", []))}
         self._pending_orders = {
             oid: o for oid, o in self._orders.items()
-            if o.status in (OrderStatusEnum.SUBMITTED, OrderStatusEnum.PENDING)
+            if is_active_order_status(o.status)
         }
         self._trades = [self._deserialize_trade(d) for d in payload.get("trades", [])]
         self._last_prices = dict(payload.get("last_prices", {}))
@@ -1229,7 +1232,7 @@ class PaperTradingAdapter:
             quantity=float(data.get("quantity", 0.0)),
             filled_quantity=float(data.get("filled_quantity", 0.0)),
             avg_fill_price=float(data.get("avg_fill_price", 0.0)),
-            status=OrderStatusEnum(data.get("status", OrderStatusEnum.PENDING.value)),
+            status=normalize_order_status(data.get("status", OrderStatusEnum.CREATED.value)),
             create_time=_parse_dt(data.get("create_time")),
             update_time=_parse_dt(data.get("update_time")),
         )
@@ -2053,35 +2056,39 @@ class TradingGateway:
             if check_price is None:
                 logger.warning("Risk check skipped for order without price", symbol=symbol)
             else:
-                account = self.get_account()
-                positions = self.get_positions()
-                result = self.risk_manager.check_order(
+                request = CoreOrderRequest(
                     symbol=symbol,
                     side=side,
                     quantity=quantity,
                     price=check_price,
-                    account=account,
-                    positions=positions,
+                    order_type=order_type,
+                )
+                decision = evaluate_pre_trade_risk(
+                    self.risk_manager,
+                    request,
+                    account=self.get_account(),
+                    positions=self.get_positions(),
+                    price=check_price,
                 )
                 self._publish_event(EventType.RISK_CHECKED, {
                     "symbol": symbol,
                     "side": side.value,
                     "quantity": quantity,
                     "price": check_price,
-                    "passed": result.passed,
-                    "rule": result.rule_name,
-                    "reason": result.reason,
+                    "passed": decision.passed,
+                    "rule": decision.rule_name,
+                    "reason": decision.reason,
                 })
-                if not result.passed:
+                if not decision.passed:
                     self._publish_event(EventType.RISK_REJECTED, {
                         "symbol": symbol,
                         "side": side.value,
                         "quantity": quantity,
                         "price": check_price,
-                        "rule": result.rule_name,
-                        "reason": result.reason,
+                        "rule": decision.rule_name,
+                        "reason": decision.reason,
                     })
-                    raise PermissionError(f"Risk check failed: {result.reason}")
+                    raise PermissionError(f"Risk check failed: {decision.reason}")
 
         self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(tenant_id=self.tenant_id))
         
@@ -2228,17 +2235,19 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
 
 def _map_live_order_status(status: str) -> OrderStatusEnum:
     mapping = {
-        "pending_submit": OrderStatusEnum.PENDING,
+        "pending_submit": OrderStatusEnum.CREATED,
         "submitted": OrderStatusEnum.SUBMITTED,
-        "partial_fill": OrderStatusEnum.PARTIAL,
+        "accepted": OrderStatusEnum.ACCEPTED,
+        "partial_fill": OrderStatusEnum.PARTIALLY_FILLED,
+        "partial_filled": OrderStatusEnum.PARTIALLY_FILLED,
         "filled": OrderStatusEnum.FILLED,
-        "cancel_pending": OrderStatusEnum.PENDING,
+        "cancel_pending": OrderStatusEnum.ACCEPTED,
         "cancelled": OrderStatusEnum.CANCELLED,
         "rejected": OrderStatusEnum.REJECTED,
-        "expired": OrderStatusEnum.CANCELLED,
+        "expired": OrderStatusEnum.EXPIRED,
         "error": OrderStatusEnum.REJECTED,
     }
-    return mapping.get(status, OrderStatusEnum.PENDING)
+    return mapping.get(str(status).lower(), normalize_order_status(status))
 
 
 def _enum_token(value: Any) -> str:
@@ -2283,18 +2292,22 @@ def _normalize_datetime(value: Any) -> Optional[datetime]:
 def _map_vnpy_order_status(status: Any) -> OrderStatusEnum:
     token = _enum_token(status)
     mapping = {
-        "SUBMITTING": OrderStatusEnum.PENDING,
-        "NOTTRADED": OrderStatusEnum.SUBMITTED,
-        "PARTTRADED": OrderStatusEnum.PARTIAL,
+        "SUBMITTING": OrderStatusEnum.SUBMITTED,
+        "NOTTRADED": OrderStatusEnum.ACCEPTED,
+        "PARTTRADED": OrderStatusEnum.PARTIALLY_FILLED,
         "ALLTRADED": OrderStatusEnum.FILLED,
         "CANCELLED": OrderStatusEnum.CANCELLED,
         "REJECTED": OrderStatusEnum.REJECTED,
-        "PENDING": OrderStatusEnum.PENDING,
+        "PENDING": OrderStatusEnum.CREATED,
         "SUBMITTED": OrderStatusEnum.SUBMITTED,
-        "PARTIAL": OrderStatusEnum.PARTIAL,
+        "ACCEPTED": OrderStatusEnum.ACCEPTED,
+        "PARTIAL": OrderStatusEnum.PARTIALLY_FILLED,
+        "PARTIAL_FILLED": OrderStatusEnum.PARTIALLY_FILLED,
+        "PARTIALLY_FILLED": OrderStatusEnum.PARTIALLY_FILLED,
         "FILLED": OrderStatusEnum.FILLED,
+        "EXPIRED": OrderStatusEnum.EXPIRED,
     }
-    return mapping.get(token, OrderStatusEnum.PENDING)
+    return mapping.get(token, normalize_order_status(token.lower()))
 
 
 # ---------------------------------------------------------------------------

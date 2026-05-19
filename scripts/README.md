@@ -81,8 +81,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1
 - `-Jobs test,code-quality`：只运行指定 job。
 - `-SkipInstall`：跳过依赖安装步骤（默认会按 job 安装）。
 - `-IncludeRelease`：将 `release` job 一并纳入执行。
-- `-Jobs runtime-smoke`：执行阶段1运行态冒烟（XTP/UFT stub smoke + realtime_data failover/HTTP provider 测试）。
-- `-Jobs gateway-integration`：执行真实 SDK 联调冒烟（XTP/UFT，环境不齐全时会 `skip`）。
+- `-Jobs runtime-smoke`：执行阶段1运行态冒烟（XtQuant/XTP/UFT stub smoke + gateway mock SDK + realtime_data failover/HTTP provider 测试）。
+- `-Jobs gateway-integration`：执行真实 SDK 联调冒烟（XtQuant/XTP/UFT，环境不齐全时会 `skip`）。
 - `-Jobs preflight-gate`：执行上线决策闸门（`start_production.py --preflight-decision-only`）。
 
 在上线前先做「决策-only」预检，先给一版可直接执行的标准清单。  
@@ -96,7 +96,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs test,code-quality,security-scan -SkipInstall
 ```
 
-2. 运行阶段1运行态冒烟（XTP/UFT + realtime_data）
+2. 运行阶段1运行态冒烟（XtQuant/XTP/UFT + mock SDK + realtime_data）
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs runtime-smoke -SkipInstall

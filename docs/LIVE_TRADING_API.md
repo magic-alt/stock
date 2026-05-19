@@ -330,16 +330,18 @@ def on_trade(self, callback: Callable[[TradeUpdate], None]) -> None:
 
 ```python
 class OrderStatus(str, Enum):
-    PENDING_SUBMIT = "pending_submit"  # 本地已创建
-    SUBMITTED = "submitted"            # 已报
-    PARTIALLY_FILLED = "partial_fill"  # 部分成交
-    FILLED = "filled"                  # 全部成交
-    CANCEL_PENDING = "cancel_pending"  # 待撤
-    CANCELLED = "cancelled"            # 已撤
-    REJECTED = "rejected"              # 废单
-    EXPIRED = "expired"                # 过期
-    ERROR = "error"                    # 错误
+    CREATED = "created"                    # 本地已创建
+    SUBMITTED = "submitted"                # 已报
+    ACCEPTED = "accepted"                  # 已受理
+    PARTIALLY_FILLED = "partial_filled"    # 部分成交
+    FILLED = "filled"                      # 全部成交
+    CANCELLED = "cancelled"                # 已撤
+    REJECTED = "rejected"                  # 废单
+    EXPIRED = "expired"                    # 过期
 ```
+
+统一订单生命周期为 `created -> submitted -> accepted -> partial_filled -> filled/cancelled/rejected/expired`。
+网关侧旧状态仍会被兼容并归一化：`pending`/`pending_submit` -> `created`，`partial`/`partial_fill` -> `partial_filled`，`cancel_pending` -> `accepted`，`error` -> `rejected`。
 
 #### OrderUpdate (订单更新)
 
@@ -562,6 +564,7 @@ class GatewayEventType:
     ORDER_CANCELLED = "gateway.order.cancelled"
     ORDER_FILLED = "gateway.order.filled"
     ORDER_PARTIAL = "gateway.order.partial"
+    ORDER_EXPIRED = "gateway.order.expired"
     ORDER_ERROR = "gateway.order.error"
     
     # 成交事件

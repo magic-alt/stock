@@ -21,7 +21,7 @@
 - **自动化流程**: `run` / `grid` / `auto` / `combo` / `baseline` / `admission`
 - **统一架构**: BaseStrategy + EventEngine + 统一接口层
 - **实盘网关**: XtQuant / XTP / Hundsun UFT / EastMoney（easytrader），无 SDK 时自动进入 **Stub Mode** 便于 CI / 开发
-- **订单状态机**: `OrderStateMachine` 严格/宽松双模式 + 有界审计历史（默认 1000 条）+ 非法转换审计
+- **订单状态机**: 统一 `created -> submitted -> accepted -> partial_filled -> terminal` 生命周期，`OrderStateMachine` 严格/宽松双模式 + 有界审计历史（默认 1000 条）+ 非法转换审计
 - **风险与归因**: VaR/ES、CAPM α/β、跟踪误差、风格暴露
 - **执行建模**: 市场冲击滑点 + 成交概率/延迟模拟（A 股 T+1、涨跌停、整手）
 - **合规与运维**: 审计哈希链、RBAC 权限隔离、快照恢复（HA/DR）、Prometheus `/metrics`

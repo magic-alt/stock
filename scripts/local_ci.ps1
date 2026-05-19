@@ -233,7 +233,7 @@ foreach ($job in $selectedJobs) {
                     )
                 }
                 Invoke-Step -JobName "runtime-smoke" -StepName "Run gateway and realtime smoke tests" -Commands @(
-                    { python -m pytest tests/test_gateway_xtp_smoke.py tests/test_gateway_uft_smoke.py tests/test_realtime_data.py tests/test_config_schema.py::TestGlobalConfig::test_default_config_valid tests/test_config_schema.py::TestGlobalConfig::test_realtime_data_config_validation tests/test_config_schema.py::TestGlobalConfig::test_realtime_data_default_bar_intervals -v --tb=short -x }
+                    { python -m pytest tests/test_gateway_xtquant_smoke.py tests/test_gateway_xtp_smoke.py tests/test_gateway_uft_smoke.py tests/test_gateway_mock_sdk.py tests/test_realtime_data.py tests/test_config_schema.py::TestGlobalConfig::test_default_config_valid tests/test_config_schema.py::TestGlobalConfig::test_realtime_data_config_validation tests/test_config_schema.py::TestGlobalConfig::test_realtime_data_default_bar_intervals -v --tb=short -x }
                 )
             }
         }
@@ -245,8 +245,8 @@ foreach ($job in $selectedJobs) {
                         { pip install -r requirements.txt }
                     )
                 }
-                Invoke-Step -JobName "gateway-integration" -StepName "Run XTP/UFT SDK integration smoke" -Commands @(
-                    { python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short -x }
+                Invoke-Step -JobName "gateway-integration" -StepName "Run live SDK integration smoke" -Commands @(
+                    { python -m pytest tests/test_gateway_xtquant_integration.py tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short -x }
                 )
             }
         }

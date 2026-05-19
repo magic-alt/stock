@@ -27,8 +27,9 @@ import logging
 from src.core.events import Event, EventEngine, EventType
 from src.core.interfaces import (
     TradeGateway, PositionInfo, AccountInfo, OrderInfo, TradeInfo,
-    Side, OrderTypeEnum, OrderStatusEnum, ExecutionReport
+    Side, OrderTypeEnum, OrderStatusEnum, ExecutionReport, OrderRequest
 )
+from src.core.pre_trade_risk import evaluate_pre_trade_risk
 
 # Simulation components
 try:
@@ -293,13 +294,19 @@ class PaperGateway(TradeGateway):
                     )
 
             order_price = price if price is not None else self._last_prices.get(symbol, 0.0)
-            risk_result = self._risk_manager.check_order(
+            request = OrderRequest(
                 symbol=symbol,
                 side=side_enum,
                 quantity=size,
                 price=order_price,
+                order_type=OrderTypeEnum(order_type_lower),
+            )
+            risk_result = evaluate_pre_trade_risk(
+                self._risk_manager,
+                request,
                 account=account_info,
                 positions=positions_info,
+                price=order_price,
             )
             if not risk_result:
                 self.events.put(Event(EventType.RISK_WARNING, {
@@ -475,7 +482,7 @@ class PaperGateway(TradeGateway):
             if order.filled_quantity >= order.quantity:
                 order.status = OrderStatusEnum.FILLED
             else:
-                order.status = OrderStatusEnum.PARTIAL
+                order.status = OrderStatusEnum.PARTIALLY_FILLED
             
             # Emit order filled event
             self.events.put(Event(EventType.ORDER_FILLED, order))
