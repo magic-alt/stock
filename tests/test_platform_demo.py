@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,24 @@ def test_run_paper_trading_demo_end_to_end(demo_queue):
 def test_run_paper_trading_demo_rejects_bad_quantity():
     with pytest.raises(ValueError, match="quantity"):
         run_paper_trading_demo(GatewayService(), quantity=0)
+
+
+def test_gateway_service_disconnect_returns_without_deadlock():
+    service = GatewayService()
+    service.connect({"mode": "paper", "broker": "paper"})
+
+    result = {}
+
+    def disconnect_gateway():
+        result["status"] = service.disconnect()
+
+    thread = threading.Thread(target=disconnect_gateway, daemon=True)
+    thread.start()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert result["status"]["connected"] is False
+    assert service.status()["connected"] is False
 
 
 def test_write_demo_report_creates_json(tmp_path, demo_queue):

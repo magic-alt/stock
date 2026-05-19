@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-05-18
+## [Unreleased] - 2026-05-19
 
 ### Removed
 - Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。
@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- Web: 回测结果新增 CLI 风格 K线多面板图，展示 MA/BOLL、成交量、RSI、MACD、KDJ 和买卖点标记，并保留权益/回撤曲线作为兜底。
+- Web: 回测结果 API 和前端新增权益曲线/回撤曲线数据，用于恢复浏览器端回测图表展示。
 - Gateway: add provider routing for vn.py and standardized third-party QMT integrations while keeping the built-in XtQuant/QMT adapter as the default.
 - Web: gateway connection form now exposes provider selection, QMT provider selection, SDK paths, vn.py connection settings, and broker options JSON.
 - Tests: add provider-routing coverage for default QMT, vn.py QMT routing, missing vn.py dependency errors, and API config propagation.
@@ -95,6 +97,10 @@ All notable changes to this project will be documented in this file.
 - Reports: record parameter signatures plus baseline source/alias/match status in admission artifacts so reviewers can see whether regression checks used a strategy-owned baseline.
 
 ### Fixed
+- Frontend: 修复 Docker nginx 中 `/monitor` SPA 路由被 legacy monitor proxy 重定向到本机 80 端口的问题。
+- Platform: 修复 `/api/v2/gateway/disconnect` 在 GatewayService 锁内递归读取状态造成的死锁，避免断开交易网关后 API 整体 504。
+- Frontend: 同步回测完成后显示成功/无交易提示，并在结果区展示更新时间，避免零交易结果看起来像按钮无响应。
+- Frontend: 将回测页默认初始资金提高到 100 万，避免默认 600519.SH 因 A 股 100 股一手规则导致 10 万资金无法成交。
 - Frontend: normalize backend position/account payloads to actual API schema so trading pages render correctly.
 - Frontend: switch release path to `api_v2` envelopes so strategy/trading pages work behind the production stack.
 - Deploy: align production health endpoints and legacy release proxies with `api_v2` paths.

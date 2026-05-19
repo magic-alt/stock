@@ -220,17 +220,68 @@ class TestFastAPIEndpoints:
 
     def test_strategy_run_endpoint(self, client, monkeypatch):
         from src.backtest.engine import BacktestEngine
+        pd = pytest.importorskip("pandas")
+        bt = pytest.importorskip("backtrader")
 
-        def fake_run_strategy(self, **kwargs):
-            assert kwargs["strategy"] == "macd"
+        index = pd.date_range(start="2024-01-01", periods=35)
+        price_df = pd.DataFrame(
+            {
+                "open": [10.0 + i for i in range(35)],
+                "close": [10.5 + i for i in range(35)],
+                "low": [9.8 + i for i in range(35)],
+                "high": [10.8 + i for i in range(35)],
+                "volume": [1000.0 + i * 10 for i in range(35)],
+            },
+            index=index,
+        )
+
+        class FakeData:
+            _name = "600519.SH"
+            _dataname = price_df
+
+        class FakeExecuted:
+            def __init__(self, dt, price, size):
+                self.dt = bt.date2num(dt.to_pydatetime())
+                self.price = price
+                self.size = size
+
+        class FakeOrder:
+            Completed = 4
+
+            def __init__(self, is_buy, dt, price, size):
+                self.status = self.Completed
+                self.data = FakeData()
+                self.executed = FakeExecuted(dt, price, size)
+                self._is_buy = is_buy
+
+            def isbuy(self):
+                return self._is_buy
+
+        class FakeStrategy:
+            _orders = [
+                FakeOrder(True, index[10], 20.5, 100),
+                FakeOrder(False, index[20], 30.5, -100),
+            ]
+
+        class FakeCerebro:
+            datas = [FakeData()]
+            runstrats = [[FakeStrategy()]]
+
+        def fake_run_strategy(self, strategy, symbols, start, end, **kwargs):
+            assert strategy == "macd"
+            assert symbols == ["600519.SH"]
+            assert start == "2024-01-01"
+            assert end == "2024-12-31"
             assert kwargs["benchmark"] == "000300.SH"
             assert kwargs["engine"] == "backtrader"
+            assert kwargs["enable_plot"] is True
             return {
                 "strategy": "macd",
                 "cum_return": 0.12,
                 "sharpe": 1.8,
                 "trades": 8,
-                "nav": [1, 2, 3],
+                "nav": [1.0, 0.9, 1.2],
+                "_cerebro": FakeCerebro(),
             }
 
         monkeypatch.setattr(BacktestEngine, "run_strategy", fake_run_strategy)
@@ -250,7 +301,75 @@ class TestFastAPIEndpoints:
         assert resp.status_code == 200
         body = resp.json()
         assert body["ok"] is True
-        assert body["data"]["metrics"]["cum_return"] == 0.12
+        metrics = body["data"]["metrics"]
+        assert metrics["cum_return"] == 0.12
+        assert "nav" not in metrics
+        assert metrics["equity_curve"] == [
+            {"date": "0", "value": 1.0},
+            {"date": "1", "value": 0.9},
+            {"date": "2", "value": 1.2},
+        ]
+        assert metrics["drawdown_curve"][1] == {"date": "1", "value": -0.1}
+        assert metrics["technical_chart"]["symbol"] == "600519.SH"
+        assert metrics["technical_chart"]["dates"][0] == "2024-01-01"
+        assert metrics["technical_chart"]["ohlc"][0] == [10.0, 10.5, 9.8, 10.8]
+        assert metrics["technical_chart"]["volumes"][0] == 1000.0
+        assert metrics["technical_chart"]["ma"]["ma5"][4] is not None
+        assert [item["type"] for item in metrics["technical_chart"]["trades"]] == ["BUY", "SELL"]
+
+    def test_strategy_run_endpoint_uses_chart_fallback_without_cerebro(self, client, monkeypatch):
+        from src.backtest.engine import BacktestEngine
+        pd = pytest.importorskip("pandas")
+
+        index = pd.date_range(start="2024-01-01", periods=30)
+        price_df = pd.DataFrame(
+            {
+                "open": [10.0 + i for i in range(30)],
+                "close": [10.4 + i for i in range(30)],
+                "low": [9.7 + i for i in range(30)],
+                "high": [10.8 + i for i in range(30)],
+                "volume": [1000.0 + i * 20 for i in range(30)],
+            },
+            index=index,
+        )
+
+        class FakeProvider:
+            def load_stock_daily(self, symbols, start, end, **kwargs):
+                assert symbols == ["600519.SH"]
+                return {"600519.SH": price_df}
+
+        def fake_run_strategy(self, strategy, symbols, start, end, **kwargs):
+            assert kwargs["enable_plot"] is True
+            return {
+                "strategy": strategy,
+                "cum_return": float("nan"),
+                "final_value": 1000000,
+                "trades": 0,
+                "error": "Model not found: qlib-csi300",
+                "nav": [1.0],
+            }
+
+        monkeypatch.setattr(BacktestEngine, "run_strategy", fake_run_strategy)
+        monkeypatch.setattr("src.data_sources.providers.get_provider", lambda *args, **kwargs: FakeProvider())
+
+        resp = client.post(
+            "/api/v2/backtest/run",
+            json={
+                "strategy": "qlib_registry",
+                "symbols": ["600519.SH"],
+                "start": "2024-01-01",
+                "end": "2024-12-31",
+                "source": "akshare",
+                "engine": "backtrader",
+            },
+        )
+        assert resp.status_code == 200
+        metrics = resp.json()["data"]["metrics"]
+        assert metrics["error"] == "Model not found: qlib-csi300"
+        assert metrics["technical_chart"]["symbol"] == "600519.SH"
+        assert len(metrics["technical_chart"]["dates"]) == 30
+        assert metrics["technical_chart"]["ohlc"][0] == [10.0, 10.4, 9.7, 10.8]
+        assert metrics["technical_chart"]["trades"] == []
 
     def test_backtest_job_endpoints(self, client, monkeypatch):
         def fake_run_backtest_job(payload):

@@ -325,9 +325,26 @@ if HAS_FASTAPI:
             valid = not any(e["severity"] == "error" for e in errors)
             return ApiEnvelope(data={"valid": valid, "errors": errors})
 
+        def _build_fallback_technical_chart(req: BacktestRequest) -> Dict[str, Any]:
+            try:
+                from src.data_sources.providers import get_provider
+                from src.platform.backtest_charts import build_technical_chart_payload_from_frame
+
+                symbol = req.symbols[0]
+                provider = get_provider(req.source)
+                data_map = provider.load_stock_daily([symbol], req.start, req.end, adj=req.adj)
+                return build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
+            except Exception as exc:
+                logger.warning("backtest_chart_fallback_failed", error=str(exc))
+                return {"technical_chart": None}
+
         async def _run_backtest_impl(req: BacktestRequest):
             try:
                 from src.backtest.engine import BacktestEngine
+                from src.platform.backtest_charts import build_nav_chart_payload, build_technical_chart_payload
+
+                engine_name = req.engine or "backtrader"
+                capture_cerebro = engine_name.lower() in ("backtrader", "bt")
                 engine = BacktestEngine(
                     source=req.source,
                     benchmark_source=req.benchmark_source or req.source,
@@ -345,13 +362,21 @@ if HAS_FASTAPI:
                     benchmark=req.benchmark,
                     adj=req.adj,
                     calendar_mode=req.calendar_mode,
-                    engine=req.engine,
+                    enable_plot=capture_cerebro,
+                    engine=engine_name,
                 )
+
+                chart_payload = build_nav_chart_payload(result.get("nav"))
+                technical_payload = build_technical_chart_payload(result.get("_cerebro"))
+                if not technical_payload.get("technical_chart"):
+                    technical_payload = _build_fallback_technical_chart(req)
+                chart_payload.update(technical_payload)
                 clean = {
                     k: _jsonable(v)
                     for k, v in result.items()
                     if k not in ("nav", "_cerebro", "_quality_report", "_data_fingerprint")
                 }
+                clean.update(chart_payload)
                 return ApiEnvelope(data={"metrics": clean})
             except KeyError as e:
                 raise HTTPException(status_code=404, detail=str(e))

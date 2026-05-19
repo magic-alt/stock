@@ -11,6 +11,11 @@ from src.backtest.engine import BacktestEngine
 from src.backtest.plotting import plot_backtest_with_indicators
 from src.backtest.repro import build_snapshot_payload, compute_report_signature, write_snapshot
 from src.data_sources.quality import save_quality_report
+from src.platform.backtest_charts import (
+    build_nav_chart_payload,
+    build_technical_chart_payload,
+    build_technical_chart_payload_from_frame,
+)
 from src.platform.data_lake import DataLake
 
 
@@ -61,8 +66,31 @@ def _build_repro_command(payload: Dict[str, Any]) -> str:
     return " ".join(tokens)
 
 
+def _build_fallback_technical_chart(payload: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        from src.data_sources.providers import get_provider
+
+        symbols = payload.get("symbols") or []
+        if not symbols:
+            return {"technical_chart": None}
+        symbol = symbols[0]
+        provider = get_provider(payload.get("source", "akshare"))
+        data_map = provider.load_stock_daily(
+            [symbol],
+            payload.get("start"),
+            payload.get("end"),
+            adj=payload.get("adj"),
+            cache_dir=payload.get("cache_dir", "./cache"),
+        )
+        return build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
+    except Exception:
+        return {"technical_chart": None}
+
+
 def run_backtest_job(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Run a single backtest task and optionally generate a report."""
+    engine_name = str(payload.get("engine", "backtrader"))
+    capture_cerebro = engine_name.lower() in ("backtrader", "bt")
     engine = BacktestEngine(
         source=payload.get("source", "akshare"),
         benchmark_source=payload.get("benchmark_source") or payload.get("source", "akshare"),
@@ -81,15 +109,20 @@ def run_backtest_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         benchmark=payload.get("benchmark"),
         adj=payload.get("adj"),
         out_dir=payload.get("out_dir"),
-        enable_plot=bool(payload.get("plot", False)),
+        enable_plot=bool(payload.get("plot", False)) or capture_cerebro,
         calendar_mode=payload.get("calendar_mode"),
         collect_diagnostics=True,
-        engine=payload.get("engine", "backtrader"),
+        engine=engine_name,
     )
     cerebro = metrics.pop("_cerebro", None)
     quality_report = metrics.pop("_quality_report", None)
     data_fingerprint = metrics.pop("_data_fingerprint", None)
     nav = metrics.pop("nav", None)
+    metrics.update(build_nav_chart_payload(nav))
+    technical_payload = build_technical_chart_payload(cerebro)
+    if not technical_payload.get("technical_chart"):
+        technical_payload = _build_fallback_technical_chart(payload)
+    metrics.update(technical_payload)
 
     report_dir = _build_report_dir(payload)
     repro_command = _build_repro_command(payload)
