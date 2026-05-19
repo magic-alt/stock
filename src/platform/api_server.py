@@ -243,11 +243,11 @@ class GatewayService:
             if not self._gateway:
                 return {"status": "disconnected"}
             gateway = self._gateway
+            self._gateway = None
+            self._connected_at = None
         if gateway is not None:
             gateway.disconnect()
-        with self._lock:
-            self._connected_at = None
-            return self.status()
+        return self.status()
 
     def status(self) -> Dict[str, Any]:
         with self._lock:

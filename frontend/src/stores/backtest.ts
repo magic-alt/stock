@@ -7,28 +7,34 @@ export const useBacktestStore = defineStore('backtest', () => {
   const loading = ref(false)
   const jobLoading = ref(false)
   const lastResult = ref<BacktestMetrics | null>(null)
+  const lastRunAt = ref<string | null>(null)
   const activeJob = ref<JobInfo | null>(null)
   const error = ref<string | null>(null)
   const history = ref<BacktestMetrics[]>([])
 
   function recordResult(metrics: BacktestMetrics) {
     lastResult.value = metrics
+    lastRunAt.value = new Date().toISOString()
     history.value.unshift(metrics)
   }
 
   async function runBacktest(params: BacktestRunPayload) {
     loading.value = true
     error.value = null
+    activeJob.value = null
     try {
       const resp = await client.post('/api/v2/backtest/run', params)
       const data = unwrapApiData<{ metrics: BacktestMetrics }>(resp.data)
       if (data.metrics) {
         recordResult(data.metrics)
+        return data.metrics
       } else {
         error.value = 'Backtest failed'
+        return null
       }
     } catch (e) {
       error.value = (e as Error).message
+      return null
     } finally {
       loading.value = false
     }
@@ -96,6 +102,7 @@ export const useBacktestStore = defineStore('backtest', () => {
     error,
     fetchBacktestJob,
     history,
+    lastRunAt,
     jobLoading,
     lastResult,
     loading,

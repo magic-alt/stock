@@ -9,6 +9,51 @@ export interface StrategyInfo {
   params: Record<string, StrategyParam>
 }
 
+export interface BacktestChartPoint {
+  date: string
+  value: number
+}
+
+export type NullableNumber = number | null
+
+export interface BacktestTradeMarker {
+  date: string
+  type: 'BUY' | 'SELL' | string
+  price: number
+  size?: number | null
+  symbol?: string
+}
+
+export interface BacktestTechnicalChart {
+  symbol: string
+  dates: string[]
+  ohlc: number[][]
+  volumes: number[]
+  ma: {
+    ma5: NullableNumber[]
+    ma10: NullableNumber[]
+    ma20: NullableNumber[]
+    ma30: NullableNumber[]
+  }
+  boll: {
+    upper: NullableNumber[]
+    mid: NullableNumber[]
+    lower: NullableNumber[]
+  }
+  rsi: NullableNumber[]
+  macd: {
+    dif: NullableNumber[]
+    signal: NullableNumber[]
+    hist: NullableNumber[]
+  }
+  kdj: {
+    k: NullableNumber[]
+    d: NullableNumber[]
+    j: NullableNumber[]
+  }
+  trades: BacktestTradeMarker[]
+}
+
 export interface BacktestMetrics {
   strategy: string
   cum_return: number
@@ -19,6 +64,9 @@ export interface BacktestMetrics {
   calmar: number
   win_rate: number
   trades: number
+  equity_curve?: BacktestChartPoint[]
+  drawdown_curve?: BacktestChartPoint[]
+  technical_chart?: BacktestTechnicalChart | null
   [key: string]: unknown
 }
 
