@@ -41,6 +41,12 @@ from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from src.core.logger import get_logger
+from src.core.order_state import (
+    InvalidOrderStateTransition,
+    OrderStateMachine,
+    OrderStateTransition,
+    OrderStatus,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -56,27 +62,6 @@ class GatewayStatus(str, Enum):
     RECONNECTING = "reconnecting"
     ERROR = "error"
     CLOSED = "closed"
-
-
-class OrderStatus(str, Enum):
-    """
-    Unified order status for internal state machine.
-    
-    State transitions:
-        PENDING_SUBMIT -> SUBMITTED -> PARTIALLY_FILLED -> FILLED
-                       -> CANCEL_PENDING -> CANCELLED
-                       -> REJECTED
-                       -> ERROR
-    """
-    PENDING_SUBMIT = "pending_submit"  # Created locally, not yet sent
-    SUBMITTED = "submitted"            # Accepted by broker
-    PARTIALLY_FILLED = "partial_fill"  # Partially executed
-    FILLED = "filled"                  # Fully executed
-    CANCEL_PENDING = "cancel_pending"  # Cancel request sent
-    CANCELLED = "cancelled"            # Successfully cancelled
-    REJECTED = "rejected"              # Rejected by broker/exchange
-    EXPIRED = "expired"                # Order expired
-    ERROR = "error"                    # Error state
 
 
 class OrderType(str, Enum):
@@ -408,193 +393,8 @@ class QueryResultCache:
 # ---------------------------------------------------------------------------
 
 
-class InvalidOrderStateTransition(Exception):
-    """Raised when an illegal order state transition is attempted."""
-
-    def __init__(self, client_order_id: str, from_state: OrderStatus, to_state: OrderStatus):
-        super().__init__(
-            f"Illegal order transition for {client_order_id}: {from_state.value} -> {to_state.value}"
-        )
-        self.client_order_id = client_order_id
-        self.from_state = from_state
-        self.to_state = to_state
-
-
 class GatewayUnavailable(RuntimeError):
     """Raised when a gateway operation is invoked without the underlying SDK."""
-
-
-@dataclass
-class OrderStateTransition:
-    """One transition record for the audit history."""
-
-    client_order_id: str
-    from_state: OrderStatus
-    to_state: OrderStatus
-    timestamp: datetime = field(default_factory=datetime.now)
-    reason: str = ""
-
-
-class OrderStateMachine:
-    """Validates and records order state transitions across all gateways.
-
-    A single state machine is shared by every order tracked by a gateway. The
-    transition table below mirrors the lifecycle documented on :class:`OrderStatus`.
-    Terminal states (``FILLED`` / ``CANCELLED`` / ``REJECTED`` / ``EXPIRED`` /
-    ``ERROR``) have no outgoing transitions.
-
-    The audit history is kept in-memory and bounded to ``history_limit`` entries
-    so long-running gateways do not leak memory.
-    """
-
-    # Legal transitions: source -> set of allowed targets.
-    _TRANSITIONS: Dict[OrderStatus, Set[OrderStatus]] = {
-        OrderStatus.PENDING_SUBMIT: {
-            OrderStatus.SUBMITTED,
-            OrderStatus.REJECTED,
-            OrderStatus.ERROR,
-            OrderStatus.CANCELLED,  # Local cancel before broker ack
-        },
-        OrderStatus.SUBMITTED: {
-            OrderStatus.PARTIALLY_FILLED,
-            OrderStatus.FILLED,
-            OrderStatus.CANCEL_PENDING,
-            OrderStatus.CANCELLED,
-            OrderStatus.REJECTED,
-            OrderStatus.EXPIRED,
-            OrderStatus.ERROR,
-        },
-        OrderStatus.PARTIALLY_FILLED: {
-            OrderStatus.PARTIALLY_FILLED,  # allow incremental fills
-            OrderStatus.FILLED,
-            OrderStatus.CANCEL_PENDING,
-            OrderStatus.CANCELLED,
-            OrderStatus.EXPIRED,
-            OrderStatus.ERROR,
-        },
-        OrderStatus.CANCEL_PENDING: {
-            OrderStatus.CANCELLED,
-            OrderStatus.FILLED,        # Race: fill landed before cancel
-            OrderStatus.PARTIALLY_FILLED,
-            OrderStatus.REJECTED,
-            OrderStatus.ERROR,
-        },
-        # Terminal states — no outgoing transitions.
-        OrderStatus.FILLED: set(),
-        OrderStatus.CANCELLED: set(),
-        OrderStatus.REJECTED: set(),
-        OrderStatus.EXPIRED: set(),
-        OrderStatus.ERROR: set(),
-    }
-
-    TERMINAL_STATES: Set[OrderStatus] = {
-        OrderStatus.FILLED,
-        OrderStatus.CANCELLED,
-        OrderStatus.REJECTED,
-        OrderStatus.EXPIRED,
-        OrderStatus.ERROR,
-    }
-
-    def __init__(self, history_limit: int = 1000):
-        self._history: List[OrderStateTransition] = []
-        self._current: Dict[str, OrderStatus] = {}
-        self._lock = threading.Lock()
-        self._history_limit = history_limit
-
-    # ---- public API -------------------------------------------------------
-
-    def register(self, client_order_id: str, initial: OrderStatus = OrderStatus.PENDING_SUBMIT) -> None:
-        """Register a new order id with its initial state."""
-        with self._lock:
-            self._current[client_order_id] = initial
-
-    def current(self, client_order_id: str) -> Optional[OrderStatus]:
-        with self._lock:
-            return self._current.get(client_order_id)
-
-    def is_terminal(self, client_order_id: str) -> bool:
-        cur = self.current(client_order_id)
-        return cur in self.TERMINAL_STATES
-
-    def can_transition(self, from_state: OrderStatus, to_state: OrderStatus) -> bool:
-        allowed = self._TRANSITIONS.get(from_state, set())
-        return to_state in allowed
-
-    def transition(
-        self,
-        client_order_id: str,
-        to_state: OrderStatus,
-        reason: str = "",
-        *,
-        strict: bool = True,
-    ) -> OrderStateTransition:
-        """Move an order to ``to_state``, recording the transition.
-
-        Args:
-            client_order_id: Order being transitioned.
-            to_state: Target state.
-            reason: Free-form reason (broker error message, etc.).
-            strict: If True, raise :class:`InvalidOrderStateTransition` on
-                illegal transitions; if False, record the transition with a
-                ``[forced]`` reason prefix and continue.
-
-        Returns:
-            The :class:`OrderStateTransition` that was appended to the audit log.
-        """
-        with self._lock:
-            current = self._current.get(client_order_id)
-            if current is None:
-                # First time we see this order — register implicitly.
-                current = OrderStatus.PENDING_SUBMIT
-                self._current[client_order_id] = current
-
-            if current == to_state and to_state != OrderStatus.PARTIALLY_FILLED:
-                # No-op: idempotent (re-asserting same non-partial state).
-                rec = OrderStateTransition(
-                    client_order_id=client_order_id,
-                    from_state=current,
-                    to_state=to_state,
-                    reason=f"[noop] {reason}".strip(),
-                )
-                self._append_history(rec)
-                return rec
-
-            if not self.can_transition(current, to_state):
-                if strict:
-                    raise InvalidOrderStateTransition(client_order_id, current, to_state)
-                # Lenient mode: record the illegal attempt in the audit log
-                # but DO NOT mutate the current state.
-                rec = OrderStateTransition(
-                    client_order_id=client_order_id,
-                    from_state=current,
-                    to_state=to_state,
-                    reason=f"[rejected] {reason}".strip(),
-                )
-                self._append_history(rec)
-                return rec
-
-            self._current[client_order_id] = to_state
-            rec = OrderStateTransition(
-                client_order_id=client_order_id,
-                from_state=current,
-                to_state=to_state,
-                reason=reason,
-            )
-            self._append_history(rec)
-            return rec
-
-    def history(self, client_order_id: Optional[str] = None) -> List[OrderStateTransition]:
-        with self._lock:
-            if client_order_id is None:
-                return list(self._history)
-            return [t for t in self._history if t.client_order_id == client_order_id]
-
-    def _append_history(self, rec: OrderStateTransition) -> None:
-        self._history.append(rec)
-        if len(self._history) > self._history_limit:
-            # Drop oldest 10% in one shot to amortise list-mutation cost.
-            drop = max(1, self._history_limit // 10)
-            del self._history[:drop]
 
 
 # ---------------------------------------------------------------------------

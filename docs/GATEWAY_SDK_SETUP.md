@@ -1,6 +1,6 @@
 # Gateway SDK Setup Guide
 
-This guide covers installation and configuration for the three trading gateway SDKs supported by the platform.
+This guide covers installation, configuration, and smoke-test gates for the trading gateway SDKs supported by the platform.
 
 > **需要券商账户、商业 SDK 申请、合规要求**？请参阅
 > [BROKER_ACCOUNT_GUIDE.md](BROKER_ACCOUNT_GUIDE.md) — 包含 QMT / XTP / UFT
@@ -240,10 +240,23 @@ print(f"Running in stub mode: {gw._stub_mode}")
 
 ---
 
+## Smoke Test Tiers
+
+Gateway readiness is validated in three tiers:
+
+| Tier | Scope | Command |
+|------|-------|---------|
+| Stub smoke | XtQuant/QMT, XTP, UFT lifecycle in SDK-less mode | `python -m pytest tests/test_gateway_xtquant_smoke.py tests/test_gateway_xtp_smoke.py tests/test_gateway_uft_smoke.py -v --tb=short` |
+| Mock SDK integration | Contract-level gateway behavior with injected SDK doubles | `python -m pytest tests/test_gateway_mock_sdk.py -v --tb=short` |
+| Real SDK integration | Broker SDK import/connect/query smoke, no live order by default | `powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs gateway-integration -SkipInstall` |
+
+`scripts/local_ci.ps1 -Jobs runtime-smoke` runs the stub smoke tier plus mock SDK coverage and realtime provider checks.
+
 ## Integration Smoke
 
-The repository ships two real-SDK integration smokes:
+The repository ships real-SDK integration smokes for all broker SDK gateways:
 
+- `tests/test_gateway_xtquant_integration.py`
 - `tests/test_gateway_xtp_integration.py`
 - `tests/test_gateway_uft_integration.py`
 
@@ -254,6 +267,21 @@ They are designed to be safe by default:
 - The assertions focus on `connect -> query_account -> query_positions`.
 
 ### Required environment variables
+
+#### XtQuant/QMT
+
+```powershell
+$env:XTQUANT_SMOKE_ACCOUNT="your_account"
+$env:XTQUANT_SMOKE_TERMINAL_TYPE="QMT"
+```
+
+Optional:
+
+```powershell
+$env:XTQUANT_SMOKE_TERMINAL_PATH="C:\path\to\XtMiniQmt.exe"
+$env:XTQUANT_SMOKE_SDK_PATH="C:\path\to\xtquant\site-packages"
+$env:XTQUANT_SMOKE_LOG_PATH=".\logs\xtquant_smoke"
+```
 
 #### XTP
 
@@ -293,7 +321,7 @@ $env:UFT_SMOKE_LOG_PATH=".\logs\uft_smoke"
 Direct pytest:
 
 ```powershell
-python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short
+python -m pytest tests/test_gateway_xtquant_integration.py tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short
 ```
 
 Via local CI:
@@ -306,7 +334,7 @@ If you need to validate the order/cancel path in a broker-approved test environm
 
 ```powershell
 $env:ALLOW_LIVE_SMOKE_ORDER="1"
-python -m pytest tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short
+python -m pytest tests/test_gateway_xtquant_integration.py tests/test_gateway_xtp_integration.py tests/test_gateway_uft_integration.py -m integration -v --tb=short
 ```
 
 ---

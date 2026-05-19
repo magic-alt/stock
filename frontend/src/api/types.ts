@@ -129,6 +129,18 @@ export interface PositionInfo {
   [key: string]: unknown
 }
 
+export type OrderStatus =
+  | 'created'
+  | 'submitted'
+  | 'accepted'
+  | 'partial_filled'
+  | 'filled'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired'
+  | 'pending'
+  | 'partial'
+
 export interface OrderInfo {
   order_id: string
   symbol: string
@@ -138,7 +150,7 @@ export interface OrderInfo {
   quantity: number
   filled_quantity: number
   avg_fill_price: number
-  status: string
+  status: OrderStatus
   create_time?: string | null
   update_time?: string | null
 }
