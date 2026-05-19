@@ -164,6 +164,18 @@ def _require_live_launch_gate(config: Any, args: argparse.Namespace) -> Dict[str
     )
 
 
+def _require_paper_launch_gate(config: Any, args: argparse.Namespace) -> Dict[str, Any]:
+    strategy_name = _resolve_runtime_strategy(config)
+    params = _resolve_strategy_gate_params(config)
+    gate_root = _resolve_strategy_gate_root(getattr(args, "preflight_gate_root", None))
+    return require_strategy_stage(
+        strategy_name,
+        "baseline_registered",
+        params=params,
+        gate_root=gate_root,
+    )
+
+
 def _mark_live_production_gate(config: Any, args: argparse.Namespace) -> Dict[str, Any]:
     strategy_name = _resolve_runtime_strategy(config)
     params = _resolve_strategy_gate_params(config)
@@ -812,8 +824,11 @@ def _run_preflight_if_requested(
         params=effective_gate_params,
         gate_root=gate_root,
     )
-    if preflight_mode == "live":
-        required_stage = "paper_validated" if args.preflight_skip_paper else "admission_passed"
+    if preflight_mode in {"paper", "live"}:
+        if preflight_mode == "paper":
+            required_stage = "baseline_registered"
+        else:
+            required_stage = "paper_validated" if args.preflight_skip_paper else "admission_passed"
         try:
             require_strategy_stage(
                 preflight_strategy,
@@ -1023,28 +1038,41 @@ def _run_preflight_if_requested(
 
     paper_gate_ready = False
     if _paper_smoke_passed(report):
-        gate_payload = promote_strategy_gate(
-            preflight_strategy,
-            "paper_validated",
-            params=final_gate_params,
-            gate_root=gate_root,
-            source="startup.preflight.paper",
-            details={
-                "mode": preflight_mode,
-                "overall": report.get("overall"),
-                "advice_level": advice_level,
-                "decision_state": release_decision.get("decision_state"),
-            },
-            artifacts={"preflight_export": args.preflight_export} if args.preflight_export else {},
-        )
-        paper_gate_ready = True
-        release_decision["strategy_gate"] = _strategy_gate_summary(
-            preflight_strategy,
-            final_gate_params,
-            gate_root,
-            gate_payload,
-            required_stage=required_stage,
-        )
+        can_promote_paper_gate = True
+        if preflight_mode == "paper":
+            try:
+                require_strategy_stage(
+                    preflight_strategy,
+                    "admission_passed",
+                    params=final_gate_params,
+                    gate_root=gate_root,
+                )
+            except MissingStrategyGateStage:
+                can_promote_paper_gate = False
+
+        if can_promote_paper_gate:
+            gate_payload = promote_strategy_gate(
+                preflight_strategy,
+                "paper_validated",
+                params=final_gate_params,
+                gate_root=gate_root,
+                source="startup.preflight.paper",
+                details={
+                    "mode": preflight_mode,
+                    "overall": report.get("overall"),
+                    "advice_level": advice_level,
+                    "decision_state": release_decision.get("decision_state"),
+                },
+                artifacts={"preflight_export": args.preflight_export} if args.preflight_export else {},
+            )
+            paper_gate_ready = True
+            release_decision["strategy_gate"] = _strategy_gate_summary(
+                preflight_strategy,
+                final_gate_params,
+                gate_root,
+                gate_payload,
+                required_stage=required_stage,
+            )
     elif preflight_mode == "live":
         existing_gate = load_strategy_gate(
             preflight_strategy,
@@ -1219,6 +1247,11 @@ def main():
         if args.mode == "backtest":
             start_backtest_mode(config)
         elif args.mode == "paper":
+            try:
+                _require_paper_launch_gate(config, args)
+            except MissingStrategyGateStage as exc:
+                logger.error("Paper launch blocked by strategy gate: %s", exc)
+                sys.exit(1)
             start_paper_trading_mode(config)
         elif args.mode == "live":
             try:

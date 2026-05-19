@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.account_manager import AccountManager
+from src.backtest.admission_gates import DEFAULT_STRATEGY_GATE_ROOT, MissingStrategyGateStage, require_strategy_stage
 from src.core.capital_allocator import CapitalAllocator
 from src.core.logger import get_logger
 from src.core.monitoring import TraceContext, get_metric_collector, get_tracer
@@ -142,6 +143,8 @@ if HAS_FASTAPI:
     class CapitalAllocationPreviewRequest(BaseModel):
         tenant_id: str = Field("default", min_length=1)
         strategy_weights: Dict[str, float] = Field(..., min_length=1)
+        strategy_params: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+        gate_root: str = Field(DEFAULT_STRATEGY_GATE_ROOT, min_length=1)
         total_capital: Optional[float] = Field(None, gt=0)
         min_cash_buffer_pct: float = Field(0.05, ge=0, lt=1)
         max_account_weight: float = Field(1.0, gt=0, le=1)
@@ -611,6 +614,17 @@ if HAS_FASTAPI:
 
         @app.post("/api/v2/portfolio/capital-allocation/preview", tags=["Portfolio"])
         async def preview_capital_allocation(request: Request, payload: CapitalAllocationPreviewRequest):
+            for strategy_name in payload.strategy_weights:
+                try:
+                    require_strategy_stage(
+                        strategy_name,
+                        "admission_passed",
+                        params=payload.strategy_params.get(strategy_name, {}),
+                        gate_root=payload.gate_root,
+                    )
+                except MissingStrategyGateStage as exc:
+                    raise HTTPException(status_code=403, detail=str(exc))
+
             accounts = request.app.state.account_manager.list_accounts(payload.tenant_id)
             allocator = CapitalAllocator(
                 min_cash_buffer_pct=payload.min_cash_buffer_pct,

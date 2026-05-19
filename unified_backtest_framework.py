@@ -16,7 +16,7 @@ import argparse
 import json
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Import modularized components
 from src.backtest.admission import (
@@ -95,6 +95,45 @@ def _parse_json_option(value: Optional[str], *, option_name: str) -> Optional[Di
     if not isinstance(parsed, dict):
         raise ValueError(f"{option_name} must be a JSON object.")
     return parsed
+
+
+def _parse_params_list_option(value: Optional[str], *, option_name: str, expected_count: int) -> List[Dict[str, Any]]:
+    """Parse a JSON list of strategy parameter dictionaries."""
+    if not value:
+        return [{} for _ in range(expected_count)]
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON for {option_name}: {exc}") from exc
+    if not isinstance(parsed, list):
+        raise ValueError(f"{option_name} must be a JSON array.")
+    if len(parsed) != expected_count:
+        raise ValueError(f"{option_name} length must match --strategies length.")
+    params_list: List[Dict[str, Any]] = []
+    for index, item in enumerate(parsed):
+        if item is None:
+            params_list.append({})
+        elif isinstance(item, dict):
+            params_list.append(dict(item))
+        else:
+            raise ValueError(f"{option_name}[{index}] must be a JSON object or null.")
+    return params_list
+
+
+def _require_admission_gates_for_strategies(
+    strategies: List[str],
+    params_list: List[Dict[str, Any]],
+    *,
+    gate_root: str = DEFAULT_STRATEGY_GATE_ROOT,
+) -> None:
+    """Require all strategy legs to have passed admission before portfolio use."""
+    for strategy_name, params in zip(strategies, params_list):
+        require_strategy_stage(
+            strategy_name,
+            "admission_passed",
+            params=params,
+            gate_root=gate_root,
+        )
 
 
 def _log_artifacts(title: str, artifacts: Dict[str, str]) -> None:
@@ -281,6 +320,12 @@ def parse_args() -> argparse.Namespace:
     combo_p.add_argument("--max_weight", type=float, default=1.0, help="Max absolute weight per leg")
     combo_p.add_argument("--risk_free", type=float, default=0.0, help="Daily risk-free rate for Sharpe")
     combo_p.add_argument("--out", default=None, help="Optional path to save combined NAV csv")
+    combo_p.add_argument("--strategies", nargs="*", default=None,
+                         help="Strategy name for each NAV leg; required for admission gate checks")
+    combo_p.add_argument("--params-list", default=None,
+                         help="JSON array of strategy params matching --strategies; omitted entries default to {}")
+    combo_p.add_argument("--gate-root", default=DEFAULT_STRATEGY_GATE_ROOT,
+                         help="Root directory for staged strategy admission gate records")
 
     # ===== list command =====
     sub.add_parser("list", help="List registered strategies", aliases=["list-strategies"])
@@ -321,6 +366,24 @@ def main() -> None:
         if len(names) != len(args.navs):
             logger.error("names length must match navs length")
             return
+        strategies = args.strategies or []
+        if len(strategies) != len(args.navs):
+            logger.error("--strategies is required for combo and must match navs length")
+            return
+        try:
+            params_list = _parse_params_list_option(
+                args.params_list,
+                option_name="--params-list",
+                expected_count=len(strategies),
+            )
+            _require_admission_gates_for_strategies(
+                strategies,
+                params_list,
+                gate_root=args.gate_root,
+            )
+        except (ValueError, MissingStrategyGateStage) as exc:
+            logger.error("Combo blocked by strategy admission gate: %s", exc)
+            return
         nav_map = {name: load_nav_series(path) for name, path in zip(names, args.navs)}
         result = optimize_portfolio(
             nav_map,
@@ -333,6 +396,10 @@ def main() -> None:
         payload = {
             "weights": result.weights,
             "stats": result.stats,
+            "admission_gates": {
+                name: {"strategy": strategy, "params": params}
+                for name, strategy, params in zip(names, strategies, params_list)
+            },
         }
         logger.info(json.dumps(payload, indent=2, default=float))
         if args.out:
