@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- Gateway: add provider routing for vn.py and standardized third-party QMT integrations while keeping the built-in XtQuant/QMT adapter as the default.
+- Web: gateway connection form now exposes provider selection, QMT provider selection, SDK paths, vn.py connection settings, and broker options JSON.
+- Tests: add provider-routing coverage for default QMT, vn.py QMT routing, missing vn.py dependency errors, and API config propagation.
 - V4.0-B: add cached vectorized BacktestEngine NAV metrics with a memory baseline field for repeated optimization runs.
 - V4.0-B: add tier-aware Parquet data lake writes, cold-tier migration, and SQLite cache export into versioned Parquet datasets.
 - V4.0-B: add reconciliation replay manifests and multi-account portfolio risk aggregation.
@@ -28,6 +31,7 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- CLI: feature discovery now lists `qmt`, `vnpy`, and `vnpy_qmt` trading broker/provider options.
 - Docs: mark roadmap V4.0-A and V4.0-B implementation checklists as completed after validation.
 - V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
 - Config: align `GlobalConfig` schema with `config.yaml.example` by adding database, monitoring, performance, provider-detail, and execution live-gateway fields.

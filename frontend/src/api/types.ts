@@ -53,6 +53,8 @@ export interface GatewayStatus {
   connected: boolean
   mode: string
   broker: string
+  gateway_provider?: string
+  qmt_provider?: string
   account?: string
   connected_at?: string | null
   last_error?: string | null
@@ -194,4 +196,11 @@ export interface GatewayConnectPayload {
   client_id: number
   td_front: string
   md_front: string
+  sdk_path: string
+  sdk_log_path: string
+  gateway_provider: string
+  qmt_provider: string
+  vnpy_gateway: string
+  vnpy_setting: Record<string, unknown>
+  broker_options: Record<string, unknown>
 }

@@ -258,6 +258,8 @@ class GatewayService:
                 "connected": self._gateway.is_connected(),
                 "mode": self._gateway.config.mode.value,
                 "broker": self._gateway.config.broker.value,
+                "gateway_provider": self._gateway.config.gateway_provider,
+                "qmt_provider": self._gateway.config.qmt_provider,
                 "account": self._gateway.config.account,
                 "connected_at": self._connected_at,
                 "last_error": self._last_error,
@@ -375,7 +377,7 @@ class GatewayService:
 
     def _build_config(self, payload: Dict[str, Any]) -> GatewayConfig:
         mode = TradingMode(payload.get("mode", "paper"))
-        broker = BrokerType(payload.get("broker", "paper"))
+        broker = BrokerType(str(payload.get("broker", "paper")).lower())
         return GatewayConfig(
             mode=mode,
             broker=broker,
@@ -396,6 +398,12 @@ class GatewayService:
             client_id=int(payload.get("client_id", 1) or 1),
             td_front=str(payload.get("td_front", "")),
             md_front=str(payload.get("md_front", "")),
+            sdk_path=str(payload.get("sdk_path", "")),
+            sdk_log_path=str(payload.get("sdk_log_path", "")),
+            gateway_provider=str(payload.get("gateway_provider", "self") or "self"),
+            qmt_provider=str(payload.get("qmt_provider", "self") or "self"),
+            vnpy_gateway=str(payload.get("vnpy_gateway", "")),
+            vnpy_setting=dict(payload.get("vnpy_setting", {}) or {}),
             broker_options=dict(payload.get("broker_options", {}) or {}),
         )
 

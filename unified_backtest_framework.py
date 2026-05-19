@@ -43,7 +43,7 @@ from src.core.logger import get_logger
 # Default cache directory
 CACHE_DEFAULT = "./cache"
 
-LIVE_GATEWAY_NAMES = ("hundsun", "miniqmt", "qmt", "uft", "xtp", "xtquant")
+LIVE_GATEWAY_NAMES = ("hundsun", "miniqmt", "qmt", "uft", "vnpy", "vnpy_qmt", "xtp", "xtquant")
 TRADING_BROKER_NAMES = (
     "paper",
     "eastmoney",
@@ -51,7 +51,10 @@ TRADING_BROKER_NAMES = (
     "xueqiu",
     "ib",
     "ctp",
+    "qmt",
     "xtquant",
+    "vnpy",
+    "vnpy_qmt",
     "xtp",
     "hundsun",
 )

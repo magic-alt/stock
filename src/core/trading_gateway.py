@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import uuid
 import time
+import importlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -104,7 +105,10 @@ class BrokerType(str, Enum):
     XUEQIU = "xueqiu"           # 雪球
     IB = "ib"                   # Interactive Brokers
     CTP = "ctp"                 # 中国期货CTP
+    QMT = "qmt"                 # QMT alias, defaults to self-built XtQuant adapter
     XTQUANT = "xtquant"         # XtQuant/QMT
+    VNPY = "vnpy"               # vn.py routed gateway
+    VNPY_QMT = "vnpy_qmt"       # Third-party vn.py QMT gateway
     XTP = "xtp"                 # 中泰证券XTP
     HUNDSUN = "hundsun"         # 恒生UFT
 
@@ -135,6 +139,14 @@ class GatewayConfig:
     client_id: int = 1
     td_front: str = ""
     md_front: str = ""
+    sdk_path: str = ""
+    sdk_log_path: str = ""
+
+    # Provider routing. Defaults keep the project-owned implementations active.
+    gateway_provider: str = "self"
+    qmt_provider: str = "self"
+    vnpy_gateway: str = ""
+    vnpy_setting: Dict[str, Any] = field(default_factory=dict)
     
     # Trading settings
     initial_cash: float = 1_000_000.0
@@ -554,6 +566,8 @@ class BaseLiveGatewayAdapter:
             client_id=self.config.client_id or 1,
             td_front=self.config.td_front or None,
             md_front=self.config.md_front or None,
+            sdk_path=self.config.sdk_path or None,
+            sdk_log_path=self.config.sdk_log_path or None,
         )
 
 
@@ -573,6 +587,332 @@ class HundsunUftAdapter(BaseLiveGatewayAdapter):
     def __init__(self, config: GatewayConfig):
         from src.gateways.hundsun_uft_gateway import HundsunUftGateway
         super().__init__(config, HundsunUftGateway)
+
+
+class VnpyGatewayAdapter:
+    """
+    Adapter for vn.py gateways.
+
+    The adapter loads vn.py and the concrete gateway package lazily so normal
+    paper/self-built QMT imports do not probe optional third-party SDKs.
+    """
+
+    DEFAULT_GATEWAY_CLASSES = {
+        "CTP": ("vnpy_ctp", "CtpGateway"),
+        "XTP": ("vnpy_xtp", "XtpGateway"),
+        "QMT": ("vnpy_qmt", "QmtGateway"),
+        "XTQUANT": ("vnpy_qmt", "QmtGateway"),
+        "VNPY_QMT": ("vnpy_qmt", "QmtGateway"),
+    }
+
+    def __init__(self, config: GatewayConfig):
+        self.config = config
+        self._connected = False
+        self._event_engine = None
+        self._main_engine = None
+        self._constant_module = None
+        self._object_module = None
+        self._order_symbols: Dict[str, str] = {}
+
+    def connect(self) -> bool:
+        event_engine_cls, main_engine_cls, gateway_cls = self._load_vnpy_components()
+        self._event_engine = event_engine_cls()
+        self._main_engine = main_engine_cls(self._event_engine)
+        self._main_engine.add_gateway(gateway_cls)
+        self._main_engine.connect(self._connect_setting(), self._gateway_name())
+        self._connected = True
+        return True
+
+    def disconnect(self) -> None:
+        if self._main_engine is not None:
+            close = getattr(self._main_engine, "close", None)
+            if callable(close):
+                close()
+        self._connected = False
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def submit_order(
+        self,
+        symbol: str,
+        side: Side,
+        quantity: float,
+        price: Optional[float] = None,
+        order_type: OrderTypeEnum = OrderTypeEnum.LIMIT,
+    ) -> str:
+        main_engine = self._require_main_engine()
+        order_request_cls = getattr(self._object_module, "OrderRequest")
+        symbol_code, exchange = self._parse_symbol(symbol)
+        request = order_request_cls(
+            symbol=symbol_code,
+            exchange=exchange,
+            direction=self._direction(side),
+            type=self._order_type(order_type),
+            volume=quantity,
+            price=0 if price is None else price,
+            offset=self._offset(),
+        )
+        vt_orderid = str(main_engine.send_order(request, self._gateway_name()))
+        if vt_orderid:
+            self._order_symbols[vt_orderid] = symbol
+        return vt_orderid
+
+    def cancel_order(self, order_id: str) -> bool:
+        main_engine = self._require_main_engine()
+        request = self._cancel_request(main_engine, order_id)
+        if request is None:
+            return False
+        main_engine.cancel_order(request, self._gateway_name())
+        return True
+
+    def query_order(self, order_id: str) -> Optional[OrderInfo]:
+        main_engine = self._require_main_engine()
+        getter = getattr(main_engine, "get_order", None)
+        if callable(getter):
+            order = getter(order_id)
+            if order is not None:
+                return self._map_order(order)
+        for order in self._all_orders():
+            if getattr(order, "vt_orderid", None) == order_id or getattr(order, "orderid", None) == order_id:
+                return self._map_order(order)
+        return None
+
+    def query_account(self) -> AccountInfo:
+        main_engine = self._require_main_engine()
+        getter = getattr(main_engine, "get_all_accounts", None)
+        accounts = getter() if callable(getter) else []
+        if not accounts:
+            return AccountInfo(account_id=self.config.account or "vnpy")
+        account = accounts[0]
+        account_id = str(
+            getattr(account, "accountid", "")
+            or getattr(account, "account_id", "")
+            or getattr(account, "vt_accountid", "")
+            or self.config.account
+            or "vnpy"
+        )
+        cash = _float_attr(account, "cash", "available", "available_cash")
+        available = _float_attr(account, "available", "available_cash", "cash")
+        total_value = _float_attr(account, "balance", "equity", "total_value")
+        if total_value == 0:
+            total_value = cash + _float_attr(account, "frozen")
+        return AccountInfo(
+            account_id=account_id,
+            cash=cash,
+            total_value=total_value,
+            available=available,
+            margin=_float_attr(account, "margin"),
+        )
+
+    def query_positions(self) -> Dict[str, PositionInfo]:
+        main_engine = self._require_main_engine()
+        getter = getattr(main_engine, "get_all_positions", None)
+        raw_positions = getter() if callable(getter) else []
+        positions: Dict[str, PositionInfo] = {}
+        for pos in raw_positions:
+            symbol = str(getattr(pos, "vt_symbol", "") or getattr(pos, "symbol", ""))
+            size = _float_attr(pos, "volume", "total_quantity")
+            avg_price = _float_attr(pos, "price", "avg_price")
+            positions[symbol] = PositionInfo(
+                symbol=symbol,
+                size=size,
+                avg_price=avg_price,
+                market_value=_float_attr(pos, "market_value") or size * avg_price,
+                unrealized_pnl=_float_attr(pos, "pnl", "unrealized_pnl"),
+                realized_pnl=_float_attr(pos, "realized_pnl"),
+            )
+        return positions
+
+    def query_orders(self, symbol: Optional[str] = None) -> List[OrderInfo]:
+        orders = [self._map_order(order) for order in self._all_orders()]
+        if symbol:
+            orders = [order for order in orders if order.symbol == symbol]
+        return orders
+
+    def query_trades(
+        self,
+        symbol: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[TradeInfo]:
+        main_engine = self._require_main_engine()
+        getter = getattr(main_engine, "get_all_trades", None)
+        trades = [self._map_trade(trade) for trade in (getter() if callable(getter) else [])]
+        if symbol:
+            trades = [trade for trade in trades if trade.symbol == symbol]
+        if limit is not None and limit >= 0:
+            trades = trades[:limit]
+        return trades
+
+    def _all_orders(self) -> List[Any]:
+        main_engine = self._require_main_engine()
+        getter = getattr(main_engine, "get_all_active_orders", None)
+        if callable(getter):
+            return list(getter())
+        return []
+
+    def _load_vnpy_components(self):
+        try:
+            event_module = importlib.import_module("vnpy.event")
+            engine_module = importlib.import_module("vnpy.trader.engine")
+            self._constant_module = importlib.import_module("vnpy.trader.constant")
+            self._object_module = importlib.import_module("vnpy.trader.object")
+        except ImportError as exc:
+            raise RuntimeError("vn.py is not installed. Install vnpy and the required gateway package first.") from exc
+
+        return (
+            getattr(event_module, "EventEngine"),
+            getattr(engine_module, "MainEngine"),
+            self._load_gateway_class(),
+        )
+
+    def _load_gateway_class(self):
+        class_path = str(self.config.broker_options.get("vnpy_gateway_class", "")).strip()
+        if class_path:
+            module_name, _, class_name = class_path.rpartition(".")
+            if not module_name or not class_name:
+                raise ValueError("broker_options.vnpy_gateway_class must be a full import path.")
+        else:
+            module_name, class_name = self.DEFAULT_GATEWAY_CLASSES.get(
+                self._gateway_name().upper(),
+                (f"vnpy_{self._gateway_name().lower()}", f"{self._gateway_name().title()}Gateway"),
+            )
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            raise RuntimeError(
+                f"vn.py gateway package '{module_name}' is not installed. "
+                "Install it or set broker_options.vnpy_gateway_class to a custom gateway class."
+            ) from exc
+        return getattr(module, class_name)
+
+    def _connect_setting(self) -> Dict[str, Any]:
+        if self.config.vnpy_setting:
+            return dict(self.config.vnpy_setting)
+        setting = self.config.broker_options.get("vnpy_setting")
+        if isinstance(setting, dict):
+            return dict(setting)
+        return {
+            key: value
+            for key, value in self.config.broker_options.items()
+            if key not in {"vnpy_gateway_class", "vnpy_gateway", "vnpy_setting"}
+        }
+
+    def _gateway_name(self) -> str:
+        configured = self.config.vnpy_gateway or str(self.config.broker_options.get("vnpy_gateway", "")).strip()
+        if configured:
+            return configured
+        if self.config.broker == BrokerType.VNPY_QMT:
+            return "QMT"
+        if self.config.broker == BrokerType.VNPY:
+            raise ValueError("vnpy_gateway is required when broker is 'vnpy'.")
+        return self.config.broker.value.upper()
+
+    def _parse_symbol(self, symbol: str):
+        if "." in symbol:
+            symbol_code, exchange_code = symbol.rsplit(".", 1)
+        else:
+            symbol_code = symbol
+            exchange_code = str(self.config.broker_options.get("exchange", "SSE"))
+        exchange_aliases = {"SH": "SSE", "SHSE": "SSE", "SZ": "SZSE", "SZE": "SZSE"}
+        member = exchange_aliases.get(exchange_code.upper(), exchange_code.upper())
+        return symbol_code, self._constant("Exchange", member)
+
+    def _direction(self, side: Side):
+        return self._constant("Direction", "LONG" if side == Side.BUY else "SHORT")
+
+    def _order_type(self, order_type: OrderTypeEnum):
+        member = "MARKET" if order_type == OrderTypeEnum.MARKET else "LIMIT"
+        return self._constant("OrderType", member)
+
+    def _offset(self):
+        member = str(self.config.broker_options.get("vnpy_offset", "OPEN")).upper()
+        return self._constant("Offset", member)
+
+    def _constant(self, enum_name: str, member: str):
+        enum_cls = getattr(self._constant_module, enum_name)
+        return getattr(enum_cls, member)
+
+    def _cancel_request(self, main_engine, order_id: str):
+        getter = getattr(main_engine, "get_order", None)
+        order = getter(order_id) if callable(getter) else None
+        if order is not None and hasattr(order, "create_cancel_request"):
+            return order.create_cancel_request()
+        symbol = self._order_symbols.get(order_id) or str(self.config.broker_options.get("cancel_symbol", ""))
+        if not symbol:
+            return None
+        cancel_request_cls = getattr(self._object_module, "CancelRequest")
+        symbol_code, exchange = self._parse_symbol(symbol)
+        return cancel_request_cls(orderid=order_id.split(".")[-1], symbol=symbol_code, exchange=exchange)
+
+    def _map_order(self, order: Any) -> OrderInfo:
+        symbol = str(getattr(order, "vt_symbol", "") or getattr(order, "symbol", ""))
+        direction = _enum_token(getattr(order, "direction", ""))
+        order_type = _enum_token(getattr(order, "type", ""))
+        return OrderInfo(
+            order_id=str(getattr(order, "vt_orderid", "") or getattr(order, "orderid", "")),
+            symbol=symbol,
+            side=Side.SELL if direction in {"SHORT", "SELL"} else Side.BUY,
+            order_type=OrderTypeEnum.MARKET if order_type == "MARKET" else OrderTypeEnum.LIMIT,
+            price=_optional_float(getattr(order, "price", None)),
+            quantity=_float_attr(order, "volume", "quantity"),
+            filled_quantity=_float_attr(order, "traded", "filled_quantity"),
+            avg_fill_price=_float_attr(order, "avg_price", "avg_fill_price"),
+            status=_map_vnpy_order_status(getattr(order, "status", "")),
+            create_time=_normalize_datetime(getattr(order, "datetime", None)),
+            update_time=_normalize_datetime(getattr(order, "datetime", None)),
+        )
+
+    def _map_trade(self, trade: Any) -> TradeInfo:
+        direction = _enum_token(getattr(trade, "direction", ""))
+        return TradeInfo(
+            trade_id=str(getattr(trade, "vt_tradeid", "") or getattr(trade, "tradeid", "")),
+            order_id=str(getattr(trade, "vt_orderid", "") or getattr(trade, "orderid", "")),
+            symbol=str(getattr(trade, "vt_symbol", "") or getattr(trade, "symbol", "")),
+            side=Side.SELL if direction in {"SHORT", "SELL"} else Side.BUY,
+            price=_float_attr(trade, "price"),
+            quantity=_float_attr(trade, "volume", "quantity"),
+            commission=_float_attr(trade, "commission"),
+            timestamp=_normalize_datetime(getattr(trade, "datetime", None)),
+        )
+
+    def _require_main_engine(self):
+        if self._main_engine is None:
+            raise RuntimeError("vn.py gateway is not connected")
+        return self._main_engine
+
+
+def register_qmt_provider(name: str, factory: Callable[[GatewayConfig], BrokerAdapter]) -> None:
+    """Register a QMT provider factory for runtime/provider-specific extensions."""
+    QMT_PROVIDER_REGISTRY[_normalize_provider(name)] = factory
+
+
+def available_qmt_providers() -> List[str]:
+    """Return available QMT provider names."""
+    return sorted(QMT_PROVIDER_REGISTRY.keys())
+
+
+def _normalize_provider(value: str) -> str:
+    return (value or "self").strip().lower().replace("-", "_")
+
+
+def _self_qmt_adapter(config: GatewayConfig) -> BrokerAdapter:
+    return XtQuantAdapter(config)
+
+
+def _vnpy_qmt_adapter(config: GatewayConfig) -> BrokerAdapter:
+    if not config.vnpy_gateway:
+        config.vnpy_gateway = "QMT"
+    return VnpyGatewayAdapter(config)
+
+
+QMT_PROVIDER_REGISTRY: Dict[str, Callable[[GatewayConfig], BrokerAdapter]] = {
+    "self": _self_qmt_adapter,
+    "xtquant": _self_qmt_adapter,
+    "vnpy": _vnpy_qmt_adapter,
+    "vnpy_qmt": _vnpy_qmt_adapter,
+    "third_party": _vnpy_qmt_adapter,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -1533,9 +1873,12 @@ class TradingGateway:
     def _create_adapter(self):
         """Create appropriate adapter based on config."""
         broker = self.config.broker
+        gateway_provider = _normalize_provider(self.config.gateway_provider)
         
         if broker == BrokerType.PAPER:
             return PaperGatewayV3Adapter(self.config, event_engine=self.event_engine)
+        elif gateway_provider == "vnpy":
+            return VnpyGatewayAdapter(self.config)
         elif broker == BrokerType.EASTMONEY:
             return EastMoneyAdapter(self.config)
         elif broker == BrokerType.FUTU:
@@ -1544,8 +1887,16 @@ class TradingGateway:
             return XueqiuAdapter(self.config)
         elif broker == BrokerType.IB:
             return IBAdapter(self.config)
-        elif broker == BrokerType.XTQUANT:
-            return XtQuantAdapter(self.config)
+        elif broker in {BrokerType.QMT, BrokerType.XTQUANT}:
+            qmt_provider = _normalize_provider(self.config.qmt_provider)
+            if gateway_provider in {"third_party", "vnpy"} and qmt_provider == "self":
+                qmt_provider = gateway_provider
+            if qmt_provider not in QMT_PROVIDER_REGISTRY:
+                available = ", ".join(available_qmt_providers())
+                raise ValueError(f"Unsupported QMT provider: {qmt_provider}. Available: {available}")
+            return QMT_PROVIDER_REGISTRY[qmt_provider](self.config)
+        elif broker in {BrokerType.CTP, BrokerType.VNPY, BrokerType.VNPY_QMT}:
+            return VnpyGatewayAdapter(self.config)
         elif broker == BrokerType.XTP:
             return XtpAdapter(self.config)
         elif broker == BrokerType.HUNDSUN:
@@ -1890,6 +2241,62 @@ def _map_live_order_status(status: str) -> OrderStatusEnum:
     return mapping.get(status, OrderStatusEnum.PENDING)
 
 
+def _enum_token(value: Any) -> str:
+    if isinstance(value, Enum):
+        return value.name.upper()
+    name = getattr(value, "name", None)
+    if name:
+        return str(name).upper()
+    raw = getattr(value, "value", value)
+    return str(raw).upper()
+
+
+def _optional_float(value: Any) -> Optional[float]:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_attr(obj: Any, *names: str) -> float:
+    for name in names:
+        value = getattr(obj, name, None)
+        if value in (None, ""):
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
+
+
+def _normalize_datetime(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return _parse_dt(value)
+    return None
+
+
+def _map_vnpy_order_status(status: Any) -> OrderStatusEnum:
+    token = _enum_token(status)
+    mapping = {
+        "SUBMITTING": OrderStatusEnum.PENDING,
+        "NOTTRADED": OrderStatusEnum.SUBMITTED,
+        "PARTTRADED": OrderStatusEnum.PARTIAL,
+        "ALLTRADED": OrderStatusEnum.FILLED,
+        "CANCELLED": OrderStatusEnum.CANCELLED,
+        "REJECTED": OrderStatusEnum.REJECTED,
+        "PENDING": OrderStatusEnum.PENDING,
+        "SUBMITTED": OrderStatusEnum.SUBMITTED,
+        "PARTIAL": OrderStatusEnum.PARTIAL,
+        "FILLED": OrderStatusEnum.FILLED,
+    }
+    return mapping.get(token, OrderStatusEnum.PENDING)
+
+
 # ---------------------------------------------------------------------------
 # Exports
 # ---------------------------------------------------------------------------
@@ -1909,4 +2316,7 @@ __all__ = [
     'XtQuantAdapter',
     'XtpAdapter',
     'HundsunUftAdapter',
+    'VnpyGatewayAdapter',
+    'available_qmt_providers',
+    'register_qmt_provider',
 ]

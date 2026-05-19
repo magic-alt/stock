@@ -24,6 +24,32 @@
             </el-row>
 
             <el-row :gutter="12">
+              <el-col :span="8">
+                <el-form-item label="Gateway Provider">
+                  <el-select v-model="connectForm.gateway_provider" style="width: 100%">
+                    <el-option label="self" value="self" />
+                    <el-option label="vnpy" value="vnpy" />
+                    <el-option label="third_party" value="third_party" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="QMT Provider">
+                  <el-select v-model="connectForm.qmt_provider" style="width: 100%">
+                    <el-option label="self" value="self" />
+                    <el-option label="xtquant" value="xtquant" />
+                    <el-option label="vnpy_qmt" value="vnpy_qmt" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8">
+                <el-form-item label="vn.py Gateway">
+                  <el-input v-model="connectForm.vnpy_gateway" placeholder="CTP / QMT / XTP" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-row :gutter="12">
               <el-col :span="12">
                 <el-form-item label="Account">
                   <el-input v-model="connectForm.account" placeholder="paper / live account" />
@@ -64,6 +90,32 @@
 
             <el-form-item label="Terminal Path">
               <el-input v-model="connectForm.terminal_path" placeholder="C:\\QMT\\bin" />
+            </el-form-item>
+
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="SDK Path">
+                  <el-input v-model="connectForm.sdk_path" placeholder="C:\\broker\\sdk" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="SDK Log Path">
+                  <el-input v-model="connectForm.sdk_log_path" placeholder="C:\\broker\\logs" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+
+            <el-form-item label="vn.py Setting JSON">
+              <el-input v-model="vnpySettingText" type="textarea" :rows="2" placeholder='{"用户名":"..."}' />
+            </el-form-item>
+
+            <el-form-item label="Broker Options JSON">
+              <el-input
+                v-model="brokerOptionsText"
+                type="textarea"
+                :rows="2"
+                placeholder='{"vnpy_gateway_class":"custom.qmt.QmtGateway"}'
+              />
             </el-form-item>
 
             <el-row :gutter="12">
@@ -303,13 +355,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useTradingStore } from '@/stores/trading'
 import type { GatewayConnectPayload } from '@/api/types'
 
 const tradingStore = useTradingStore()
-const brokers = ['paper', 'eastmoney', 'futu', 'xueqiu', 'ib', 'xtquant', 'xtp', 'hundsun']
+const brokers = ['paper', 'eastmoney', 'futu', 'xueqiu', 'ib', 'ctp', 'qmt', 'xtquant', 'vnpy', 'vnpy_qmt', 'xtp', 'hundsun']
 
 const connectForm = reactive<GatewayConnectPayload>({
   mode: 'paper',
@@ -331,7 +383,17 @@ const connectForm = reactive<GatewayConnectPayload>({
   client_id: 1,
   td_front: '',
   md_front: '',
+  sdk_path: '',
+  sdk_log_path: '',
+  gateway_provider: 'self',
+  qmt_provider: 'self',
+  vnpy_gateway: '',
+  vnpy_setting: {},
+  broker_options: {},
 })
+
+const vnpySettingText = ref('')
+const brokerOptionsText = ref('')
 
 const orderForm = reactive({
   symbol: '600519.SH',
@@ -377,11 +439,23 @@ async function refreshAll() {
 
 async function connectGateway() {
   try {
-    await tradingStore.connectGateway({ ...connectForm })
+    const vnpy_setting = parseJsonObject(vnpySettingText.value, 'vn.py Setting JSON')
+    const broker_options = parseJsonObject(brokerOptionsText.value, 'Broker Options JSON')
+    await tradingStore.connectGateway({ ...connectForm, vnpy_setting, broker_options })
     ElMessage.success('Gateway connected')
   } catch (err) {
     ElMessage.error(`Connect failed: ${(err as Error).message}`)
   }
+}
+
+function parseJsonObject(value: string, label: string): Record<string, unknown> {
+  const raw = value.trim()
+  if (!raw) return {}
+  const parsed = JSON.parse(raw) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`${label} must be an object`)
+  }
+  return parsed as Record<string, unknown>
 }
 
 async function disconnectGateway() {

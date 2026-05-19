@@ -97,9 +97,14 @@ performance:
 # Live Trading Configuration (V4.0)
 live_trading:
   enabled: false
-  broker: "xtp"
+  broker: "qmt"
   account_id: ""
-  gateway_type: "xtp"
+  gateway_type: "qmt"
+  gateway_provider: "self"  # self, vnpy, third_party
+  qmt_provider: "self"      # self/xtquant uses the built-in XtQuant adapter; vnpy_qmt uses a vn.py gateway
+  vnpy_gateway: ""          # e.g. CTP, QMT, XTP
+  vnpy_setting: {}          # passed directly to main_engine.connect(setting, gateway_name)
+  broker_options: {}        # e.g. {"vnpy_gateway_class": "custom.qmt.QmtGateway"}
   sdk_path: ""
   sdk_log_path: ""
   auto_reconnect: true

@@ -119,9 +119,14 @@ class LoggingConfig(BaseModel):
 class LiveTradingConfig(BaseModel):
     """Live trading configuration."""
     enabled: bool = False
-    broker: str = "xtp"  # xtp, hundsun, xtquant
+    broker: str = "xtp"  # xtp, hundsun, xtquant, qmt, vnpy
     account_id: str = ""
-    gateway_type: str = "xtp"  # xtp, hundsun, xtquant
+    gateway_type: str = "xtp"  # xtp, hundsun, xtquant, qmt, vnpy
+    gateway_provider: str = "self"
+    qmt_provider: str = "self"
+    vnpy_gateway: str = ""
+    vnpy_setting: Dict[str, Any] = Field(default_factory=dict)
+    broker_options: Dict[str, Any] = Field(default_factory=dict)
     sdk_path: str = ""
     sdk_log_path: str = ""
     auto_reconnect: bool = True
@@ -129,9 +134,23 @@ class LiveTradingConfig(BaseModel):
 
     @validator("broker")
     def broker_must_be_valid(cls, v):
-        valid = {"xtp", "hundsun", "xtquant", "paper"}
+        valid = {"xtp", "hundsun", "xtquant", "qmt", "vnpy", "vnpy_qmt", "paper"}
         if v not in valid:
             raise ValueError(f"broker must be one of {valid}")
+        return v
+
+    @validator("gateway_provider")
+    def gateway_provider_must_be_valid(cls, v):
+        valid = {"self", "vnpy", "third_party"}
+        if v not in valid:
+            raise ValueError(f"gateway_provider must be one of {valid}")
+        return v
+
+    @validator("qmt_provider")
+    def qmt_provider_must_be_valid(cls, v):
+        valid = {"self", "xtquant", "vnpy", "vnpy_qmt", "third_party"}
+        if v not in valid:
+            raise ValueError(f"qmt_provider must be one of {valid}")
         return v
 
     @validator("max_orders_per_second")
