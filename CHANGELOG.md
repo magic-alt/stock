@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Strategy: add parameter-signature-scoped strategy admission gate registry so baseline/admission/live rollout must progress through `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`.
+- Strategy: enforce registered baseline gates before paper startup/preflight and require admission-passed strategy legs before CLI combo optimization or API portfolio capital allocation preview.
 - Launch: wire `scripts/start_production.py` live preflight into the strategy admission gate workflow, promoting `paper_validated` and `live_candidate` only after successful preflight and blocking live startup until `live_candidate` exists.
 - Gateway: 新增共享订单生命周期状态机与规范状态映射，统一 OMS、纸面交易和实盘网关的 `created -> submitted -> accepted -> partial_filled -> terminal` 链路。
 - Gateway: 新增 `pre_trade_risk` 共享前置风控入口，TradingGateway、PaperGatewayV3 和 OMS 提交路径统一进入 `RiskManagerV2.check_order`。

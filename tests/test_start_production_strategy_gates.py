@@ -77,6 +77,64 @@ def test_live_preflight_blocks_without_admission_gate(tmp_path, monkeypatch):
     assert decision["strategy_gate"]["required_stage"] == "admission_passed"
 
 
+def test_paper_preflight_blocks_without_baseline_gate(tmp_path, monkeypatch):
+    config = _build_config()
+    args = _build_args(mode="paper", preflight_mode="paper", preflight_gate_root=str(tmp_path / "gates"))
+    sp.logger = sp.get_logger("startup")
+
+    def fail_if_called(**kwargs):
+        raise AssertionError("paper preflight should not run before baseline gate passes")
+
+    monkeypatch.setattr(sp, "run_preflight_checks", fail_if_called)
+    passed, decision = sp._run_preflight_if_requested(config, args)
+
+    assert passed is False
+    assert decision["decision_state"] == "block"
+    assert decision["strategy_gate"]["required_stage"] == "baseline_registered"
+
+
+def test_paper_preflight_allows_baseline_without_promoting_paper_gate(tmp_path, monkeypatch):
+    params = {"fast": 12, "slow": 26, "signal": 9}
+    gate_root = str(tmp_path / "gates")
+    config = _build_config(params=params)
+    args = _build_args(mode="paper", preflight_mode="paper", preflight_gate_root=gate_root)
+    sp.logger = sp.get_logger("startup")
+
+    promote_strategy_gate("macd", "baseline_registered", params=params, gate_root=gate_root, source="test.baseline")
+
+    def fake_run_preflight_checks(**kwargs):
+        return {
+            "overall": "healthy",
+            "summary": {"total": 1, "passed": 1, "warn": 0, "failed": 0, "skipped": 0},
+            "checks": [
+                {"name": "paper_smoke", "status": "pass", "message": "ok", "details": {}},
+            ],
+            "analysis": {"advice_level": "info", "candidate_grid": [], "candidate_plan": {}},
+            "config": {
+                "strategy": "macd",
+                "requested_strategy": "macd",
+                "strategy_params_requested": params,
+                "strategy_params_unified_for_replay": params,
+                "symbols": ["600519.SH"],
+                "source": "akshare",
+                "cache_dir": "./cache",
+                "mode": "paper",
+                "alignment_threshold": 0.03,
+                "alignment_fail_threshold": 0.10,
+                "alias_resolved": False,
+            },
+            "backtest": {},
+            "paper": {},
+        }
+
+    monkeypatch.setattr(sp, "run_preflight_checks", fake_run_preflight_checks)
+    passed, decision = sp._run_preflight_if_requested(config, args)
+
+    assert passed is True
+    assert decision["strategy_gate"]["current_stage"] == "baseline_registered"
+    sp._require_paper_launch_gate(config, args)
+
+
 def test_live_preflight_promotes_live_candidate_and_production(tmp_path, monkeypatch):
     params = {"fast": 12, "slow": 26, "signal": 9}
     gate_root = str(tmp_path / "gates")
@@ -129,3 +187,11 @@ def test_live_launch_requires_live_candidate_stage(tmp_path):
 
     with pytest.raises(MissingStrategyGateStage):
         sp._require_live_launch_gate(config, args)
+
+
+def test_paper_launch_requires_baseline_stage(tmp_path):
+    config = _build_config()
+    args = _build_args(mode="paper", preflight_gate_root=str(tmp_path / "gates"), preflight=False)
+
+    with pytest.raises(MissingStrategyGateStage):
+        sp._require_paper_launch_gate(config, args)

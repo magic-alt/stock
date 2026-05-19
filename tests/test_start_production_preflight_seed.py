@@ -7,6 +7,7 @@ import json
 from types import SimpleNamespace
 
 from scripts import start_production as sp
+from src.backtest.admission_gates import promote_strategy_gate
 
 
 def _build_config():
@@ -54,10 +55,15 @@ def _build_args(**kwargs):
         preflight_alignment_fail_threshold=0.10,
         preflight_json=False,
         preflight_decision_seed_file=None,
+        preflight_gate_root=None,
     )
     for k, v in kwargs.items():
         setattr(args, k, v)
     return args
+
+
+def _promote_baseline_gate(gate_root, params):
+    promote_strategy_gate("macd", "baseline_registered", params=params, gate_root=str(gate_root), source="test.baseline")
 
 
 def test_extract_replay_params_from_decision_payload():
@@ -73,6 +79,8 @@ def test_extract_replay_params_from_decision_payload():
 
 def test_run_preflight_uses_seed_replay_params(tmp_path, monkeypatch):
     seed_file = tmp_path / "seed_decision.json"
+    gate_root = tmp_path / "gates"
+    _promote_baseline_gate(gate_root, {"fast": 8, "slow": 21})
     seed_file.write_text(
         json.dumps(
             {
@@ -119,6 +127,7 @@ def test_run_preflight_uses_seed_replay_params(tmp_path, monkeypatch):
         _build_config(),
         _build_args(
             preflight_decision_seed_file=str(seed_file),
+            preflight_gate_root=str(gate_root),
         ),
     )
 
@@ -128,6 +137,8 @@ def test_run_preflight_uses_seed_replay_params(tmp_path, monkeypatch):
 
 def test_run_preflight_cli_params_override_seed(tmp_path, monkeypatch):
     seed_file = tmp_path / "seed_decision.json"
+    gate_root = tmp_path / "gates"
+    _promote_baseline_gate(gate_root, {"fast": 13, "slow": 34})
     seed_file.write_text(
         json.dumps({"recommended_replay": {"params": {"fast": 8}}}, ensure_ascii=False),
         encoding="utf-8",
@@ -167,6 +178,7 @@ def test_run_preflight_cli_params_override_seed(tmp_path, monkeypatch):
         _build_args(
             preflight_params='{"fast": 13, "slow": 34}',
             preflight_decision_seed_file=str(seed_file),
+            preflight_gate_root=str(gate_root),
         ),
     )
 

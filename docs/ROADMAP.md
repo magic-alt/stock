@@ -141,7 +141,7 @@
 
 ### ✅ 已补齐的基金级能力（2026-05-19 复核）
 - 统一交易链路（TradingGateway/PaperGateway/LiveGateways）与前置风控：GatewayService 连接时注入 RiskManagerV2，Paper/Live adapter 进入报单前共享风险检查路径。
-- 策略准入强制门禁：`baseline/admission/start_production.py` 已串成 `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`，并按参数签名写入 gate registry。
+- 策略准入强制门禁：`baseline/admission/start_production.py` 已串成 `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`，paper 入口强制要求已注册 baseline，组合优化与资金分配预览强制要求 admission PASS，并按参数签名写入 gate registry。
 - 实时报价与行情接入（Sina/Eastmoney/Tencent/Level2）：L1 provider 已实接入，Level2 建立 SDK 无关模型、provider 协议、mock/stub adapter 与事件投递契约。
 - 数据湖版本化、列式存储与质量门禁：ParquetDataLake promotion 强制 checksum + schema + 缺失率 + OHLC + 索引质量门禁。
 - 分布式调度与可扩展队列（非本地）：JobStore 支持 JSON/SQLite/Redis/Postgres DSN，生产可关闭 fallback，并在监控指标中暴露 backend 类型。
