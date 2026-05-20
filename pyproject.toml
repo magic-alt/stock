@@ -94,6 +94,34 @@ Homepage = "https://github.com/magic-alt/stock"
 Documentation = "https://magic-alt.github.io/stock/"
 Repository = "https://github.com/magic-alt/stock"
 
+# ---------------------------------------------------------------------------
+# V6 Open Platform plugin entry-point groups (declared in Phase 0).
+#
+# Third-party distributions register plugins by adding entries to these
+# groups in their own pyproject.toml, e.g.:
+#
+#   [project.entry-points."quant_platform.strategy"]
+#   my_macd = "my_pkg.strategies:MacdStrategy"
+#
+# The groups below are intentionally empty in this repository at Phase 0;
+# in-tree implementations will be progressively registered through
+# Phases 3-5. See docs/architecture/open-platform.md.
+# ---------------------------------------------------------------------------
+[project.entry-points."quant_platform.strategy"]
+[project.entry-points."quant_platform.indicator"]
+[project.entry-points."quant_platform.factor"]
+[project.entry-points."quant_platform.data_provider"]
+[project.entry-points."quant_platform.realtime_feed"]
+[project.entry-points."quant_platform.gateway"]
+[project.entry-points."quant_platform.storage"]
+[project.entry-points."quant_platform.risk_rule"]
+[project.entry-points."quant_platform.fill_model"]
+[project.entry-points."quant_platform.report"]
+[project.entry-points."quant_platform.scheduler"]
+[project.entry-points."quant_platform.ml_adapter"]
+[project.entry-points."quant_platform.messaging"]
+[project.entry-points."quant_platform.admission_gate"]
+
 [tool.setuptools.packages.find]
 include = ["src*"]
 
