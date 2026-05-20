@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-20
 
+### Fixed
+- Docs: rebuild the README "Architecture" mermaid diagram so it renders correctly on GitHub. The previous nested-subgraph + `direction LR` form rendered as a blank block on github.com; replaced with a single-layer-per-node `flowchart LR` (Apps → Platform → Runtime → Engines → Kernel → Adapters → SDK) that lists each layer's components inline and keeps two dotted shortcuts to the SDK ring.
+
 ### Added
 - V6 Phase 2 (open platform): freeze the open-platform contract surface in a new `src/core/contracts/` package. Adds `CONTRACT_VERSION = "0.1.0"` with a semver compatibility helper, immutable validated DTOs (`Instrument`, `Bar`, `Tick`, `OrderBookSnapshot`, `Order`, `Fill`, `Position`, `AccountSnapshot`, `Signal`, `RiskCheckResult`, `BacktestResult`), 18 `typing.Protocol` ports (Data / Execution / Risk / Observability / Messaging / Services) covering every entry-point group declared in Phase 0, and `PluginManifest` with known-capability and known-permission allow-lists. Purely additive — V5 modules (`src/core/interfaces.py`, `src/core/objects.py`, `src/core/plugin.py`) are untouched.
 - Architecture (V6 Phase 1 — Kernel hardening): introduce `src/core/component_state.py` with a `ComponentState` enum (PRE_INITIALIZED / READY / RUNNING / STOPPING / STOPPED / DISPOSED / DEGRADED / FAULTED) and a `Lifecycle` FSM that enforces legal transitions and exposes an observational `on_transition` hook (modeled on Nautilus Trader's `ComponentState`).
