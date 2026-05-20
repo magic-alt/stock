@@ -43,7 +43,7 @@ from .optimized_strategies import (
     OPTIMIZED_STRATEGIES,
 )
 
-# V3.0.0: 趋势回调增强策略（机构级综合策略）
+# V3.0.0: 趋势回调增强策略（增强型综合策略）
 from .trend_pullback_enhanced import (
     TrendPullbackEnhanced, _coerce_trend_pullback, STRATEGY_CONFIG as TREND_PULLBACK_CONFIG
 )
@@ -658,7 +658,7 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
-# V3.0.0: 趋势回调增强版（机构级综合策略）
+# V3.0.0: 趋势回调增强版（增强型综合策略）
 register_strategy(StrategyModule(
     name='trend_pullback_enhanced',
     description='Trend following with pullback entry, volatility sizing, and chandelier exit',
@@ -870,7 +870,7 @@ STRATEGY_ALIASES: Dict[str, str] = {
     # 特殊策略
     'auction': 'auction_open',
     
-    # 机构级策略
+    # 增强型策略
     'trend_pullback': 'trend_pullback_enhanced',
     
 }
@@ -1023,7 +1023,7 @@ __all__ = [
     'BollingerRSI_Optimized',
     'DonchianATR_Optimized',
     'OPTIMIZED_STRATEGIES',
-    # V3.0.0 机构级综合策略
+    # V3.0.0 增强型综合策略
     'TrendPullbackEnhanced',
     # V3.0.0-beta.4 增强策略集合
     'ZScoreEnhancedStrategy',

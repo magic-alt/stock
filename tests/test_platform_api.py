@@ -109,7 +109,7 @@ class TestRBACMiddleware:
 
     def test_insufficient_role_returns_403(self):
         auth = Authorizer()
-        viewer = Subject(subject_id="v1", role=Role.VIEWER, tenant_id="T1")
+        viewer = Subject(subject_id="v1", role=Role.VIEWER, account_group="G1")
         mw = RBACMiddleware(auth)
         mw.register_token("viewer-tok", viewer)
         wrapped = mw(self._make_handler())
@@ -120,7 +120,7 @@ class TestRBACMiddleware:
 
     def test_subject_injected_into_request(self):
         auth = Authorizer()
-        trader = Subject(subject_id="t1", role=Role.TRADER, tenant_id="T1")
+        trader = Subject(subject_id="t1", role=Role.TRADER, account_group="G1")
         mw = RBACMiddleware(auth)
         mw.register_token("trader-tok", trader)
 

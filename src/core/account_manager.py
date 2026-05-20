@@ -1,5 +1,5 @@
 """
-Multi-account management with tenant isolation and fund transfer.
+Multi-account management with account-group isolation and fund transfer.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from src.core.auth import (
 class AccountInfo:
     """Account state."""
     account_id: str
-    tenant_id: str
+    account_group: str
     owner_subject_id: str
     cash_balance: float
     status: str = "active"  # active, frozen, closed
@@ -27,7 +27,7 @@ class AccountInfo:
 
 
 class AccountManager:
-    """Manages multiple accounts with tenant isolation and authorization."""
+    """Manages multiple accounts with account-group isolation and authorization."""
 
     def __init__(self, authorizer: Optional[Authorizer] = None) -> None:
         self._authorizer = authorizer
@@ -35,7 +35,7 @@ class AccountManager:
 
     def create_account(
         self,
-        tenant_id: str,
+        account_group: str,
         owner_id: str,
         initial_cash: float = 0.0,
         *,
@@ -45,12 +45,12 @@ class AccountManager:
             self._authorizer.require(
                 Permission.ACCOUNT_MANAGE,
                 subject,
-                ResourceScope(tenant_id=tenant_id),
+                ResourceScope(account_group=account_group),
             )
         account_id = str(uuid.uuid4())[:8]
         account = AccountInfo(
             account_id=account_id,
-            tenant_id=tenant_id,
+            account_group=account_group,
             owner_subject_id=owner_id,
             cash_balance=initial_cash,
         )
@@ -62,8 +62,8 @@ class AccountManager:
             raise KeyError(f"Account not found: {account_id}")
         return self._accounts[account_id]
 
-    def list_accounts(self, tenant_id: str) -> List[AccountInfo]:
-        return [a for a in self._accounts.values() if a.tenant_id == tenant_id]
+    def list_accounts(self, account_group: str) -> List[AccountInfo]:
+        return [a for a in self._accounts.values() if a.account_group == account_group]
 
     def fund_transfer(
         self,
@@ -83,7 +83,7 @@ class AccountManager:
             self._authorizer.require(
                 Permission.FUND_TRANSFER,
                 subject,
-                ResourceScope(tenant_id=from_acc.tenant_id, account_id=from_account_id),
+                ResourceScope(account_group=from_acc.account_group, account_id=from_account_id),
             )
 
         if from_acc.status != "active" or to_acc.status != "active":
@@ -117,7 +117,7 @@ class AccountManager:
             self._authorizer.require(
                 Permission.ACCOUNT_MANAGE,
                 subject,
-                ResourceScope(tenant_id=account.tenant_id, account_id=account_id),
+                ResourceScope(account_group=account.account_group, account_id=account_id),
             )
 
         account.status = "closed"
@@ -127,7 +127,7 @@ class AccountManager:
         account = self.get_account(account_id)
         return {
             "account_id": account.account_id,
-            "tenant_id": account.tenant_id,
+            "account_group": account.account_group,
             "cash_balance": account.cash_balance,
             "status": account.status,
             "risk_level": "low" if account.cash_balance > 0 else "high",

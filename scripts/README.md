@@ -251,6 +251,6 @@ preflight-gate skipped (needs: test, code-quality, security-scan)
 - 日志：`logs/`
 
 ## 相关文档
-- `docs/COMMERCIAL_UPGRADE_ROADMAP.md`
+- `docs/ROADMAP.md`
 - `docs/SECURITY_BASELINE.md`
 - `docs/PERFORMANCE_BENCHMARK_SPEC.md`

@@ -42,7 +42,7 @@
 
  ### 2.2 推荐组合（与本项目契合）
  1) **FinRL + Qlib**：提供AI训练与研究平台，输出“信号/权重”供本系统执行。citeturn2search0turn4search0  
- 2) **Lean（可选）**：若需要基金级跨资产实盘引擎，可作为“独立执行引擎”或“兼容层”引入。citeturn0search0turn0search1  
+ 2) **Lean（可选）**：若需要跨资产实盘引擎，可作为“独立执行引擎”或“兼容层”引入。citeturn0search0turn0search1
  3) **加密方向（可选）**：Hummingbot/Freqtrade 作为外部执行服务或策略运行容器。citeturn4search2turn1search0  
 
  ---

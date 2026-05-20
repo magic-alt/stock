@@ -1,7 +1,7 @@
 """
 Trend Pullback Enhanced Strategy (趋势回调增强版)
 
-V3.0.0 新增策略 - 机构级综合策略
+V3.0.0 新增策略 - 增强型综合策略
 
 逻辑：
 1. 趋势过滤：价格 > EMA200 且 EMA200 向上
@@ -20,7 +20,7 @@ from typing import Dict, Any
 
 class TrendPullbackEnhanced(bt.Strategy):
     """
-    机构级趋势回调策略
+    增强型趋势回调策略
     
     核心特性：
     - 波动率定仓 (Volatility Sizing): 根据 ATR 动态调整仓位

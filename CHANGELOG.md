@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file.
 - Gateway: 新增共享订单生命周期状态机与规范状态映射，统一 OMS、纸面交易和实盘网关的 `created -> submitted -> accepted -> partial_filled -> terminal` 链路。
 - Gateway: 新增 `pre_trade_risk` 共享前置风控入口，TradingGateway、PaperGatewayV3 和 OMS 提交路径统一进入 `RiskManagerV2.check_order`。
 - Tests: 新增 XtQuant/QMT stub smoke 与 real-SDK skip-safe integration smoke，并将 XtQuant/XTP/UFT stub smoke、mock SDK 与 realtime 检查纳入 `runtime-smoke`。
-- Platform: 补齐基金级能力闭环，新增 Level2 行情模型/provider 契约、Postgres JobStore fallback、Prometheus/trace 导出、多账户 API 与 CapitalAllocator 资金分配预览。
+- Platform: 补齐生产能力闭环，新增 Level2 行情模型/provider 契约、Postgres JobStore fallback、Prometheus/trace 导出、多账户 API 与 CapitalAllocator 资金分配预览。
 - DataLake: Parquet production promotion 新增 checksum + schema + 缺失率 + OHLC + 索引质量门禁，并记录 quality gate 结果。
 - API: FastAPI v2 新增账户创建/列表/划拨/风险摘要与组合资金分配预览端点，`/api/v2/metrics?format=prometheus` 输出 Prometheus 文本。
 - Web: 回测结果新增 CLI 风格 K线多面板图，展示 MA/BOLL、成交量、RSI、MACD、KDJ 和买卖点标记，并保留权益/回撤曲线作为兜底。
@@ -46,8 +46,9 @@ All notable changes to this project will be documented in this file.
 - README: restructure the public entry around A-share research positioning, 30-second demo, 5-minute backtest, strategy admission, web console, architecture, capability matrix, and known limits.
 - Docs/Config: align public version wording to V5.0.0, Python requirement to 3.10+, and repository URLs to `https://github.com/magic-alt/stock`.
 - CI: make Ruff/MyPy, MkDocs, frontend build/typecheck, Docker build, and Docker Compose validation hard gates in GitHub Actions and `scripts/local_ci.ps1`.
+- API/Auth: replace account grouping field names with `account_group` across RBAC, account APIs, OMS, and gateway authorization while keeping local account and strategy isolation intact.
 - Gateway: GatewayService 连接 TradingGateway 时按配置注入 RiskManagerV2，确保平台 API 纸面/实盘路径进入 adapter 前共享前置风控。
-- Config/Docs: 更新基金级能力配置样例、ROADMAP 真实状态和运维 Runbook，明确 Level2 SDK、Redis/Postgres、OTLP 与资金分配生产要求。
+- Config/Docs: 更新生产能力配置样例、ROADMAP 真实状态和运维 Runbook，明确 Level2 SDK、Redis/Postgres、OTLP 与资金分配生产要求。
 - CLI: feature discovery now lists `qmt`, `vnpy`, and `vnpy_qmt` trading broker/provider options.
 - Docs: mark roadmap V4.0-A and V4.0-B implementation checklists as completed after validation.
 - V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
@@ -946,7 +947,7 @@ Total strategies: 40 (新增 7 个)
 
 ## [V3.0.0-beta.3] - 2025-12-03
 
-### 🚀 新增机构级综合策略 - TrendPullbackEnhanced
+### 🚀 新增增强型综合策略 - TrendPullbackEnhanced
 
 **Theme**: 集成趋势+回调+风控的专业量化策略
 

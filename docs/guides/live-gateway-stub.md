@@ -1,6 +1,6 @@
 # Live Gateway Stub Mode
 
-The platform includes live gateway adapters for XtQuant/QMT, XTP, Hundsun UFT, EastMoney, and paper trading. When a commercial broker SDK is unavailable, adapters use stub or paper paths so CI and local development can still exercise the lifecycle safely.
+The platform includes live gateway adapters for XtQuant/QMT, XTP, Hundsun UFT, EastMoney, and paper trading. When a broker SDK is unavailable, adapters use stub or paper paths so CI and local development can still exercise the lifecycle safely.
 
 ## What stub mode is for
 

@@ -207,7 +207,7 @@ class OrderRequest:
     order_type: OrderTypeEnum = OrderTypeEnum.LIMIT
     client_order_id: str = ""
     strategy_id: str = ""
-    tenant_id: str = ""
+    account_group: str = ""
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
     tags: Dict[str, str] = field(default_factory=dict)

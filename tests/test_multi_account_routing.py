@@ -10,15 +10,15 @@ from src.core.account_manager import AccountManager, AccountInfo
 class TestAccountManager:
     def test_create_account(self):
         mgr = AccountManager()
-        acc = mgr.create_account("T1", "owner1", 1000.0)
-        assert acc.tenant_id == "T1"
+        acc = mgr.create_account("G1", "owner1", 1000.0)
+        assert acc.account_group == "G1"
         assert acc.owner_subject_id == "owner1"
         assert acc.cash_balance == 1000.0
         assert acc.status == "active"
 
     def test_get_account(self):
         mgr = AccountManager()
-        acc = mgr.create_account("T1", "owner1", 500.0)
+        acc = mgr.create_account("G1", "owner1", 500.0)
         fetched = mgr.get_account(acc.account_id)
         assert fetched.account_id == acc.account_id
 
@@ -27,14 +27,14 @@ class TestAccountManager:
         with pytest.raises(KeyError):
             mgr.get_account("nonexistent")
 
-    def test_list_accounts_by_tenant(self):
+    def test_list_accounts_by_account_group(self):
         mgr = AccountManager()
-        mgr.create_account("T1", "o1", 100.0)
-        mgr.create_account("T1", "o2", 200.0)
-        mgr.create_account("T2", "o3", 300.0)
-        t1_accounts = mgr.list_accounts("T1")
-        assert len(t1_accounts) == 2
-        assert all(a.tenant_id == "T1" for a in t1_accounts)
+        mgr.create_account("G1", "o1", 100.0)
+        mgr.create_account("G1", "o2", 200.0)
+        mgr.create_account("G2", "o3", 300.0)
+        g1_accounts = mgr.list_accounts("G1")
+        assert len(g1_accounts) == 2
+        assert all(a.account_group == "G1" for a in g1_accounts)
 
     def test_fund_transfer_success(self):
         mgr = AccountManager()
@@ -54,9 +54,9 @@ class TestAccountManager:
     def test_fund_transfer_unauthorized(self):
         auth = Authorizer(enforce_account=True)
         mgr = AccountManager(authorizer=auth)
-        viewer = Subject(subject_id="v1", role=Role.VIEWER, tenant_id="T1", account_id="acc1")
-        a1 = mgr.create_account("T1", "o1", 1000.0)
-        a2 = mgr.create_account("T1", "o2", 0.0)
+        viewer = Subject(subject_id="v1", role=Role.VIEWER, account_group="G1", account_id="acc1")
+        a1 = mgr.create_account("G1", "o1", 1000.0)
+        a2 = mgr.create_account("G1", "o2", 0.0)
         with pytest.raises(PermissionError):
             mgr.fund_transfer(a1.account_id, a2.account_id, 100.0, subject=viewer)
 
@@ -85,34 +85,34 @@ class TestAccountManager:
 class TestMultiAccountRBAC:
     def test_account_isolation(self):
         auth = Authorizer(enforce_account=True)
-        trader = Subject(subject_id="t1", role=Role.TRADER, tenant_id="T1", account_id="A1")
+        trader = Subject(subject_id="t1", role=Role.TRADER, account_group="G1", account_id="A1")
         with pytest.raises(PermissionError, match="Account isolation"):
             auth.require(
                 Permission.ORDER_QUERY,
                 trader,
-                ResourceScope(tenant_id="T1", account_id="A2"),
+                ResourceScope(account_group="G1", account_id="A2"),
             )
 
     def test_admin_bypasses_account_isolation(self):
         auth = Authorizer(enforce_account=True)
-        admin = Subject(subject_id="a1", role=Role.ADMIN, tenant_id="T1", account_id="A1")
+        admin = Subject(subject_id="a1", role=Role.ADMIN, account_group="G1", account_id="A1")
         auth.require(
             Permission.ORDER_QUERY,
             admin,
-            ResourceScope(tenant_id="T1", account_id="A2"),
+            ResourceScope(account_group="G1", account_id="A2"),
         )
 
     def test_account_manage_permission(self):
         auth = Authorizer()
-        admin = Subject(subject_id="a1", role=Role.ADMIN, tenant_id="T1")
+        admin = Subject(subject_id="a1", role=Role.ADMIN, account_group="G1")
         assert auth.has_permission(Permission.ACCOUNT_MANAGE, admin)
 
     def test_fund_transfer_permission(self):
         auth = Authorizer()
-        admin = Subject(subject_id="a1", role=Role.ADMIN, tenant_id="T1")
+        admin = Subject(subject_id="a1", role=Role.ADMIN, account_group="G1")
         assert auth.has_permission(Permission.FUND_TRANSFER, admin)
 
-        viewer = Subject(subject_id="v1", role=Role.VIEWER, tenant_id="T1")
+        viewer = Subject(subject_id="v1", role=Role.VIEWER, account_group="G1")
         assert not auth.has_permission(Permission.FUND_TRANSFER, viewer)
 
 
@@ -120,25 +120,25 @@ class TestMultiAccountRouting:
     def test_order_routed_to_correct_account(self):
         auth = Authorizer(enforce_account=True)
         mgr = AccountManager(authorizer=auth)
-        admin = Subject(subject_id="admin", role=Role.ADMIN, tenant_id="T1")
-        acc = mgr.create_account("T1", "admin", 10000.0, subject=admin)
+        admin = Subject(subject_id="admin", role=Role.ADMIN, account_group="G1")
+        acc = mgr.create_account("G1", "admin", 10000.0, subject=admin)
         fetched = mgr.get_account(acc.account_id)
-        assert fetched.tenant_id == "T1"
+        assert fetched.account_group == "G1"
 
     def test_cross_account_order_rejected(self):
         auth = Authorizer(enforce_account=True)
-        trader = Subject(subject_id="t1", role=Role.TRADER, tenant_id="T1", account_id="A1")
+        trader = Subject(subject_id="t1", role=Role.TRADER, account_group="G1", account_id="A1")
         with pytest.raises(PermissionError):
             auth.require(
                 Permission.ORDER_SUBMIT,
                 trader,
-                ResourceScope(tenant_id="T1", account_id="A2"),
+                ResourceScope(account_group="G1", account_id="A2"),
             )
 
-    def test_tenant_scoped_account_list(self):
+    def test_account_group_scoped_account_list(self):
         mgr = AccountManager()
-        mgr.create_account("T1", "o1")
-        mgr.create_account("T2", "o2")
-        assert len(mgr.list_accounts("T1")) == 1
-        assert len(mgr.list_accounts("T2")) == 1
-        assert len(mgr.list_accounts("T3")) == 0
+        mgr.create_account("G1", "o1")
+        mgr.create_account("G2", "o2")
+        assert len(mgr.list_accounts("G1")) == 1
+        assert len(mgr.list_accounts("G2")) == 1
+        assert len(mgr.list_accounts("G3")) == 0

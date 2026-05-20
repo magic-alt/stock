@@ -130,7 +130,7 @@ if HAS_FASTAPI:
         price: float = Field(..., gt=0)
 
     class AccountCreateRequest(BaseModel):
-        tenant_id: str = Field("default", min_length=1)
+        account_group: str = Field("default", min_length=1)
         owner_id: str = Field("api", min_length=1)
         initial_cash: float = Field(0.0, ge=0)
         metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -141,7 +141,7 @@ if HAS_FASTAPI:
         amount: float = Field(..., gt=0)
 
     class CapitalAllocationPreviewRequest(BaseModel):
-        tenant_id: str = Field("default", min_length=1)
+        account_group: str = Field("default", min_length=1)
         strategy_weights: Dict[str, float] = Field(..., min_length=1)
         strategy_params: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
         gate_root: str = Field(DEFAULT_STRATEGY_GATE_ROOT, min_length=1)
@@ -578,7 +578,7 @@ if HAS_FASTAPI:
         @app.post("/api/v2/accounts", tags=["Accounts"])
         async def create_account(request: Request, payload: AccountCreateRequest):
             account = request.app.state.account_manager.create_account(
-                payload.tenant_id,
+                payload.account_group,
                 payload.owner_id,
                 payload.initial_cash,
             )
@@ -586,8 +586,8 @@ if HAS_FASTAPI:
             return ApiEnvelope(data={"account": _jsonable(account)})
 
         @app.get("/api/v2/accounts", tags=["Accounts"])
-        async def list_accounts(request: Request, tenant_id: str = "default"):
-            accounts = request.app.state.account_manager.list_accounts(tenant_id)
+        async def list_accounts(request: Request, account_group: str = "default"):
+            accounts = request.app.state.account_manager.list_accounts(account_group)
             return ApiEnvelope(data={"accounts": _jsonable(accounts)})
 
         @app.get("/api/v2/accounts/{account_id}/risk", tags=["Accounts"])
@@ -625,7 +625,7 @@ if HAS_FASTAPI:
                 except MissingStrategyGateStage as exc:
                     raise HTTPException(status_code=403, detail=str(exc))
 
-            accounts = request.app.state.account_manager.list_accounts(payload.tenant_id)
+            accounts = request.app.state.account_manager.list_accounts(payload.account_group)
             allocator = CapitalAllocator(
                 min_cash_buffer_pct=payload.min_cash_buffer_pct,
                 max_account_weight=payload.max_account_weight,
