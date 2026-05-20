@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-05-20
 
 ### Added
-- Architecture: introduce **V6 Open Platform** proposal (Phase 0). Adds [`docs/architecture/open-platform.md`](docs/architecture/open-platform.md) describing the kernel-centric, ports-and-adapters, plugin-first target architecture (Apps / Platform / Runtime / Engines / Kernel / Adapters / SDK), a Nautilus-style `LifecycleFSM`, a `PluginRegistry` over Python `entry_points`, and an eight-phase additive migration plan that preserves every V5 capability via re-export shims.
-- Architecture: rewrite the README `## Architecture` mermaid diagram from a 5-node linear flow into the V6 concentric ring model so the platform's existing kernel / plugin / audit / HA primitives become visible to readers and plugin authors.
-- Roadmap: add roadmap section **8.5 V6 Open Platform Foundation** with the phase-by-phase plan, default architectural decisions (AST sandbox, in-process MessageBus default, single-package-first distribution), and explicit V6 non-goals (no native-engine rewrite, no microservice split, no multi-market expansion).
-- Packaging: declare V6 plugin entry-point groups in `pyproject.toml` (`quant_platform.strategy`, `.indicator`, `.factor`, `.data_provider`, `.realtime_feed`, `.gateway`, `.storage`, `.risk_rule`, `.fill_model`, `.report`, `.scheduler`, `.ml_adapter`, `.messaging`, `.admission_gate`) so third-party distributions can register plugins immediately, even before Phase 1 kernel code lands.
-- Docs: register the V6 open-platform page in `mkdocs.yml` navigation under Architecture and cross-link it from `docs/architecture/overview.md`.
+- Architecture (V6 Phase 1 — Kernel hardening): introduce `src/core/component_state.py` with a `ComponentState` enum (PRE_INITIALIZED / READY / RUNNING / STOPPING / STOPPED / DISPOSED / DEGRADED / FAULTED) and a `Lifecycle` FSM that enforces legal transitions and exposes an observational `on_transition` hook (modeled on Nautilus Trader's `ComponentState`).
+- Architecture (V6 Phase 1): introduce `src/core/kernel.py` with `PlatformKernel`, the process-wide composition root for the V6 open platform. The kernel owns a `MessageBus`, registers named components, starts them in registration order, stops them LIFO, publishes lifecycle transitions on `kernel.component.state` and component errors on `kernel.component.error`, and provides an opt-in `get_kernel()` / `reset_kernel()` singleton.
+- Core: additive `MessageBus.publish_message(msg)` convenience method that publishes a pre-built `Message` envelope (preserves existing `publish(topic, payload, source)` API unchanged).
+- Core: re-export `ComponentState`, `InvalidStateTransition`, `Lifecycle`, `TransitionEvent`, `is_legal_transition`, `ComponentRecord`, `LIFECYCLE_TOPIC`, `PlatformKernel`, `get_kernel`, `reset_kernel` from `src.core` for downstream consumption. Existing imports from `src.core` are unchanged.
+
+### Tests
+- Add `tests/test_kernel.py` (29 tests) covering FSM legal/illegal transitions, terminal-state blocking, degraded/faulted recovery, restart after STOPPED, callback exception isolation, kernel registration thread safety, ordered start/LIFO stop, fail-fast start with FAULTED transition, best-effort stop continuation, idempotent start, dispose, shutdown, singleton lifecycle, and the new `publish_message` envelope path. Suite total: 1186 passed / 35 skipped (no regressions vs the V5 baseline of 1157).
 
 ### Removed
 - Docs: delete obsolete `docs/API_REFERENCE.py` placeholder (V3.1.0 stub fully superseded by `docs/API_REFERENCE.md`).
