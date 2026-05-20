@@ -137,23 +137,27 @@ can be developed and distributed as independent plugins.
 ```mermaid
 flowchart TB
     subgraph Apps["Apps"]
+        direction LR
         CLI["CLI"]
         Web["Web Console"]
         GUI["Desktop GUI"]
         Notebook["Notebook"]
     end
     subgraph Platform["Platform"]
+        direction LR
         API["FastAPI v2"]
         Jobs["JobQueue / Orchestrator"]
         Lake["DataLake"]
         Obs["Observability"]
     end
     subgraph Runtime["Runtime contexts"]
+        direction LR
         BT["BacktestRuntime"]
         SB["SandboxRuntime (paper)"]
         LV["LiveRuntime"]
     end
     subgraph Engines["Engines"]
+        direction LR
         DE["Data"]
         XE["Execution"]
         RE["Risk"]
@@ -163,6 +167,7 @@ flowchart TB
         RP["Report"]
     end
     subgraph Kernel["Kernel"]
+        direction LR
         MB["MessageBus"]
         CA["Cache"]
         CL["Clock"]
@@ -171,6 +176,7 @@ flowchart TB
         AU["Audit / Vault / Metrics"]
     end
     subgraph Adapters["Adapters (plugin packages)"]
+        direction LR
         DP["DataProviders"]
         RT["Realtime feeds"]
         BR["Broker gateways"]
@@ -179,19 +185,15 @@ flowchart TB
         MBK["MessageBus backends"]
     end
     subgraph SDK["SDK / Contracts (SSOT)"]
+        direction LR
         DTO["DTOs"]
         Ports["Ports"]
         Base["Base classes"]
         Man["PluginManifest"]
     end
-    Apps --> Platform
-    Platform --> Runtime
-    Runtime --> Engines
-    Engines --> Kernel
-    Kernel --> Adapters
-    Adapters --> SDK
-    Engines --> SDK
-    Runtime --> SDK
+    Apps --> Platform --> Runtime --> Engines --> Kernel --> Adapters --> SDK
+    Engines -.-> SDK
+    Runtime -.-> SDK
 ```
 
 The diagram above is the **V6 open-platform target**. The V5 production code
