@@ -63,11 +63,10 @@ def run_demo(out_dir: Path) -> Tuple[str, dict]:
         text=True,
         cwd=str(ROOT),
     )
-    payload = json.loads(completed.stdout)
     report = json.loads(
         (out_dir / "platform_console_demo.json").read_text(encoding="utf-8")
     )
-    return completed.stdout.strip(), {"payload": payload, "report": report}
+    return completed.stdout.strip(), report
 
 
 def make_frame(lines: List[Tuple[str, Tuple[int, int, int]]], title: str) -> Image.Image:
@@ -91,9 +90,9 @@ def make_frame(lines: List[Tuple[str, Tuple[int, int, int]]], title: str) -> Ima
     return image
 
 
-def build_frames(stdout_text: str, report: dict) -> List[Image.Image]:
-    summary = report["report"]["summary"]
-    steps = [step["name"] for step in report["report"]["steps"]]
+def build_frames(stdout_text: str, report: dict, out_dir_display: str) -> List[Image.Image]:
+    summary = report["summary"]
+    steps = [step["name"] for step in report["steps"]]
 
     frame1 = make_frame(
         [
@@ -109,7 +108,7 @@ def build_frames(stdout_text: str, report: dict) -> List[Image.Image]:
     frame2 = make_frame(
         [
             ("$ python examples/one_click_demo.py \\", CYAN),
-            ("      --out-dir report/open_source_demo", CYAN),
+            (f"      --out-dir {out_dir_display}", CYAN),
             ("", TEXT),
             ("[demo] connecting paper gateway ...", DIM),
             ("[demo] submit_buy_limit  600519.SH @ 100.0", TEXT),
@@ -129,7 +128,7 @@ def build_frames(stdout_text: str, report: dict) -> List[Image.Image]:
     frame3 = make_frame(stdout_lines, "3 / 4  inspect stdout")
 
     summary_lines: List[Tuple[str, Tuple[int, int, int]]] = [
-        ("$ ls report/open_source_demo", CYAN),
+        (f"$ ls {out_dir_display}", CYAN),
         ("platform_console_demo.json", TEXT),
         ("web_console_echarts.json", TEXT),
         ("demo_report.md", TEXT),
@@ -172,8 +171,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    stdout_text, report = run_demo(Path(args.out_dir))
-    frames = build_frames(stdout_text, report)
+    out_dir = Path(args.out_dir)
+    stdout_text, report = run_demo(out_dir)
+    frames = build_frames(stdout_text, report, out_dir.as_posix())
     save_gif(frames, Path(args.output), args.frame_ms)
     print(f"wrote {args.output} ({len(frames)} frames)")
 
