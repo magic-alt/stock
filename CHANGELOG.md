@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Open Source: add README showcase assets, bundled `sample_data/a_share_demo_ohlcv.csv`, and `examples/one_click_demo.py` so first-time users can generate JSON, Markdown, and ECharts-ready demo artifacts without broker SDKs or data-provider tokens.
+- Open Source: add `scripts/generate_demo_gif.py` which replays the actual one-click demo terminal output and renders `docs/assets/demo-workflow.gif` from the live run instead of static placeholder frames.
 - Open Source: add root MIT `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates, and a PR template for public collaboration readiness.
 - Docs: add MkDocs home, Getting Started, Guides, API, Architecture, and Operations entry pages that link into the existing deep documentation set.
 - Strategy: add parameter-signature-scoped strategy admission gate registry so baseline/admission/live rollout must progress through `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`.
@@ -44,6 +45,7 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- Docs: clean up MkDocs strict-build warnings by replacing the emoji-broken manual TOC in `DEPLOYMENT_GUIDE.md` with the Material right-side TOC, removing the dangling `Special Strategies` entry from `STRATEGY_REFERENCE.md`, repointing the `QUICK_START_DEPLOYMENT.md` troubleshooting link to `operations/troubleshooting.md`, and surfacing all legacy reference docs through a new `Reference Library` nav section in `mkdocs.yml`.
 - Tooling: align Ruff rule selection and legacy baseline ignores in `pyproject.toml`, letting GitHub Actions and local CI run `ruff check src/` without CLI rule overrides.
 - Launch: add explicit Python 3.10+ version checks to the shell and Windows production startup scripts.
 - README: restructure the public entry around A-share research positioning, 30-second demo, 5-minute backtest, strategy admission, web console, architecture, capability matrix, and known limits.
