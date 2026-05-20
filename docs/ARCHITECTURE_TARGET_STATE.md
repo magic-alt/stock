@@ -24,6 +24,8 @@
 - 回测-仿真-实盘一致风控规则
 
 ### 4. Infrastructure
+- Adapters：`src/adapters/data/`、`src/adapters/realtime/`、`src/adapters/broker/`、`src/adapters/storage/`、`src/adapters/ml/`、`src/adapters/messaging/`
+- Legacy imports：`src/data_sources/`、`src/core/realtime_data.py`、`src/gateways/`、`src/core/repository.py`、`src/core/message_bus.py`、`src/mlops/` 保持兼容导出
 - Data Providers / Cache / DB / Data Lake
 - Live Gateway Adapters
 - Metrics / Audit / Logging
@@ -68,6 +70,7 @@
 ## 当前已实现映射
 - FastAPI v2：`src/platform/api_v2.py`
 - v1 兼容接口与平台服务：`src/platform/api_server.py`
+- Adapter 统一入口：`src/adapters/{data,realtime,broker,storage,ml,messaging}/`
 - 作业取消与指标：`src/platform/job_queue.py`
 - 启动参数：`scripts/run_platform_api.py`
 - 契约测试：`tests/test_platform_api_server.py`
