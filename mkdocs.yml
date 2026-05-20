@@ -77,6 +77,26 @@ nav:
     - Deployment: operations/deployment.md
     - Monitoring: operations/monitoring.md
     - Troubleshooting: operations/troubleshooting.md
+  - Reference Library:
+    - Platform Guide: PLATFORM_GUIDE.md
+    - Strategy Reference: STRATEGY_REFERENCE.md
+    - Strategy Admission Workflow: STRATEGY_ADMISSION_WORKFLOW.md
+    - API Reference (full): API_REFERENCE.md
+    - Live Trading API: LIVE_TRADING_API.md
+    - Broker Account Guide: BROKER_ACCOUNT_GUIDE.md
+    - Gateway SDK Setup: GATEWAY_SDK_SETUP.md
+    - AI Framework Integration: AI_FRAMEWORK_INTEGRATION.md
+    - Deployment Guide (legacy): DEPLOYMENT_GUIDE.md
+    - Quick Start Deployment (legacy): QUICK_START_DEPLOYMENT.md
+    - Operations Runbook: OPERATIONS_RUNBOOK.md
+    - SRE Incident Response: SRE_INCIDENT_RESPONSE.md
+    - Security Baseline: SECURITY_BASELINE.md
+    - Performance Benchmark Spec: PERFORMANCE_BENCHMARK_SPEC.md
+    - Architecture Review: ARCHITECTURE_REVIEW.md
+    - Architecture Target State: ARCHITECTURE_TARGET_STATE.md
+    - V5 Architecture Upgrade Plan: V5_ARCHITECTURE_UPGRADE_PLAN.md
+    - Mid/Long-Term Status Audit: MID_LONG_TERM_STATUS_AUDIT.md
+    - Roadmap: ROADMAP.md
   - Changelog: changelog.md
 
 extra:

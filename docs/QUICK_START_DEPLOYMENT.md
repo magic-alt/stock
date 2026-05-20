@@ -38,7 +38,7 @@ python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
 
 2. **克隆项目**
    ```powershell
-   git clone <repository-url>
+   git clone https://github.com/magic-alt/stock.git
    cd stock
    ```
 
@@ -74,7 +74,7 @@ python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
 
 2. **克隆项目**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/magic-alt/stock.git
    cd stock
    ```
 
@@ -207,4 +207,4 @@ python scripts/start_production.py --log-level DEBUG
 
 ---
 
-**需要帮助？** 查看 [故障排查指南](DEPLOYMENT_GUIDE.md#故障排查)
+**需要帮助？** 查看 [故障排查指南](operations/troubleshooting.md) 或 [完整部署指南](DEPLOYMENT_GUIDE.md)
