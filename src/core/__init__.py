@@ -158,6 +158,7 @@ from .kernel import (
     get_kernel,
     reset_kernel,
 )
+from .plugin_registry import PluginRecord, PluginRegistry, PluginTestResult, PluginValidationResult
 
 __all__ = [
     # Events
@@ -277,6 +278,10 @@ __all__ = [
     # V6: Open-platform contract surface (Phase 2)
     "CONTRACT_VERSION",
     "PluginManifest",
+    "PluginRecord",
+    "PluginRegistry",
+    "PluginTestResult",
+    "PluginValidationResult",
 ]
 
 # V6: Open-platform contract surface (Phase 2). Additive re-export of the

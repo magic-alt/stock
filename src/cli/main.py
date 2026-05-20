@@ -15,6 +15,7 @@ Usage:
 """
 from __future__ import annotations
 
+import json
 import sys
 from typing import List, Optional
 
@@ -328,6 +329,66 @@ if HAS_CLICK:
                 _print_panel("API Health", f"Status: {data.get('status', 'unknown')}\nVersion: {data.get('version', '?')}\nUptime: {data.get('uptime_seconds', 0):.0f}s")
         except Exception as e:
             _print(f"[red]API unreachable: {e}[/red]")
+
+    # -----------------------------------------------------------------------
+    # plugin group
+    # -----------------------------------------------------------------------
+
+    @cli.group()
+    def plugin():
+        """Plugin SDK and SPI commands."""
+        pass
+
+    @plugin.command("test")
+    @click.argument("manifest")
+    @click.option(
+        "--path",
+        "search_path",
+        default=None,
+        help="Optional directory to add to sys.path before loading module manifests.",
+    )
+    @click.option(
+        "--allow-permission",
+        "allowed_permissions",
+        multiple=True,
+        help="Allow one manifest permission token. Repeat for multiple permissions.",
+    )
+    @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON.")
+    def plugin_test(manifest, search_path, allowed_permissions, as_json):
+        """Validate and load-test a plugin manifest."""
+        try:
+            from src.sdk import PluginRegistry, load_manifest
+
+            plugin_manifest = load_manifest(manifest, search_path=search_path)
+            registry = PluginRegistry(allowed_permissions=allowed_permissions)
+            result = registry.test_plugin(plugin_manifest)
+        except Exception as e:
+            if as_json:
+                click.echo(json.dumps({"ok": False, "errors": [str(e)]}, ensure_ascii=False, indent=2))
+            else:
+                _print(f"[red]Plugin test failed:[/red] {e}")
+            sys.exit(1)
+
+        if as_json:
+            click.echo(json.dumps(result.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
+        else:
+            status = "PASS" if result.ok else "FAIL"
+            lines = [
+                f"Status: {status}",
+                f"Plugin: {result.manifest.id} ({result.manifest.kind})",
+                f"Entry point: {result.manifest.entry_point}",
+                f"Loaded object: {result.loaded_object}",
+            ]
+            if result.warnings:
+                lines.append("Warnings:")
+                lines.extend(f"- {warning}" for warning in result.warnings)
+            if result.errors:
+                lines.append("Errors:")
+                lines.extend(f"- {error}" for error in result.errors)
+            _print_panel("Plugin Test", "\n".join(lines), style="green" if result.ok else "red")
+
+        if not result.ok:
+            sys.exit(1)
 
     # -----------------------------------------------------------------------
     # Entry point
