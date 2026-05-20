@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-20
 
+### Added
+- V6 Phase 2 (open platform): freeze the open-platform contract surface in a new `src/core/contracts/` package. Adds `CONTRACT_VERSION = "0.1.0"` with a semver compatibility helper, immutable validated DTOs (`Instrument`, `Bar`, `Tick`, `OrderBookSnapshot`, `Order`, `Fill`, `Position`, `AccountSnapshot`, `Signal`, `RiskCheckResult`, `BacktestResult`), 18 `typing.Protocol` ports (Data / Execution / Risk / Observability / Messaging / Services) covering every entry-point group declared in Phase 0, and `PluginManifest` with known-capability and known-permission allow-lists. Purely additive — V5 modules (`src/core/interfaces.py`, `src/core/objects.py`, `src/core/plugin.py`) are untouched.
+- Tests: add `tests/contracts/` conformance skeleton with DTO invariant tests, manifest validation tests, and structural conformance tests that prove each port works with `isinstance()` against an in-memory reference implementation.
+
 ### Removed
 - Docs: delete obsolete `docs/API_REFERENCE.py` placeholder (V3.1.0 stub fully superseded by `docs/API_REFERENCE.md`).
 - Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。

@@ -256,4 +256,16 @@ __all__ = [
     "SnapshotStore",
     "ComponentRegistry",
     "HealthCheckResult",
+
+    # V6: Open-platform contract surface (Phase 2)
+    "CONTRACT_VERSION",
+    "PluginManifest",
 ]
+
+# V6: Open-platform contract surface (Phase 2). Additive re-export of the
+# contract package version + the most-used manifest type. The full SDK
+# surface lives in :mod:`src.core.contracts`; we only surface the absolute
+# minimum at top level so that ``from src.core import CONTRACT_VERSION``
+# works for tooling without importing every DTO / Port.
+from .contracts import CONTRACT_VERSION, PluginManifest  # noqa: E402
+
