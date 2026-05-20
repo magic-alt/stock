@@ -1,0 +1,11 @@
+{
+  "project_name": "Quant Platform Example Plugin",
+  "plugin_slug": "quant_platform_example_plugin",
+  "package_name": "{{ cookiecutter.plugin_slug|replace('-', '_') }}",
+  "plugin_id": "examples.{{ cookiecutter.plugin_slug|replace('-', '_') }}",
+  "plugin_name": "{{ cookiecutter.project_name }}",
+  "plugin_kind": ["strategy", "indicator", "factor", "data_provider", "gateway", "risk_rule", "fill_model", "report"],
+  "entry_class": "ExamplePlugin",
+  "author": "Quant Platform Team",
+  "version": "0.1.0"
+}

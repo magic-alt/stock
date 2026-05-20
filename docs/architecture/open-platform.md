@@ -246,6 +246,25 @@ reads) must be signed in production deployments; the AST `CodeSafety` check
 remains the default sandbox for hot-loaded strategies, with subprocess and
 container isolation left to the operator.
 
+### Phase 5 SDK status
+
+Phase 5 adds the first importable SDK facade and author tooling:
+
+- `src/sdk/` re-exports the frozen DTO / Port / `PluginManifest` surface from
+  `src/core/contracts/` plus small base classes for common plugin kinds.
+- `src/core/plugin_registry.py` provides `PluginRegistry`, manifest loading,
+  entry-point group metadata, permission checks, and local conformance tests.
+- `templates/cookiecutter-plugin/` contains the third-party plugin scaffold.
+- `examples/plugins/simple_momentum_plugin/` is a minimal strategy plugin that
+  can be tested without installing a package:
+
+```bash
+python -m src.cli.main plugin test simple_momentum_plugin:MANIFEST --path examples/plugins/simple_momentum_plugin
+```
+
+Installed distributions can expose the same command through the
+`quant-platform` console script.
+
 ## Migration discipline
 
 V6 lands in eight additive phases. Each phase is its own branch and PR; every

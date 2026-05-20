@@ -349,7 +349,7 @@
 | 2 | 领域契约 SSOT | `src/core/contracts/`（DTO + Ports + 一致性测试），`interfaces.py` 改为 re-export | Additive |
 | 3 | Engines 分层 | `src/engines/data\|execution\|risk\|portfolio\|backtest\|research\|report/`，包装现有实现 | Additive wrappers |
 | 4 | Adapters 收敛 | `src/adapters/data\|realtime\|broker\|storage\|ml\|messaging/`，旧路径保留 re-export | Re-exports |
-| 5 | Plugin SPI + SDK | `src/sdk/`、`PluginRegistry`、cookiecutter 模板、示例插件、`quant-platform plugin test` CLI | Additive |
+| 5 | Plugin SPI + SDK | 已落地：`src/sdk/`、`PluginRegistry`、cookiecutter 模板、示例插件、`quant-platform plugin test` CLI | Additive |
 | 6 | Platform / Runtime 对齐 | `BacktestRuntime/SandboxRuntime/LiveRuntime`、统一 `MetricsPort/Tracer`、`/api/v2/info` 暴露 `contract_version` | Internal refactor |
 | 7 | 分发拆包 | `quant_platform_core / sdk / adapters_cn / ml / web / cli` 多发布物，README 架构图重写 | Packaging |
 | 8 | 迁移纪律 | `src/_legacy/` 兼容层 + deprecation warning，按 PR 持续清理 | Cleanup |
