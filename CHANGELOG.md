@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-20
 
+### Added
+- V6 Phase 3 (open platform — Engines layer): introduce the `src/engines/` package with seven additive subpackages — `data`, `execution`, `risk`, `portfolio`, `backtest`, `research`, `report` — each re-exporting the canonical V5 implementation from its original location (`src.data_sources`, `src.core`, `src.simulation`, `src.backtest`, `src.mlops`). Nothing is moved or modified; the new import paths line up with the V6 Phase 2 ports so plugins, runtimes and the public SDK can depend on a stable, port-aligned namespace. The V5 `RiskCheckResult` is re-exposed as `RiskCheckOutcome` under `src.engines.risk` to avoid shadowing the V6 SSOT DTO of the same name.
+
 ### Fixed
 - Docs: rebuild the README "Architecture" mermaid diagram so it renders correctly on GitHub. The previous nested-subgraph + `direction LR` form rendered as a blank block on github.com; replaced with a single-layer-per-node `flowchart LR` (Apps → Platform → Runtime → Engines → Kernel → Adapters → SDK) that lists each layer's components inline and keeps two dotted shortcuts to the SDK ring.
 
@@ -15,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Core: re-export `ComponentState`, `InvalidStateTransition`, `Lifecycle`, `TransitionEvent`, `is_legal_transition`, `ComponentRecord`, `LIFECYCLE_TOPIC`, `PlatformKernel`, `get_kernel`, `reset_kernel` from `src.core` for downstream consumption. Existing imports from `src.core` are unchanged.
 
 ### Tests
+- Add `tests/engines/test_engines_layer.py` (23 tests) verifying every engine subpackage imports cleanly, all `__all__` names resolve, and the re-exports are object-identical to their V5 originals (so behaviour cannot diverge).
 - Add `tests/contracts/` conformance skeleton with DTO invariant tests, manifest validation tests, and structural conformance tests that prove each port works with `isinstance()` against an in-memory reference implementation (48 tests).
 - Add `tests/test_kernel.py` (29 tests) covering FSM legal/illegal transitions, terminal-state blocking, degraded/faulted recovery, restart after STOPPED, callback exception isolation, kernel registration thread safety, ordered start/LIFO stop, fail-fast start with FAULTED transition, best-effort stop continuation, idempotent start, dispose, shutdown, singleton lifecycle, and the new `publish_message` envelope path.
 
