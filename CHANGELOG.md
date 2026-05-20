@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-05-20
 
 ### Removed
+- Docs: delete obsolete `docs/API_REFERENCE.py` placeholder (V3.1.0 stub fully superseded by `docs/API_REFERENCE.md`).
 - Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。
 - Platform: 删除 `src/platform/api_v2.py` 中 `legacy_health`/`legacy_ready`/`legacy_metrics` 兼容包装。
 - Platform: 移除纸面交易演示在 v1 API、前端 Dashboard 和文档中的全部入口，统一保留 `scripts/demo_platform_console.py` 与 `/api/v2/demo/paper-trading` 两条路径。
@@ -45,6 +46,7 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- Docs: audit and refresh of `docs/` content — strip stale AI citation tokens from `AI_FRAMEWORK_INTEGRATION.md`, mark `ARCHITECTURE_REVIEW.md` as a V4.0 historical archive with pointers to the live Roadmap / status audit / target architecture / V5.0 plan, refresh `LIVE_TRADING_API.md` header to V5.0.0 / 2026-05-18, and replace `<repository-url>` placeholders in `QUICK_START_DEPLOYMENT.md` with the actual fork URL.
 - Docs: clean up MkDocs strict-build warnings by replacing the emoji-broken manual TOC in `DEPLOYMENT_GUIDE.md` with the Material right-side TOC, removing the dangling `Special Strategies` entry from `STRATEGY_REFERENCE.md`, repointing the `QUICK_START_DEPLOYMENT.md` troubleshooting link to `operations/troubleshooting.md`, and surfacing all legacy reference docs through a new `Reference Library` nav section in `mkdocs.yml`.
 - Tooling: align Ruff rule selection and legacy baseline ignores in `pyproject.toml`, letting GitHub Actions and local CI run `ruff check src/` without CLI rule overrides.
 - Launch: add explicit Python 3.10+ version checks to the shell and Windows production startup scripts.

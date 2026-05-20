@@ -38,7 +38,7 @@ python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
 
 2. **克隆项目**
    ```powershell
-   git clone <repository-url>
+   git clone https://github.com/magic-alt/stock.git
    cd stock
    ```
 
@@ -74,7 +74,7 @@ python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
 
 2. **克隆项目**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/magic-alt/stock.git
    cd stock
    ```
 
