@@ -336,6 +336,32 @@
 | 容量基准 | 定义回测吞吐与稳定性边界 | `benchmark_platform.py` 场景扩展、容量报告 |
 | 灾备与演练 | 把 snapshot/restore 从脚本能力提升为流程能力 | Failover / drill runbook 与验证脚本 |
 
+### 8.5 V6 开放平台基座（2026 H2 起，与 V5 演进并行）
+
+> 详细设计见 [`docs/architecture/open-platform.md`](architecture/open-platform.md)。V6 是
+> **附加式、向后兼容**的重组，不替代 V5 的策略准入、A 股规则、RBAC、审计哈希链、DR 演练
+> 与 MLOps 能力。
+
+| Phase | 主题 | 关键产出 | 改动面 |
+|------|------|---------|------|
+| 0 | 架构决策与契约冻结 | 目标架构图、`docs/architecture/open-platform.md`、entry-point 分组定义 | 仅文档 + `pyproject.toml` |
+| 1 | Kernel 硬化 | `src/core/kernel.py`、`ComponentState` FSM、MessageBus 抛出能力补齐 | Additive |
+| 2 | 领域契约 SSOT | `src/core/contracts/`（DTO + Ports + 一致性测试），`interfaces.py` 改为 re-export | Additive |
+| 3 | Engines 分层 | `src/engines/data\|execution\|risk\|portfolio\|backtest\|research\|report/`，包装现有实现 | Additive wrappers |
+| 4 | Adapters 收敛 | `src/adapters/data\|realtime\|broker\|storage\|ml\|messaging/`，旧路径保留 re-export | Re-exports |
+| 5 | Plugin SPI + SDK | `src/sdk/`、`PluginRegistry`、cookiecutter 模板、示例插件、`quant-platform plugin test` CLI | Additive |
+| 6 | Platform / Runtime 对齐 | `BacktestRuntime/SandboxRuntime/LiveRuntime`、统一 `MetricsPort/Tracer`、`/api/v2/info` 暴露 `contract_version` | Internal refactor |
+| 7 | 分发拆包 | `quant_platform_core / sdk / adapters_cn / ml / web / cli` 多发布物，README 架构图重写 | Packaging |
+| 8 | 迁移纪律 | `src/_legacy/` 兼容层 + deprecation warning，按 PR 持续清理 | Cleanup |
+
+关键决策默认值（可在后续 Phase 调整）：
+
+- 插件沙箱：保留 `src/core/strategy_loader.py` 的 AST `CodeSafety`；签名插件机制留给运营，subprocess / 容器化隔离由部署侧决定。
+- 默认 MessageBus：进程内（`src/core/message_bus.py`），Redis / ZMQ 适配器作为可选 `quant_platform.messaging` 插件。
+- 分发节奏：先在单包 `quant-stock` 内完成内核 + 引擎 + SDK 重组，API 稳定后再拆多 distribution。
+
+非目标（V6 不做）：语言层重写（Rust/C++ 内核）、微服务化、多市场扩张。这些仍属于第 9 节长期方向。
+
 ---
 
 ## 9) 长期技术方向（2027 Q3 之后）

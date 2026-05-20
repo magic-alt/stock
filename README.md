@@ -129,21 +129,83 @@ Main views:
 
 ## Architecture
 
+The platform is organized as concentric rings around a kernel. Each ring
+depends only on the rings below it and on a single SSOT contract layer, so
+strategies, gateways, indicators, data providers, risk rules and ML adapters
+can be developed and distributed as independent plugins.
+
 ```mermaid
-flowchart LR
-    CLI[CLI / GUI] --> API[FastAPI v2]
-    Web[Vue3 Web Console] --> API
-    API --> Engine[Backtest Engines]
-    API --> Admission[Strategy Admission Gates]
-    API --> Gateway[Paper / Stub / Live Gateways]
-    Engine --> Reports[Reports and Snapshots]
-    Admission --> Reports
-    Gateway --> Risk[Risk / OMS / Audit]
-    Risk --> Reports
+flowchart TB
+    subgraph Apps["Apps"]
+        direction LR
+        CLI["CLI"]
+        Web["Web Console"]
+        GUI["Desktop GUI"]
+        Notebook["Notebook"]
+    end
+    subgraph Platform["Platform"]
+        direction LR
+        API["FastAPI v2"]
+        Jobs["JobQueue / Orchestrator"]
+        Lake["DataLake"]
+        Obs["Observability"]
+    end
+    subgraph Runtime["Runtime contexts"]
+        direction LR
+        BT["BacktestRuntime"]
+        SB["SandboxRuntime (paper)"]
+        LV["LiveRuntime"]
+    end
+    subgraph Engines["Engines"]
+        direction LR
+        DE["Data"]
+        XE["Execution"]
+        RE["Risk"]
+        PE["Portfolio"]
+        BE["Backtest"]
+        ML["Research (ML/RL)"]
+        RP["Report"]
+    end
+    subgraph Kernel["Kernel"]
+        direction LR
+        MB["MessageBus"]
+        CA["Cache"]
+        CL["Clock"]
+        PR["PluginRegistry"]
+        FSM["LifecycleFSM"]
+        AU["Audit / Vault / Metrics"]
+    end
+    subgraph Adapters["Adapters (plugin packages)"]
+        direction LR
+        DP["DataProviders"]
+        RT["Realtime feeds"]
+        BR["Broker gateways"]
+        ST["Storage backends"]
+        MLA["ML adapters"]
+        MBK["MessageBus backends"]
+    end
+    subgraph SDK["SDK / Contracts (SSOT)"]
+        direction LR
+        DTO["DTOs"]
+        Ports["Ports"]
+        Base["Base classes"]
+        Man["PluginManifest"]
+    end
+    Apps --> Platform --> Runtime --> Engines --> Kernel --> Adapters --> SDK
+    Engines -.-> SDK
+    Runtime -.-> SDK
 ```
+
+The diagram above is the **V6 open-platform target**. The V5 production code
+still ships from the modules it lives in today; V6 is an additive,
+back-compat refactor that exposes existing kernel, plugin, audit and HA
+primitives behind stable ports so third parties can ship strategies,
+gateways, data sources, indicators, risk rules, fill models, reports,
+storage backends and ML adapters as separate Python packages.
 
 Deep architecture references:
 
+- [docs/architecture/open-platform.md](docs/architecture/open-platform.md) — V6 open-platform proposal
 - [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md)
 - [docs/ARCHITECTURE_REVIEW.md](docs/ARCHITECTURE_REVIEW.md)
 - [docs/API_REFERENCE.md](docs/API_REFERENCE.md)

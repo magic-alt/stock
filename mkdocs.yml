@@ -71,6 +71,7 @@ nav:
     - Strategy API: api/strategy-api.md
   - Architecture:
     - Overview: architecture/overview.md
+    - Open Platform (V6): architecture/open-platform.md
     - Security: architecture/security.md
     - V5.0 Upgrade Plan: architecture/v5-upgrade.md
   - Operations:
