@@ -13,6 +13,7 @@ Unified Quant Platform uses a modular monolith architecture with clear boundarie
 
 ## References
 
+- [V6 open-platform proposal](open-platform.md)
 - [Platform guide](../PLATFORM_GUIDE.md)
 - [Architecture review](../ARCHITECTURE_REVIEW.md)
 - [Target architecture](../ARCHITECTURE_TARGET_STATE.md)
