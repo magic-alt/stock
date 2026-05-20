@@ -135,65 +135,26 @@ strategies, gateways, indicators, data providers, risk rules and ML adapters
 can be developed and distributed as independent plugins.
 
 ```mermaid
-flowchart TB
-    subgraph Apps["Apps"]
-        direction LR
-        CLI["CLI"]
-        Web["Web Console"]
-        GUI["Desktop GUI"]
-        Notebook["Notebook"]
-    end
-    subgraph Platform["Platform"]
-        direction LR
-        API["FastAPI v2"]
-        Jobs["JobQueue / Orchestrator"]
-        Lake["DataLake"]
-        Obs["Observability"]
-    end
-    subgraph Runtime["Runtime contexts"]
-        direction LR
-        BT["BacktestRuntime"]
-        SB["SandboxRuntime (paper)"]
-        LV["LiveRuntime"]
-    end
-    subgraph Engines["Engines"]
-        direction LR
-        DE["Data"]
-        XE["Execution"]
-        RE["Risk"]
-        PE["Portfolio"]
-        BE["Backtest"]
-        ML["Research (ML/RL)"]
-        RP["Report"]
-    end
-    subgraph Kernel["Kernel"]
-        direction LR
-        MB["MessageBus"]
-        CA["Cache"]
-        CL["Clock"]
-        PR["PluginRegistry"]
-        FSM["LifecycleFSM"]
-        AU["Audit / Vault / Metrics"]
-    end
-    subgraph Adapters["Adapters (plugin packages)"]
-        direction LR
-        DP["DataProviders"]
-        RT["Realtime feeds"]
-        BR["Broker gateways"]
-        ST["Storage backends"]
-        MLA["ML adapters"]
-        MBK["MessageBus backends"]
-    end
-    subgraph SDK["SDK / Contracts (SSOT)"]
-        direction LR
-        DTO["DTOs"]
-        Ports["Ports"]
-        Base["Base classes"]
-        Man["PluginManifest"]
-    end
-    Apps --> Platform --> Runtime --> Engines --> Kernel --> Adapters --> SDK
+flowchart LR
+    Apps["<b>Apps</b><br/>CLI · Web Console<br/>Desktop GUI · Notebook"]
+    Platform["<b>Platform</b><br/>FastAPI v2 · JobQueue<br/>DataLake · Observability"]
+    Runtime["<b>Runtime</b><br/>Backtest · Sandbox<br/>Live"]
+    Engines["<b>Engines</b><br/>Data · Execution · Risk<br/>Portfolio · Backtest<br/>Research · Report"]
+    Kernel["<b>Kernel</b><br/>MessageBus · Cache · Clock<br/>PluginRegistry · LifecycleFSM<br/>Audit · Vault · Metrics"]
+    Adapters["<b>Adapters</b><br/>DataProviders · Realtime<br/>Broker · Storage<br/>ML · MessageBus backends"]
+    SDK["<b>SDK / Contracts (SSOT)</b><br/>DTOs · Ports<br/>Base classes · PluginManifest"]
+
+    Apps --> Platform
+    Platform --> Runtime
+    Runtime --> Engines
+    Engines --> Kernel
+    Kernel --> Adapters
+    Adapters --> SDK
     Engines -.-> SDK
     Runtime -.-> SDK
+
+    classDef layer fill:#f5f7fa,stroke:#5b6b7a,stroke-width:1px,color:#1f2933;
+    class Apps,Platform,Runtime,Engines,Kernel,Adapters,SDK layer;
 ```
 
 The diagram above is the **V6 open-platform target**. The V5 production code
