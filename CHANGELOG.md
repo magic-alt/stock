@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-20
 
+### Added
+- Architecture: introduce **V6 Open Platform** proposal (Phase 0). Adds [`docs/architecture/open-platform.md`](docs/architecture/open-platform.md) describing the kernel-centric, ports-and-adapters, plugin-first target architecture (Apps / Platform / Runtime / Engines / Kernel / Adapters / SDK), a Nautilus-style `LifecycleFSM`, a `PluginRegistry` over Python `entry_points`, and an eight-phase additive migration plan that preserves every V5 capability via re-export shims.
+- Architecture: rewrite the README `## Architecture` mermaid diagram from a 5-node linear flow into the V6 concentric ring model so the platform's existing kernel / plugin / audit / HA primitives become visible to readers and plugin authors.
+- Roadmap: add roadmap section **8.5 V6 Open Platform Foundation** with the phase-by-phase plan, default architectural decisions (AST sandbox, in-process MessageBus default, single-package-first distribution), and explicit V6 non-goals (no native-engine rewrite, no microservice split, no multi-market expansion).
+- Packaging: declare V6 plugin entry-point groups in `pyproject.toml` (`quant_platform.strategy`, `.indicator`, `.factor`, `.data_provider`, `.realtime_feed`, `.gateway`, `.storage`, `.risk_rule`, `.fill_model`, `.report`, `.scheduler`, `.ml_adapter`, `.messaging`, `.admission_gate`) so third-party distributions can register plugins immediately, even before Phase 1 kernel code lands.
+- Docs: register the V6 open-platform page in `mkdocs.yml` navigation under Architecture and cross-link it from `docs/architecture/overview.md`.
+
 ### Removed
 - Docs: delete obsolete `docs/API_REFERENCE.py` placeholder (V3.1.0 stub fully superseded by `docs/API_REFERENCE.md`).
 - Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。
