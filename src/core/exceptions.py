@@ -470,7 +470,7 @@ def classify_exception(exc: Exception) -> str:
         return "unknown"
 
 
-def wrap_exception(exc: Exception, wrapper_class: type = QuantBaseError) -> QuantBaseError:
+def wrap_exception(exc: Exception, wrapper_class: type[QuantBaseError] = QuantBaseError) -> QuantBaseError:
     """
     Wrap a standard exception in a QuantBaseError.
     
@@ -495,13 +495,13 @@ def wrap_exception(exc: Exception, wrapper_class: type = QuantBaseError) -> Quan
 # Exception Registry for Error Codes
 # ---------------------------------------------------------------------------
 
-ERROR_CODE_MAP: Dict[str, type] = {
+ERROR_CODE_MAP: Dict[str, type[QuantBaseError]] = {
     cls.error_code: cls
     for name, cls in globals().items()
     if isinstance(cls, type) and issubclass(cls, QuantBaseError) and cls is not QuantBaseError
 }
 
 
-def get_exception_by_code(error_code: str) -> Optional[type]:
+def get_exception_by_code(error_code: str) -> Optional[type[QuantBaseError]]:
     """Get exception class by error code."""
     return ERROR_CODE_MAP.get(error_code)

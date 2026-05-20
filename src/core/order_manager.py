@@ -35,7 +35,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from src.core.interfaces import (
-    OrderInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
+    AccountInfo, OrderInfo, PositionInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
     OrderRequest, OrderEventPayload, is_active_order_status, normalize_order_status,
 )
 from src.core.events import EventEngine, Event, EventType
