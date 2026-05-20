@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "{{ cookiecutter.plugin_slug }}"
+version = "{{ cookiecutter.version }}"
+description = "{{ cookiecutter.project_name }}"
+requires-python = ">=3.10"
+authors = [
+  {name = "{{ cookiecutter.author }}"},
+]
+
+[project.entry-points."quant_platform.{{ cookiecutter.plugin_kind }}"]
+{{ cookiecutter.package_name }} = "{{ cookiecutter.package_name }}:{{ cookiecutter.entry_class }}"

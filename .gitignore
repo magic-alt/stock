@@ -1,7 +1,7 @@
 /cache
 /reports_bulk_10
 /reports_gui
-report
+/report/
 /qlib_data
 /mlruns
 /data_lake
