@@ -28,7 +28,7 @@
 ### 软件要求
 
 - **操作系统**: Windows 10+, Linux (Ubuntu 20.04+), macOS 10.15+
-- **Python**: 3.8+
+- **Python**: 3.10+
 - **数据库**: SQLite3 (内置)
 
 ### Python依赖
@@ -713,10 +713,10 @@ grep "2024-12-12" logs/quant.log
 
 ## 📚 相关文档
 
-- [用户手册](USER_GUIDE.md)
-- [API文档](API_DOCUMENTATION.md)
-- [策略开发指南](STRATEGY_DEVELOPMENT.md)
-- [故障排查指南](TROUBLESHOOTING.md)
+- [快速开始](getting-started/quick-start.md)
+- [API 文档](API_REFERENCE.md)
+- [策略准入指南](guides/strategy-admission.md)
+- [故障排查指南](operations/troubleshooting.md)
 
 ---
 

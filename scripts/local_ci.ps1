@@ -12,7 +12,7 @@ $script:SoftFailures = @()
 $script:JobResults = @()
 $script:JobState = @{}
 
-$allowedJobs = @("all", "test", "runtime-smoke", "gateway-integration", "code-quality", "security-scan", "build-docs", "performance", "integration-test", "preflight-gate", "release")
+$allowedJobs = @("all", "test", "runtime-smoke", "gateway-integration", "code-quality", "security-scan", "build-docs", "frontend-check", "docker-validate", "performance", "integration-test", "preflight-gate", "release")
 $Jobs = @($Jobs | ForEach-Object { $_ -split "," } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 $invalidJobs = @($Jobs | Where-Object { $_ -notin $allowedJobs })
 if ($invalidJobs.Count -gt 0) {
@@ -127,7 +127,7 @@ function Invoke-Job {
 }
 
 function Resolve-SelectedJobs {
-    $defaultOrder = @("test", "runtime-smoke", "code-quality", "security-scan", "build-docs", "performance", "integration-test")
+    $defaultOrder = @("test", "runtime-smoke", "code-quality", "security-scan", "build-docs", "frontend-check", "docker-validate", "performance", "integration-test")
     if ($IncludeRelease) {
         $defaultOrder += "release"
     }
@@ -207,20 +207,18 @@ foreach ($job in $selectedJobs) {
                 if (-not $SkipInstall) {
                     Invoke-Step -JobName "code-quality" -StepName "Install linting tools" -Commands @(
                         { python -m pip install --upgrade pip },
-                        { pip install flake8 black isort mypy pylint }
+                        { pip install ruff mypy types-PyYAML types-requests },
+                        { pip install -r requirements.txt }
                     )
                 }
-                Invoke-Step -JobName "code-quality" -StepName "Black check" -AllowFailure -Commands @(
-                    { black --check src/ tests/ }
+                Invoke-Step -JobName "code-quality" -StepName "Ruff lint" -Commands @(
+                    { ruff check src/ --select E,W,F --ignore E501,E402,W503 }
                 )
-                Invoke-Step -JobName "code-quality" -StepName "isort check" -AllowFailure -Commands @(
-                    { isort --check-only src/ tests/ }
+                Invoke-Step -JobName "code-quality" -StepName "Ruff format check" -Commands @(
+                    { ruff format --check src/ --line-length 120 }
                 )
-                Invoke-Step -JobName "code-quality" -StepName "Flake8 lint" -AllowFailure -Commands @(
-                    { flake8 src/ tests/ --max-line-length=120 --extend-ignore=E203,W503 }
-                )
-                Invoke-Step -JobName "code-quality" -StepName "Pylint" -AllowFailure -Commands @(
-                    { pylint src/ --disable=C0111,R0913,R0914,R0915 }
+                Invoke-Step -JobName "code-quality" -StepName "MyPy type check" -Commands @(
+                    { mypy src/core/exceptions.py src/core/input_sanitizer.py src/core/plugin.py --ignore-missing-imports }
                 )
             }
         }
@@ -272,17 +270,36 @@ foreach ($job in $selectedJobs) {
                     Invoke-Step -JobName "build-docs" -StepName "Install docs dependencies" -Commands @(
                         { python -m pip install --upgrade pip },
                         { pip install -r requirements.txt },
-                        { pip install sphinx sphinx-rtd-theme }
+                        { pip install mkdocs mkdocs-material pymdown-extensions }
                     )
                 }
-                Invoke-Step -JobName "build-docs" -StepName "Build docs" -AllowFailure -Commands @(
-                    {
-                        if (Test-Path "docs/conf.py") {
-                            python -m sphinx -b html docs docs/_build/html
-                        } else {
-                            Write-Host "No Sphinx docs configured yet"
-                        }
-                    }
+                Invoke-Step -JobName "build-docs" -StepName "Build MkDocs site" -Commands @(
+                    { python -m mkdocs build --strict }
+                )
+            }
+        }
+        "frontend-check" {
+            Invoke-Job -Name "frontend-check" -Body {
+                if (-not $SkipInstall) {
+                    Invoke-Step -JobName "frontend-check" -StepName "Install frontend dependencies" -Commands @(
+                        { Push-Location frontend; npm ci; Pop-Location }
+                    )
+                }
+                Invoke-Step -JobName "frontend-check" -StepName "Type check frontend" -Commands @(
+                    { Push-Location frontend; npx vue-tsc -b --noEmit; Pop-Location }
+                )
+                Invoke-Step -JobName "frontend-check" -StepName "Build frontend" -Commands @(
+                    { Push-Location frontend; npm run build; Pop-Location }
+                )
+            }
+        }
+        "docker-validate" {
+            Invoke-Job -Name "docker-validate" -Needs @("test") -Body {
+                Invoke-Step -JobName "docker-validate" -StepName "Validate Dockerfile" -Commands @(
+                    { docker build --target production -t quant-platform:test . }
+                )
+                Invoke-Step -JobName "docker-validate" -StepName "Validate docker-compose" -Commands @(
+                    { docker compose config }
                 )
             }
         }

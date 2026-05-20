@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- Open Source: add root MIT `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates, and a PR template for public collaboration readiness.
+- Docs: add MkDocs home, Getting Started, Guides, API, Architecture, and Operations entry pages that link into the existing deep documentation set.
 - Strategy: add parameter-signature-scoped strategy admission gate registry so baseline/admission/live rollout must progress through `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`.
 - Launch: wire `scripts/start_production.py` live preflight into the strategy admission gate workflow, promoting `paper_validated` and `live_candidate` only after successful preflight and blocking live startup until `live_candidate` exists.
 - Gateway: 新增共享订单生命周期状态机与规范状态映射，统一 OMS、纸面交易和实盘网关的 `created -> submitted -> accepted -> partial_filled -> terminal` 链路。
@@ -32,15 +34,18 @@ All notable changes to this project will be documented in this file.
 - V4.0-A: add realtime provider factory and `src/core/realtime_providers/` exports for Sina, Eastmoney, and Tencent providers.
 - V4.0-A: add `constraints.txt` as a dependency resolution seed aligned with runtime/test requirements.
 - CLI: `unified_backtest_framework.py features|capabilities --json` now lists registered strategies, data sources, backtest engines, financial providers, live gateways, trading brokers, and workflows.
-- Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring commercial SDKs.
+- Tests: add CLI/gateway capability coverage that validates the README gateway table (XtQuant/QMT, XTP, Hundsun UFT, EastMoney) without requiring broker SDKs.
 - Web: 回测工作台新增动态策略参数、同步/异步运行模式、任务状态、错误提示、指标明细和响应式布局。
 - API: FastAPI `api_v2` 新增回测 job 提交/查询/取消端点，并提供 `/api/v2/chart-data` 供前端数据浏览使用。
 - Frontend: Data Browser 从占位页升级为可查询近期 OHLCV 数据的表格视图。
-- Docs: 新增 `docs/BROKER_ACCOUNT_GUIDE.md` — 完整的券商账户开通、商业 SDK 申请、合规清单与申请话术指南（覆盖 QMT/XTP/UFT/CTP/easytrader + L2 行情 + TuShare）。
-- Docs: ROADMAP 大幅扩展 V5.0（商业化 SaaS / 多租户 / 计费 / 策略市场 / L2 行情 / CTP 期货 / 算法母单 / 沙箱）与 V6.0（C++ 撮合 / 监管报送 / 多市场 / AI Agent）路线；新增技术债清单与 OKR 度量。
+- Docs: 新增 `docs/BROKER_ACCOUNT_GUIDE.md` — 完整的券商账户开通、券商 SDK 申请、合规清单与申请话术指南（覆盖 QMT/XTP/UFT/CTP/easytrader + L2 行情 + TuShare）。
+- Docs: ROADMAP 调整为开源平台演进路线，聚焦文档可信度、演示体验、研究工作流、L2 行情、CTP、算法执行、可观测性与长期技术方向。
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- README: restructure the public entry around A-share research positioning, 30-second demo, 5-minute backtest, strategy admission, web console, architecture, capability matrix, and known limits.
+- Docs/Config: align public version wording to V5.0.0, Python requirement to 3.10+, and repository URLs to `https://github.com/magic-alt/stock`.
+- CI: make Ruff/MyPy, MkDocs, frontend build/typecheck, Docker build, and Docker Compose validation hard gates in GitHub Actions and `scripts/local_ci.ps1`.
 - Gateway: GatewayService 连接 TradingGateway 时按配置注入 RiskManagerV2，确保平台 API 纸面/实盘路径进入 adapter 前共享前置风控。
 - Config/Docs: 更新基金级能力配置样例、ROADMAP 真实状态和运维 Runbook，明确 Level2 SDK、Redis/Postgres、OTLP 与资金分配生产要求。
 - CLI: feature discovery now lists `qmt`, `vnpy`, and `vnpy_qmt` trading broker/provider options.
@@ -48,7 +53,7 @@ All notable changes to this project will be documented in this file.
 - V4.0-A: normalize OMS submission through canonical order requests, publish standard risk checked/rejected events, and emit execution reports from MatchingEngine/PaperGatewayV3 fills.
 - Config: align `GlobalConfig` schema with `config.yaml.example` by adding database, monitoring, performance, provider-detail, and execution live-gateway fields.
 - CLI: `grid` and `auto` workflows now expose `--engine` and correctly pass fee plugin parameters through to engine execution.
-- Gateway: `src.gateways` and `TradingGateway` lazily load concrete commercial SDK gateways; importing CLI/base modules no longer probes XTP/UFT SDKs.
+- Gateway: `src.gateways` and `TradingGateway` lazily load concrete broker SDK gateways; importing CLI/base modules no longer probes XTP/UFT SDKs.
 - Gateway: XtQuant/QMT now supports SDK-less stub mode aligned with XTP/UFT for development, CI, and smoke tests.
 - API: `/api/v2/backtest/run` 和 `/api/v2/strategies/run` 现在透传数据源、基准、复权、日历模式和执行引擎参数。
 - README: 版本升级到 V3.3.0；明确双回测引擎（Backtrader + Zipline）、OrderStateMachine、FinancialDataProvider 工厂、4 个实盘网关、5 种部署形态、本地 CI 流程。
@@ -188,7 +193,7 @@ All notable changes to this project will be documented in this file.
 - Platform: add optional Bearer token auth for v1 API (--api-token / PLATFORM_API_TOKEN).
 - Platform: add /readyz and /metrics operational endpoints plus in-memory API/queue metrics export.
 - Platform: add job cancellation capability (POST /api/v1/jobs/{id}/cancel) for pending jobs.
-- Docs: add commercial-grade assessment, roadmap, target architecture, security baseline, and performance benchmark specs under docs/.
+- Docs: add platform assessment, roadmap, target architecture, security baseline, and performance benchmark specs under docs/.
 - Platform: add SQLite-backed JobStore option, idempotent job submission, and queue latency/runtime percentile metrics.
 - Orchestrator: add workflow timeout, retry, and failure policy controls with task registration APIs.
 - Scripts: add `scripts/audit_integrity_check.py` and `scripts/benchmark_platform.py` for compliance and performance baselining.
@@ -214,7 +219,7 @@ All notable changes to this project will be documented in this file.
 - Data: add trading calendar alignment with suspension fill and data quality reports (JSON/Markdown).
 - Risk: add VaR/ES, CAPM attribution, tracking error, and style exposure metrics to backtest output.
 - Execution: add market impact slippage, fill-probability, and delay models to simulation matching engine.
-- Compliance: add audit logging, RBAC authorization, and tenant/strategy isolation hooks.
+- Compliance: add audit logging, RBAC authorization, and account/strategy isolation hooks.
 - HA/DR: add snapshot/restore utilities and component registry for health checks.
 - Data: add lineage records to SQLite cache for compliance tracking.
 
@@ -472,7 +477,7 @@ results = batch_process(items, process_func, max_workers=4)
 
 | 维度 | 之前 | 现在 |
 |------|------|------|
-| 商业级就绪度 | 88% | **93%** |
+| 运行就绪度 | 88% | **93%** |
 | 错误处理 | 75% | **95%** |
 | 文档完整 | 90% | **95%** |
 | 性能优化 | 基础 | **90%** |
@@ -666,7 +671,7 @@ class StructlogCompatibleLogger:
 
 ## [V3.1.0-alpha.2] - 2025-12-10
 
-### 🏗️ P1 代码质量优化 - Commercial-Grade Standards
+### 🏗️ P1 代码质量优化 - Engineering Quality Standards
 
 **Theme**: 日志标准化、配置集中化、策略命名规范化
 

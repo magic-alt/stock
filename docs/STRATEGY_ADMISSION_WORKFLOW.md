@@ -124,7 +124,6 @@ API 资金分配预览同样检查 `admission_passed`，请求体中的 `strateg
 
 ```json
 {
-  "tenant_id": "default",
   "strategy_weights": {"macd": 0.6, "ema": 0.4},
   "strategy_params": {
     "macd": {"fast": 12, "slow": 26, "signal": 9},

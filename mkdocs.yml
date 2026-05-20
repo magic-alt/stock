@@ -1,8 +1,8 @@
 site_name: Unified Quant Platform
 site_description: A-share quantitative trading platform with backtesting, live trading, and MLOps
-site_url: https://quant-platform.readthedocs.io
-repo_url: https://github.com/quant-platform/stock
-repo_name: quant-platform/stock
+site_url: https://magic-alt.github.io/stock/
+repo_url: https://github.com/magic-alt/stock
+repo_name: magic-alt/stock
 
 theme:
   name: material
@@ -61,11 +61,10 @@ nav:
     - Quick Start: getting-started/quick-start.md
     - Configuration: getting-started/configuration.md
   - User Guide:
-    - Strategy Development: guides/strategy-dev.md
+    - Strategy Admission: guides/strategy-admission.md
     - Backtesting: guides/backtesting.md
-    - Live Trading: guides/live-trading.md
-    - Factor Research: guides/factor-research.md
-    - ML Pipeline: guides/ml-pipeline.md
+    - Web Console: guides/web-console.md
+    - Live Gateway Stub: guides/live-gateway-stub.md
   - API Reference:
     - REST API: api/rest-api.md
     - Python SDK: api/python-sdk.md
@@ -83,7 +82,7 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/quant-platform/stock
+      link: https://github.com/magic-alt/stock
   version:
     provider: mike
 

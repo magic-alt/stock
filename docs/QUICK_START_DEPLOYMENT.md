@@ -32,7 +32,7 @@ python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port 8000
 
 1. **安装Python**
    ```powershell
-   # 下载并安装Python 3.8+ from python.org
+   # 下载并安装Python 3.10+ from python.org
    python --version
    ```
 
@@ -203,7 +203,7 @@ python scripts/start_production.py --log-level DEBUG
 
 - 阅读 [完整部署指南](DEPLOYMENT_GUIDE.md)
 - 查看 [架构审查报告](ARCHITECTURE_REVIEW.md)
-- 学习 [用户手册](../README.md)
+- 学习 [快速开始](getting-started/quick-start.md)
 
 ---
 

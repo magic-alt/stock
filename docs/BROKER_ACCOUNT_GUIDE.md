@@ -1,6 +1,6 @@
-# 券商账户与商业接口申请指南 | Broker Account & Commercial API Onboarding
+# 券商账户与接口申请指南 | Broker Account & API Onboarding
 
-> 本文档为**完整商业化使用本平台**所需的券商账户开通、SDK 申请、合规要求与
+> 本文档为使用本平台进行实盘联调或仿真验证时所需的券商账户开通、SDK 申请、合规要求与
 > 联系流程的详细说明。所有信息均基于券商公开资料整理，**具体条款以券商最新
 > 公告为准**。
 
@@ -145,7 +145,7 @@ config.account_id = "REAL_ACCOUNT_ID"
 ### 2.5 常见拒绝原因
 - 个人客户：无机构资质 → 仅能使用模拟
 - 测试期超频报单（>50 笔/秒）→ 风控临时锁定
-- 未签署 L2 数据协议而尝试订阅 L2 → 直接返回权限错误
+- 未签署 L2 数据协议而尝试申请 L2 → 直接返回权限错误
 
 ---
 
@@ -170,7 +170,7 @@ config.account_id = "REAL_ACCOUNT_ID"
 5. **风控审批**：机构风控部门审批接入策略与最大持仓后，开通生产
 
 ### 3.3 费用
-- UFT 柜台年费：**机构级，按席位计费**，参考 30 万 - 200 万元/年
+- UFT 柜台年费：**机构级，按席位收取年费**，参考 30 万 - 200 万元/年
 - 个人开发者：**N/A**，无法单独购买
 - SDK 本身：**包含在 UFT 服务协议内**，不另收
 
@@ -296,12 +296,12 @@ config.account_id = "REAL_ACCOUNT_ID"
 
 ## 附录 C：本仓库相关代码 / 配置入口
 
-- 网关基类：[src/gateways/base_live_gateway.py](../src/gateways/base_live_gateway.py)
-- XTP 实现：[src/gateways/xtp_gateway.py](../src/gateways/xtp_gateway.py)
-- UFT 实现：[src/gateways/hundsun_uft_gateway.py](../src/gateways/hundsun_uft_gateway.py)
-- XtQuant 实现：[src/gateways/xtquant_gateway.py](../src/gateways/xtquant_gateway.py)
-- 网关配置模型：[src/gateways/base_live_gateway.py](../src/gateways/base_live_gateway.py) `class GatewayConfig`
-- 集成 Smoke 测试：[tests/test_gateway_xtp_integration.py](../tests/test_gateway_xtp_integration.py) / [tests/test_gateway_uft_integration.py](../tests/test_gateway_uft_integration.py)
+- 网关基类：[src/gateways/base_live_gateway.py](https://github.com/magic-alt/stock/blob/main/src/gateways/base_live_gateway.py)
+- XTP 实现：[src/gateways/xtp_gateway.py](https://github.com/magic-alt/stock/blob/main/src/gateways/xtp_gateway.py)
+- UFT 实现：[src/gateways/hundsun_uft_gateway.py](https://github.com/magic-alt/stock/blob/main/src/gateways/hundsun_uft_gateway.py)
+- XtQuant 实现：[src/gateways/xtquant_gateway.py](https://github.com/magic-alt/stock/blob/main/src/gateways/xtquant_gateway.py)
+- 网关配置模型：[src/gateways/base_live_gateway.py](https://github.com/magic-alt/stock/blob/main/src/gateways/base_live_gateway.py) `class GatewayConfig`
+- 集成 Smoke 测试：[tests/test_gateway_xtp_integration.py](https://github.com/magic-alt/stock/blob/main/tests/test_gateway_xtp_integration.py) / [tests/test_gateway_uft_integration.py](https://github.com/magic-alt/stock/blob/main/tests/test_gateway_uft_integration.py)
 - 详细 SDK 安装：[docs/GATEWAY_SDK_SETUP.md](GATEWAY_SDK_SETUP.md)
 
 ---

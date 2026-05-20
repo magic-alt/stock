@@ -1,4 +1,4 @@
-# 目标架构（商业级）
+# 目标架构（生产可用）
 
 ## 架构原则
 - 分层清晰：Presentation / Application / Domain / Infrastructure。

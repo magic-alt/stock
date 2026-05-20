@@ -2,7 +2,7 @@
 
 This guide covers installation, configuration, and smoke-test gates for the trading gateway SDKs supported by the platform.
 
-> **需要券商账户、商业 SDK 申请、合规要求**？请参阅
+> **需要券商账户、券商 SDK 申请、合规要求**？请参阅
 > [BROKER_ACCOUNT_GUIDE.md](BROKER_ACCOUNT_GUIDE.md) — 包含 QMT / XTP / UFT
 > 的开户流程、费用估算、合规清单与申请话术模板。
 >

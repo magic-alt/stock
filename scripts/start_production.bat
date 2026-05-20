@@ -15,7 +15,7 @@ cd /d "%PROJECT_ROOT%"
 REM 检查Python环境
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未找到Python环境，请先安装Python 3.8+
+    echo [错误] 未找到Python环境，请先安装Python 3.10+
     pause
     exit /b 1
 )
