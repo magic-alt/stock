@@ -11,7 +11,6 @@ Complete parameter reference for all 41 strategies registered in `BACKTRADER_STR
 - [Futures Strategies](#futures-strategies)
 - [Multi-Factor Strategies](#multi-factor-strategies)
 - [Intraday Strategies](#intraday-strategies)
-- [Special Strategies](#special-strategies)
 - [Enhanced Strategies (V3.0.0)](#enhanced-strategies-v300)
 - [ML Strategies](#ml-strategies)
 - [Strategy Aliases](#strategy-aliases)

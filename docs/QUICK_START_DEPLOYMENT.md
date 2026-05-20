@@ -207,4 +207,4 @@ python scripts/start_production.py --log-level DEBUG
 
 ---
 
-**需要帮助？** 查看 [故障排查指南](DEPLOYMENT_GUIDE.md#故障排查)
+**需要帮助？** 查看 [故障排查指南](operations/troubleshooting.md) 或 [完整部署指南](DEPLOYMENT_GUIDE.md)
