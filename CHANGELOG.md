@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-05-19
+## [Unreleased] - 2026-05-20
 
 ### Removed
 - Platform: 删除 `src/platform/api_server.py` 中所有未版本化 legacy 路由（`/health`、`/ready`、`/metrics`、`/gateway/*`、`/monitor/*`、`/jobs`、`/jobs/{id}`、`/jobs/backtest`、`/jobs/workflow`、`/gateway/connect|disconnect|order|cancel|price`），仅保留 `/api/v1/*` 版本化入口，nginx 已直接映射到 `/api/v2/*`。
@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Tests: 移除已过时的 Dashboard demo 按钮断言与 v1 demo 兼容用例；`test_api_v1_health_metrics_and_legacy_compat` 改名为 `test_api_v1_health_and_cancel_404` 并去掉对未版本化 `/health`、`/metrics` 的断言。
 
 ### Added
+- Open Source: add README showcase assets, bundled `sample_data/a_share_demo_ohlcv.csv`, and `examples/one_click_demo.py` so first-time users can generate JSON, Markdown, and ECharts-ready demo artifacts without broker SDKs or data-provider tokens.
 - Open Source: add root MIT `LICENSE`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, GitHub issue templates, and a PR template for public collaboration readiness.
 - Docs: add MkDocs home, Getting Started, Guides, API, Architecture, and Operations entry pages that link into the existing deep documentation set.
 - Strategy: add parameter-signature-scoped strategy admission gate registry so baseline/admission/live rollout must progress through `research -> baseline_registered -> admission_passed -> paper_validated -> live_candidate -> production`.
@@ -43,6 +44,8 @@ All notable changes to this project will be documented in this file.
 - Docs: GATEWAY_SDK_SETUP.md 增加指向 BROKER_ACCOUNT_GUIDE 的入口；README.md 新增双引擎/网关/部署形态/文档地图章节。
 
 ### Changed
+- Tooling: align Ruff rule selection and legacy baseline ignores in `pyproject.toml`, letting GitHub Actions and local CI run `ruff check src/` without CLI rule overrides.
+- Launch: add explicit Python 3.10+ version checks to the shell and Windows production startup scripts.
 - README: restructure the public entry around A-share research positioning, 30-second demo, 5-minute backtest, strategy admission, web console, architecture, capability matrix, and known limits.
 - Docs/Config: align public version wording to V5.0.0, Python requirement to 3.10+, and repository URLs to `https://github.com/magic-alt/stock`.
 - CI: make Ruff/MyPy, MkDocs, frontend build/typecheck, Docker build, and Docker Compose validation hard gates in GitHub Actions and `scripts/local_ci.ps1`.

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="720" viewBox="0 0 1160 720" role="img" aria-labelledby="title desc">
+  <title id="title">Web Console Dashboard Preview</title>
+  <desc id="desc">Dashboard screenshot-style preview with status cards, equity curve, jobs, and gateway health.</desc>
+  <defs>
+    <linearGradient id="screen" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#e0f2fe"/>
+    </linearGradient>
+    <style>
+      .ui { font-family: ui-sans-serif, Segoe UI, Arial, sans-serif; }
+      .title { fill: #0f172a; font-size: 28px; font-weight: 800; }
+      .text { fill: #475569; font-size: 15px; }
+      .nav { fill: #cbd5e1; font-size: 15px; font-weight: 700; }
+      .kpi { fill: #0f172a; font-size: 24px; font-weight: 800; }
+      .label { fill: #64748b; font-size: 13px; }
+    </style>
+  </defs>
+  <rect width="1160" height="720" rx="28" fill="#0f172a"/>
+  <rect x="22" y="22" width="1116" height="676" rx="20" fill="url(#screen)"/>
+  <rect x="22" y="22" width="212" height="676" rx="20" fill="#111827"/>
+  <text class="ui" x="54" y="76" fill="#f8fafc" font-size="21" font-weight="800">Unified Quant</text>
+  <text class="ui nav" x="54" y="132">Dashboard</text>
+  <text class="ui nav" x="54" y="182" opacity="0.65">Backtest</text>
+  <text class="ui nav" x="54" y="232" opacity="0.65">Trading</text>
+  <text class="ui nav" x="54" y="282" opacity="0.65">Strategies</text>
+  <text class="ui nav" x="54" y="332" opacity="0.65">Data</text>
+  <text class="ui nav" x="54" y="382" opacity="0.65">Monitor</text>
+  <text class="ui title" x="282" y="86">Dashboard</text>
+  <text class="ui text" x="282" y="116">Demo workspace: paper gateway, admission status, and recent runs.</text>
+
+  <g>
+    <rect x="282" y="154" width="185" height="112" rx="14" fill="#ffffff" stroke="#dbeafe"/>
+    <text class="ui label" x="306" y="194">Gateway</text>
+    <text class="ui kpi" x="306" y="232">Connected</text>
+    <circle cx="432" cy="194" r="8" fill="#22c55e"/>
+  </g>
+  <g>
+    <rect x="496" y="154" width="185" height="112" rx="14" fill="#ffffff" stroke="#dbeafe"/>
+    <text class="ui label" x="520" y="194">Admission</text>
+    <text class="ui kpi" x="520" y="232">Passed</text>
+    <circle cx="646" cy="194" r="8" fill="#14b8a6"/>
+  </g>
+  <g>
+    <rect x="710" y="154" width="185" height="112" rx="14" fill="#ffffff" stroke="#dbeafe"/>
+    <text class="ui label" x="734" y="194">Open Jobs</text>
+    <text class="ui kpi" x="734" y="232">3</text>
+  </g>
+  <g>
+    <rect x="924" y="154" width="152" height="112" rx="14" fill="#ffffff" stroke="#dbeafe"/>
+    <text class="ui label" x="948" y="194">PnL</text>
+    <text class="ui kpi" x="948" y="232">+1.7%</text>
+  </g>
+
+  <rect x="282" y="306" width="522" height="290" rx="16" fill="#ffffff" stroke="#dbeafe"/>
+  <text class="ui" x="312" y="350" fill="#0f172a" font-size="19" font-weight="800">Equity curve</text>
+  <polyline points="318,525 372,494 425,506 478,458 531,470 584,420 637,394 690,404 748,356" fill="none" stroke="#2563eb" stroke-width="5"/>
+  <polyline points="318,540 372,532 425,520 478,526 531,514 584,504 637,496 690,482 748,468" fill="none" stroke="#f97316" stroke-width="4" opacity="0.8"/>
+  <line x1="318" y1="552" x2="748" y2="552" stroke="#e2e8f0"/>
+  <line x1="318" y1="380" x2="318" y2="552" stroke="#e2e8f0"/>
+
+  <rect x="832" y="306" width="244" height="290" rx="16" fill="#ffffff" stroke="#dbeafe"/>
+  <text class="ui" x="862" y="350" fill="#0f172a" font-size="19" font-weight="800">Recent workflow</text>
+  <circle cx="874" cy="398" r="9" fill="#22c55e"/><text class="ui text" x="900" y="404">baseline registered</text>
+  <circle cx="874" cy="446" r="9" fill="#22c55e"/><text class="ui text" x="900" y="452">admission passed</text>
+  <circle cx="874" cy="494" r="9" fill="#22c55e"/><text class="ui text" x="900" y="500">paper validated</text>
+  <circle cx="874" cy="542" r="9" fill="#94a3b8"/><text class="ui text" x="900" y="548">live candidate</text>
+</svg>

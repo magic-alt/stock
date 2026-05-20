@@ -212,7 +212,7 @@ foreach ($job in $selectedJobs) {
                     )
                 }
                 Invoke-Step -JobName "code-quality" -StepName "Ruff lint" -Commands @(
-                    { ruff check src/ --no-fix --select E,W,F --ignore E501,E402,W291,W292,W293,E701,E702,E722,E741,F401,F402,F541,F811,F841,F823 }
+                    { ruff check src/ }
                 )
                 Invoke-Step -JobName "code-quality" -StepName "MyPy type check" -Commands @(
                     { mypy src/core/exceptions.py src/core/input_sanitizer.py src/core/plugin.py --ignore-missing-imports --follow-imports=skip }
