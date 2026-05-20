@@ -229,6 +229,16 @@ class MessageBus:
     def publish(self, topic: str, payload: Any, source: str = "") -> int:
         return self._backend.publish(topic, payload, source=source)
 
+    def publish_message(self, msg: "Message") -> int:
+        """Publish a pre-constructed :class:`Message` envelope.
+
+        Additive convenience added in V6 Phase 1 so the kernel and engines
+        can hand a fully formed envelope (with explicit timestamp / source)
+        to the bus without an extra repack. Backwards compatible: existing
+        ``publish(topic, payload, source)`` calls keep working unchanged.
+        """
+        return self._backend.publish(msg.topic, msg.payload, source=msg.source)
+
     def stats(self) -> dict:
         return self._backend.stats()
 

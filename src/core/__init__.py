@@ -142,6 +142,23 @@ def __getattr__(name):
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+# V6 Open Platform (Phase 1): kernel + component lifecycle FSM. Additive
+# only — existing modules do not depend on these symbols yet.
+from .component_state import (
+    ComponentState,
+    InvalidStateTransition,
+    Lifecycle,
+    TransitionEvent,
+    is_legal_transition,
+)
+from .kernel import (
+    ComponentRecord,
+    LIFECYCLE_TOPIC,
+    PlatformKernel,
+    get_kernel,
+    reset_kernel,
+)
+
 __all__ = [
     # Events
     "Event",
