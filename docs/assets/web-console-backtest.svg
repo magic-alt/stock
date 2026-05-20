@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1160" height="720" viewBox="0 0 1160 720" role="img" aria-labelledby="title desc">
+  <title id="title">Web Console Backtest Preview</title>
+  <desc id="desc">Backtest screenshot-style preview with run form, task table, candlestick chart, and metric cards.</desc>
+  <defs>
+    <style>
+      .ui { font-family: ui-sans-serif, Segoe UI, Arial, sans-serif; }
+      .title { fill: #111827; font-size: 28px; font-weight: 800; }
+      .label { fill: #64748b; font-size: 13px; }
+      .text { fill: #334155; font-size: 15px; }
+      .field { fill: #f8fafc; stroke: #cbd5e1; }
+    </style>
+  </defs>
+  <rect width="1160" height="720" rx="28" fill="#172554"/>
+  <rect x="22" y="22" width="1116" height="676" rx="20" fill="#f8fafc"/>
+  <text class="ui title" x="62" y="78">Backtest Workbench</text>
+  <text class="ui text" x="62" y="108">Run a strategy, inspect chart data, and keep reproducible artifacts.</text>
+
+  <rect x="62" y="146" width="320" height="496" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
+  <text class="ui" x="92" y="190" fill="#0f172a" font-size="20" font-weight="800">Run configuration</text>
+  <text class="ui label" x="92" y="236">Strategy</text><rect class="field" x="92" y="252" width="246" height="42" rx="10"/><text class="ui text" x="112" y="279">macd</text>
+  <text class="ui label" x="92" y="326">Symbols</text><rect class="field" x="92" y="342" width="246" height="42" rx="10"/><text class="ui text" x="112" y="369">600519.SH, 000001.SZ</text>
+  <text class="ui label" x="92" y="416">Date range</text><rect class="field" x="92" y="432" width="246" height="42" rx="10"/><text class="ui text" x="112" y="459">2023-01-01 to 2024-12-31</text>
+  <rect x="92" y="518" width="246" height="48" rx="12" fill="#2563eb"/><text class="ui" x="166" y="550" fill="#ffffff" font-size="17" font-weight="800">Run Backtest</text>
+
+  <rect x="420" y="146" width="676" height="310" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
+  <text class="ui" x="450" y="190" fill="#0f172a" font-size="20" font-weight="800">Candlestick and volume</text>
+  <line x1="462" y1="396" x2="1040" y2="396" stroke="#e2e8f0"/>
+  <line x1="462" y1="230" x2="462" y2="396" stroke="#e2e8f0"/>
+  <g stroke-width="4">
+    <line x1="510" y1="338" x2="510" y2="285" stroke="#22c55e"/><rect x="496" y="306" width="28" height="32" fill="#22c55e"/>
+    <line x1="575" y1="350" x2="575" y2="298" stroke="#ef4444"/><rect x="561" y="312" width="28" height="26" fill="#ef4444"/>
+    <line x1="640" y1="330" x2="640" y2="270" stroke="#22c55e"/><rect x="626" y="288" width="28" height="34" fill="#22c55e"/>
+    <line x1="705" y1="314" x2="705" y2="248" stroke="#22c55e"/><rect x="691" y="266" width="28" height="38" fill="#22c55e"/>
+    <line x1="770" y1="318" x2="770" y2="260" stroke="#ef4444"/><rect x="756" y="278" width="28" height="24" fill="#ef4444"/>
+    <line x1="835" y1="300" x2="835" y2="238" stroke="#22c55e"/><rect x="821" y="252" width="28" height="36" fill="#22c55e"/>
+    <line x1="900" y1="286" x2="900" y2="226" stroke="#22c55e"/><rect x="886" y="244" width="28" height="30" fill="#22c55e"/>
+    <line x1="965" y1="302" x2="965" y2="244" stroke="#ef4444"/><rect x="951" y="258" width="28" height="30" fill="#ef4444"/>
+  </g>
+  <rect x="496" y="412" width="28" height="26" fill="#93c5fd"/><rect x="561" y="404" width="28" height="34" fill="#93c5fd"/><rect x="626" y="392" width="28" height="46" fill="#93c5fd"/><rect x="691" y="384" width="28" height="54" fill="#93c5fd"/><rect x="756" y="408" width="28" height="30" fill="#93c5fd"/><rect x="821" y="376" width="28" height="62" fill="#93c5fd"/><rect x="886" y="388" width="28" height="50" fill="#93c5fd"/><rect x="951" y="398" width="28" height="40" fill="#93c5fd"/>
+
+  <rect x="420" y="488" width="676" height="154" rx="16" fill="#ffffff" stroke="#e2e8f0"/>
+  <text class="ui" x="450" y="532" fill="#0f172a" font-size="20" font-weight="800">Metrics</text>
+  <text class="ui label" x="450" y="574">Sharpe</text><text class="ui" x="450" y="606" fill="#0f172a" font-size="26" font-weight="800">1.42</text>
+  <text class="ui label" x="590" y="574">Max Drawdown</text><text class="ui" x="590" y="606" fill="#0f172a" font-size="26" font-weight="800">-8.6%</text>
+  <text class="ui label" x="780" y="574">Admission</text><text class="ui" x="780" y="606" fill="#16a34a" font-size="26" font-weight="800">PASS</text>
+  <text class="ui label" x="950" y="574">Artifacts</text><text class="ui" x="950" y="606" fill="#0f172a" font-size="26" font-weight="800">4</text>
+</svg>

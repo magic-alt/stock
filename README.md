@@ -11,6 +11,16 @@ A-share quant research platform with strategy admission gates, backtesting, pape
 
 **Current version**: V5.0.0 | **Updated**: 2026-05-19 | **Status**: local and container workflows ready
 
+## 5-Second Preview
+
+![Architecture overview](docs/assets/architecture-overview.svg)
+
+| Dashboard | Backtest workbench |
+|---|---|
+| ![Web console dashboard preview](docs/assets/web-console-dashboard.svg) | ![Web console backtest preview](docs/assets/web-console-backtest.svg) |
+
+![Five-minute demo workflow](docs/assets/demo-workflow.gif)
+
 ## Why This Project
 
 - **A-share first**: trading calendar alignment, T+1 constraints, limit-up/down handling, lot sizing, suspension handling, and adjusted-price data workflows.
@@ -24,10 +34,10 @@ A-share quant research platform with strategy admission gates, backtesting, pape
 git clone https://github.com/magic-alt/stock.git
 cd stock
 pip install -r requirements.txt
-python scripts/demo_platform_console.py --out report/platform_console_demo.json
+python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
 
-The deterministic paper-trading demo uses the built-in paper gateway and does not require broker SDKs or data-provider tokens.
+The deterministic demo uses the built-in paper gateway and bundled sample data. It writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs, data-provider tokens, or network data fetches.
 
 With Docker Compose:
 
@@ -148,7 +158,8 @@ Deep architecture references:
 | A-share rules | calendar alignment, T+1, limit handling, lot sizing | backtest engine and execution modeling |
 | Web console | Dashboard, Backtest, Trading, Strategies, Data, Monitor, Settings | `frontend/` |
 | API | versioned FastAPI v2 endpoints | `/api/v2/docs` |
-| Paper trading | deterministic paper gateway and demo workflow | `scripts/demo_platform_console.py` |
+| Paper trading | deterministic paper gateway and demo workflow | `examples/one_click_demo.py` |
+| Sample data | bundled synthetic A-share-style OHLCV fixture | `sample_data/a_share_demo_ohlcv.csv` |
 | Live gateways | XtQuant/QMT, XTP, Hundsun UFT, EastMoney adapters | [docs/GATEWAY_SDK_SETUP.md](docs/GATEWAY_SDK_SETUP.md) |
 | Operations | Docker, Compose, Kubernetes manifests, health checks | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
 
@@ -164,6 +175,7 @@ Deep architecture references:
 Core validation commands:
 
 ```bash
+python examples/one_click_demo.py --out-dir report/open_source_demo
 python -m pytest tests/ -v --tb=short
 python -m mkdocs build --strict
 npm --prefix frontend ci

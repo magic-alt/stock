@@ -1,5 +1,13 @@
 # Quick Start
 
+## Run the one-click demo
+
+```bash
+python examples/one_click_demo.py --out-dir report/open_source_demo
+```
+
+This command generates a deterministic paper-trading report, a Markdown summary, and ECharts-ready JSON from bundled sample data. It does not require broker SDKs, provider tokens, or network data access.
+
 ## Run a backtest
 
 ```bash

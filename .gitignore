@@ -13,6 +13,7 @@ test_output/
 frontend/dist/
 frontend/.vite/
 frontend/tmpclaude-*
+/site
 **/__pycache__/
 *.py[cod]
 node_modules/

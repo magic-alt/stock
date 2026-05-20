@@ -25,6 +25,11 @@ if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 fi
 
+if ! python3 -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" &> /dev/null; then
+    echo "[错误] Python 版本过低，请使用 Python 3.10+"
+    exit 1
+fi
+
 # 检查依赖
 if ! python3 -c "import pandas, numpy, backtrader" &> /dev/null; then
     echo "[警告] 缺少依赖包，正在安装..."

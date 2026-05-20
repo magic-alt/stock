@@ -26,6 +26,13 @@ if exist "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 )
 
+python -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] Python 版本过低，请使用 Python 3.10+
+    pause
+    exit /b 1
+)
+
 REM 检查依赖
 python -c "import pandas, numpy, backtrader" >nul 2>&1
 if errorlevel 1 (
