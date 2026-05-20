@@ -78,16 +78,13 @@ jobs:
 
     - name: Run Ruff (linter + formatter)
       run: |
-        ruff check src/ --select E,W,F --ignore E501,E402,W503 --exit-zero
-        ruff format --check src/ --line-length 120 || true
-      continue-on-error: true
+        ruff check src/ --no-fix --select E,W,F --ignore E501,E402,W291,W292,W293,E701,E702,E722,E741,F401,F402,F541,F811,F841,F823
 
     - name: Run MyPy (type checker)
       run: |
         pip install -r requirements.txt
         pip install types-PyYAML types-requests
-        mypy src/core/exceptions.py src/core/input_sanitizer.py src/core/plugin.py --ignore-missing-imports
-      continue-on-error: true
+        mypy src/core/exceptions.py src/core/input_sanitizer.py src/core/plugin.py --ignore-missing-imports --follow-imports=skip
 
   security-scan:
     name: Security Scan
@@ -147,6 +144,10 @@ jobs:
       run: |
         python -c "import yaml; yaml.safe_load(open('mkdocs.yml'))" && echo "mkdocs.yml is valid YAML"
 
+    - name: Build MkDocs site
+      run: |
+        python -m mkdocs build --strict
+
   frontend-check:
     name: Frontend Build Check
     runs-on: ubuntu-latest
@@ -162,17 +163,15 @@ jobs:
 
     - name: Install frontend dependencies
       working-directory: frontend
-      run: npm install
+      run: npm ci
 
     - name: Type check frontend
       working-directory: frontend
-      run: npx vue-tsc --noEmit || true
-      continue-on-error: true
+      run: npx vue-tsc -b --noEmit
 
     - name: Build frontend
       working-directory: frontend
-      run: npx vite build || true
-      continue-on-error: true
+      run: npm run build
 
   docker-validate:
     name: Docker Build Validation
@@ -185,13 +184,11 @@ jobs:
 
     - name: Validate Dockerfile
       run: |
-        docker build --target production -t quant-platform:test . || echo "Docker build skipped (no Docker)"
-      continue-on-error: true
+        docker build --target production -t quant-platform:test .
 
     - name: Validate docker-compose
       run: |
-        docker compose config || echo "docker-compose validation skipped"
-      continue-on-error: true
+        docker compose config
 
   performance:
     name: Performance Regression Gate

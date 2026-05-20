@@ -1,7 +1,7 @@
 FROM python:3.12-slim AS base
 
 LABEL maintainer="Unified Quant Platform"
-LABEL version="5.0"
+LABEL version="5.0.0"
 
 WORKDIR /app
 

@@ -35,7 +35,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from src.core.interfaces import (
-    OrderInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
+    AccountInfo, OrderInfo, PositionInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
     OrderRequest, OrderEventPayload, is_active_order_status, normalize_order_status,
 )
 from src.core.events import EventEngine, Event, EventType
@@ -95,7 +95,7 @@ class ManagedOrder:
     
     # Management metadata
     strategy_id: str = ""
-    tenant_id: str = ""
+    account_group: str = ""
     parent_order_id: str = ""  # For split orders
     child_order_ids: List[str] = field(default_factory=list)
     tags: Dict[str, str] = field(default_factory=dict)
@@ -163,7 +163,7 @@ class ManagedOrder:
             order_type=self.order_type,
             client_order_id=self.order_id,
             strategy_id=self.strategy_id,
-            tenant_id=self.tenant_id,
+            account_group=self.account_group,
             stop_loss=self.stop_loss,
             take_profit=self.take_profit,
             tags=self.tags,
@@ -210,7 +210,7 @@ class OrderManager:
         event_engine: Optional[EventEngine] = None,
         max_orders_per_symbol: int = 100,
         order_timeout_minutes: int = 60,
-        tenant_id: str = "",
+        account_group: str = "",
         allowed_strategies: Optional[Set[str]] = None,
         authorizer: Optional[Authorizer] = None,
         audit_logger: Optional[AuditLogger] = None,
@@ -229,7 +229,7 @@ class OrderManager:
         self.event_engine = event_engine
         self.max_orders_per_symbol = max_orders_per_symbol
         self.order_timeout = timedelta(minutes=order_timeout_minutes)
-        self.tenant_id = tenant_id
+        self.account_group = account_group
         self.allowed_strategies = allowed_strategies
         self.authorizer = authorizer
         self.audit_logger = audit_logger
@@ -268,7 +268,7 @@ class OrderManager:
         stop_loss: Optional[float] = None,
         take_profit: Optional[float] = None,
         tags: Optional[Dict[str, str]] = None,
-        tenant_id: str = "",
+        account_group: str = "",
         subject: Optional[Subject] = None,
     ) -> ManagedOrder:
         """
@@ -296,9 +296,9 @@ class OrderManager:
             raise ValueError("Limit order requires price")
         
         # Authorization & isolation
-        scope = ResourceScope(tenant_id=tenant_id or self.tenant_id, strategy_id=strategy_id)
+        scope = ResourceScope(account_group=account_group or self.account_group, strategy_id=strategy_id)
         self._authorize(Permission.ORDER_CREATE, subject, scope)
-        self._check_isolation(strategy_id, tenant_id)
+        self._check_isolation(strategy_id, account_group)
 
         # Check order limit
         active_count = len([
@@ -321,7 +321,7 @@ class OrderManager:
             price=price,
             quantity=quantity,
             strategy_id=strategy_id,
-            tenant_id=tenant_id or self.tenant_id,
+            account_group=account_group or self.account_group,
             stop_loss=stop_loss,
             take_profit=take_profit,
             tags=tags or {}
@@ -357,7 +357,7 @@ class OrderManager:
         stop_loss: float,
         take_profit: float,
         strategy_id: str = "",
-        tenant_id: str = "",
+        account_group: str = "",
         subject: Optional[Subject] = None,
     ) -> List[ManagedOrder]:
         """
@@ -384,7 +384,7 @@ class OrderManager:
             order_type=OrderTypeEnum.LIMIT,
             strategy_id=strategy_id,
             tags={"bracket": "entry"},
-            tenant_id=tenant_id,
+            account_group=account_group,
             subject=subject,
         )
         
@@ -398,7 +398,7 @@ class OrderManager:
             order_type=OrderTypeEnum.STOP,
             strategy_id=strategy_id,
             tags={"bracket": "stop_loss", "parent": entry.order_id},
-            tenant_id=tenant_id,
+            account_group=account_group,
             subject=subject,
         )
         sl_order.parent_order_id = entry.order_id
@@ -413,7 +413,7 @@ class OrderManager:
             order_type=OrderTypeEnum.LIMIT,
             strategy_id=strategy_id,
             tags={"bracket": "take_profit", "parent": entry.order_id},
-            tenant_id=tenant_id,
+            account_group=account_group,
             subject=subject,
         )
         tp_order.parent_order_id = entry.order_id
@@ -446,7 +446,7 @@ class OrderManager:
         
         try:
             self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(
-                tenant_id=order.tenant_id, strategy_id=order.strategy_id
+                account_group=order.account_group, strategy_id=order.strategy_id
             ))
             self._check_pre_trade_risk(order)
             # Submit to gateway
@@ -487,7 +487,7 @@ class OrderManager:
         if self.risk_manager is None:
             return
 
-        account = AccountInfo(account_id=order.tenant_id or self.tenant_id or "oms")
+        account = AccountInfo(account_id=order.account_group or self.account_group or "oms")
         positions: Dict[str, PositionInfo] = {}
         if self.gateway:
             get_account = getattr(self.gateway, "get_account", None)
@@ -568,7 +568,7 @@ class OrderManager:
         
         try:
             self._authorize(Permission.ORDER_CANCEL, subject, ResourceScope(
-                tenant_id=order.tenant_id, strategy_id=order.strategy_id
+                account_group=order.account_group, strategy_id=order.strategy_id
             ))
             # Cancel via gateway
             if self.gateway and order.broker_order_id:
@@ -942,9 +942,9 @@ class OrderManager:
         if self.authorizer:
             self.authorizer.require(permission, subject, scope)
 
-    def _check_isolation(self, strategy_id: str, tenant_id: str) -> None:
-        if self.tenant_id and tenant_id and tenant_id != self.tenant_id:
-            raise PermissionError("Tenant isolation violation")
+    def _check_isolation(self, strategy_id: str, account_group: str) -> None:
+        if self.account_group and account_group and account_group != self.account_group:
+            raise PermissionError("Account group isolation violation")
         if self.allowed_strategies and strategy_id and strategy_id not in self.allowed_strategies:
             raise PermissionError("Strategy isolation violation")
 
@@ -1041,7 +1041,7 @@ class OrderManager:
         """Snapshot OMS state for disaster recovery."""
         return {
             "order_seq": self._order_seq,
-            "tenant_id": self.tenant_id,
+            "account_group": self.account_group,
             "orders": [self._serialize_order(o) for o in self._orders.values()],
             "trades": [self._serialize_trade(t) for t in self._trades],
         }
@@ -1056,7 +1056,7 @@ class OrderManager:
         self._trades_by_order.clear()
 
         self._order_seq = int(payload.get("order_seq", 0))
-        self.tenant_id = payload.get("tenant_id", self.tenant_id)
+        self.account_group = payload.get("account_group", self.account_group)
 
         for data in payload.get("orders", []):
             order = self._deserialize_order(data)
@@ -1092,7 +1092,7 @@ class OrderManager:
             "update_time": self._serialize_datetime(order.update_time),
             "fill_time": self._serialize_datetime(order.fill_time),
             "strategy_id": order.strategy_id,
-            "tenant_id": order.tenant_id,
+            "account_group": order.account_group,
             "parent_order_id": order.parent_order_id,
             "child_order_ids": list(order.child_order_ids),
             "tags": dict(order.tags),
@@ -1114,7 +1114,7 @@ class OrderManager:
             avg_fill_price=float(data.get("avg_fill_price", 0)),
             status=normalize_order_status(data.get("status", OrderStatusEnum.CREATED.value)),
             strategy_id=data.get("strategy_id", ""),
-            tenant_id=data.get("tenant_id", ""),
+            account_group=data.get("account_group", ""),
             parent_order_id=data.get("parent_order_id", ""),
             child_order_ids=list(data.get("child_order_ids", [])),
             tags=dict(data.get("tags", {})),

@@ -30,7 +30,7 @@
 - 审计日志：建议保留 180 天，并定期归档。
 - 压测报告：每周保留一个基线版本。
 
-## 5. 基金级能力运行配置
+## 5. 生产能力运行配置
 - 任务队列：`PLATFORM_JOB_STORE` 支持 `./cache/platform/jobs.json`、`sqlite:///...`、`redis://...`、`postgresql://...`。生产环境建议使用 Redis/Postgres，并设置 `PLATFORM_JOB_STORE_FALLBACK=false`，避免队列服务异常时静默降级到本地 JSON。
 - 指标与追踪：`/api/v2/metrics?format=prometheus` 输出 API、JobQueue 和 MetricCollector 指标；API 响应会回传 `X-Request-ID` 与 `X-Trace-ID`。需要外部追踪时配置 `monitoring.otlp_endpoint` 指向 OpenTelemetry Collector HTTP endpoint。
 - 数据湖门禁：Parquet 数据集 promotion 会执行 checksum、schema、缺失率、索引和 OHLC 校验。质量门禁失败时不得标记为 production，应先修复上游数据源或重新落盘版本。

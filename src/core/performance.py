@@ -28,6 +28,7 @@ from __future__ import annotations
 import functools
 import gc
 import hashlib
+import os
 import pickle
 import threading
 import time

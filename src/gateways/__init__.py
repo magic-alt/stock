@@ -84,7 +84,7 @@ class _LazyGatewayRegistry(dict):
             yield self[key]
 
 
-# Gateway factory. Values are lazily resolved to avoid probing commercial SDKs
+# Gateway factory. Values are lazily resolved to avoid probing broker SDKs
 # when callers only need base classes/configuration objects.
 GATEWAY_REGISTRY = _LazyGatewayRegistry(_GATEWAY_IMPORTS)
 

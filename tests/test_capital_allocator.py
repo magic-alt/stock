@@ -56,8 +56,8 @@ def test_allocator_rejects_inactive_or_empty_accounts():
 def test_allocator_accepts_account_manager_accounts():
     allocator = CapitalAllocator(min_cash_buffer_pct=0.0, max_strategy_weight=1.0)
     accounts = [
-        AccountInfo(account_id="acct_a", tenant_id="t1", owner_subject_id="u1", cash_balance=100.0),
-        AccountInfo(account_id="acct_b", tenant_id="t1", owner_subject_id="u2", cash_balance=300.0),
+        AccountInfo(account_id="acct_a", account_group="g1", owner_subject_id="u1", cash_balance=100.0),
+        AccountInfo(account_id="acct_b", account_group="g1", owner_subject_id="u2", cash_balance=300.0),
     ]
 
     result = allocator.allocate(accounts, {"s1": 1.0}, total_capital=200.0)

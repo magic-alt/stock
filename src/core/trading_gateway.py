@@ -1794,7 +1794,7 @@ class TradingGateway:
         risk_manager = None,
         authorizer: Optional[Authorizer] = None,
         audit_logger: Optional[AuditLogger] = None,
-        tenant_id: str = "",
+        account_group: str = "",
     ):
         """
         Initialize trading gateway.
@@ -1809,7 +1809,7 @@ class TradingGateway:
         self.risk_manager = risk_manager
         self.authorizer = authorizer
         self.audit_logger = audit_logger
-        self.tenant_id = tenant_id
+        self.account_group = account_group
         
         self._status = GatewayStatus.DISCONNECTED
         self._adapter = self._create_adapter()
@@ -1828,7 +1828,7 @@ class TradingGateway:
         risk_manager = None,
         authorizer: Optional[Authorizer] = None,
         audit_logger: Optional[AuditLogger] = None,
-        tenant_id: str = "",
+        account_group: str = "",
     ) -> "TradingGateway":
         """Create paper trading gateway."""
         config = GatewayConfig(
@@ -1844,7 +1844,7 @@ class TradingGateway:
             risk_manager=risk_manager,
             authorizer=authorizer,
             audit_logger=audit_logger,
-            tenant_id=tenant_id,
+            account_group=account_group,
         )
     
     @classmethod
@@ -1855,7 +1855,7 @@ class TradingGateway:
         risk_manager = None,
         authorizer: Optional[Authorizer] = None,
         audit_logger: Optional[AuditLogger] = None,
-        tenant_id: str = "",
+        account_group: str = "",
         **kwargs
     ) -> "TradingGateway":
         """Create live trading gateway."""
@@ -1870,7 +1870,7 @@ class TradingGateway:
             risk_manager=risk_manager,
             authorizer=authorizer,
             audit_logger=audit_logger,
-            tenant_id=tenant_id,
+            account_group=account_group,
         )
     
     def _create_adapter(self):
@@ -1997,7 +1997,7 @@ class TradingGateway:
     
     def cancel(self, order_id: str, subject: Optional[Subject] = None) -> bool:
         """Cancel order."""
-        self._authorize(Permission.ORDER_CANCEL, subject, ResourceScope(tenant_id=self.tenant_id))
+        self._authorize(Permission.ORDER_CANCEL, subject, ResourceScope(account_group=self.account_group))
         result = self._adapter.cancel_order(order_id)
         if result:
             self._publish_event("order.cancelled", {"order_id": order_id})
@@ -2090,7 +2090,7 @@ class TradingGateway:
                     })
                     raise PermissionError(f"Risk check failed: {decision.reason}")
 
-        self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(tenant_id=self.tenant_id))
+        self._authorize(Permission.ORDER_SUBMIT, subject, ResourceScope(account_group=self.account_group))
         
         # Submit to adapter
         order_id = self._adapter.submit_order(symbol, side, quantity, price, order_type)

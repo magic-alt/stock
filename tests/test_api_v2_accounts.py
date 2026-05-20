@@ -25,14 +25,14 @@ def test_api_v2_accounts_transfer_and_allocation_preview(tmp_path):
     with TestClient(app) as client:
         account_a = client.post(
             "/api/v2/accounts",
-            json={"tenant_id": "tenant-a", "owner_id": "u1", "initial_cash": 1000.0},
+            json={"account_group": "group-a", "owner_id": "u1", "initial_cash": 1000.0},
         ).json()["data"]["account"]
         account_b = client.post(
             "/api/v2/accounts",
-            json={"tenant_id": "tenant-a", "owner_id": "u2", "initial_cash": 500.0},
+            json={"account_group": "group-a", "owner_id": "u2", "initial_cash": 500.0},
         ).json()["data"]["account"]
 
-        listed = client.get("/api/v2/accounts?tenant_id=tenant-a")
+        listed = client.get("/api/v2/accounts?account_group=group-a")
         assert listed.status_code == 200
         assert len(listed.json()["data"]["accounts"]) == 2
 
@@ -54,7 +54,7 @@ def test_api_v2_accounts_transfer_and_allocation_preview(tmp_path):
         allocation = client.post(
             "/api/v2/portfolio/capital-allocation/preview",
             json={
-                "tenant_id": "tenant-a",
+                "account_group": "group-a",
                 "strategy_weights": {"s1": 0.6, "s2": 0.4},
                 "gate_root": gate_root,
                 "min_cash_buffer_pct": 0.1,
@@ -75,7 +75,7 @@ def test_api_v2_allocation_preview_requires_accounts(tmp_path):
     with TestClient(app) as client:
         response = client.post(
             "/api/v2/portfolio/capital-allocation/preview",
-            json={"tenant_id": "missing", "strategy_weights": {"s1": 1.0}, "gate_root": gate_root},
+            json={"account_group": "missing", "strategy_weights": {"s1": 1.0}, "gate_root": gate_root},
         )
 
     assert response.status_code == 400
@@ -88,12 +88,12 @@ def test_api_v2_allocation_preview_blocks_without_admission_gate(tmp_path):
     with TestClient(app) as client:
         client.post(
             "/api/v2/accounts",
-            json={"tenant_id": "tenant-a", "owner_id": "u1", "initial_cash": 1000.0},
+            json={"account_group": "group-a", "owner_id": "u1", "initial_cash": 1000.0},
         )
         response = client.post(
             "/api/v2/portfolio/capital-allocation/preview",
             json={
-                "tenant_id": "tenant-a",
+                "account_group": "group-a",
                 "strategy_weights": {"s1": 1.0},
                 "gate_root": str(tmp_path / "gates"),
             },

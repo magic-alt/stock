@@ -25,7 +25,7 @@ def test_features_command_outputs_clean_json():
     assert "uft_sdk_unavailable" not in result.stdout + result.stderr
 
 
-def test_trading_gateway_import_does_not_probe_commercial_sdks():
+def test_trading_gateway_import_does_not_probe_broker_sdks():
     result = subprocess.run(
         [sys.executable, "-c", "import src.core.trading_gateway; print('ok')"],
         check=True,

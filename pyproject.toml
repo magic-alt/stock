@@ -90,9 +90,9 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/quant-stock/quant-stock"
-Documentation = "https://quant-stock.readthedocs.io"
-Repository = "https://github.com/quant-stock/quant-stock"
+Homepage = "https://github.com/magic-alt/stock"
+Documentation = "https://magic-alt.github.io/stock/"
+Repository = "https://github.com/magic-alt/stock"
 
 [tool.setuptools.packages.find]
 include = ["src*"]

@@ -9,7 +9,10 @@ import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
+
+if TYPE_CHECKING:
+    from src.core.interfaces import OrderStatusEnum
 
 
 class OrderStatus(str, Enum):

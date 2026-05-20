@@ -1,6 +1,6 @@
 # API Reference Documentation
 
-**Version**: V3.3.0
+**Version**: V5.0.0
 **Date**: 2026-05-18
 **Status**: 🟢 Production Ready
 
@@ -573,7 +573,7 @@ risk:
 - [Deployment Guide](DEPLOYMENT_GUIDE.md)
 - [Architecture Review](ARCHITECTURE_REVIEW.md)
 - [Quick Start](QUICK_START_DEPLOYMENT.md)
-- [Changelog](../CHANGELOG.md)
+- [Changelog](https://github.com/magic-alt/stock/blob/main/CHANGELOG.md)
 
 ---
 
