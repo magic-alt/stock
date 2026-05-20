@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-20
 
+### Added
+- V6 Phase 3 (open platform — Engines layer): introduce the `src/engines/` package with seven additive subpackages — `data`, `execution`, `risk`, `portfolio`, `backtest`, `research`, `report` — each re-exporting the canonical V5 implementation from its original location (`src.data_sources`, `src.core`, `src.simulation`, `src.backtest`, `src.mlops`). Nothing is moved or modified; the new import paths line up with the V6 Phase 2 ports so plugins, runtimes and the public SDK can depend on a stable, port-aligned namespace. The V5 `RiskCheckResult` is re-exposed as `RiskCheckOutcome` under `src.engines.risk` to avoid shadowing the V6 SSOT DTO of the same name.
+
 ### Fixed
 - Docs: rebuild the README "Architecture" mermaid diagram so it renders correctly on GitHub. The previous nested-subgraph + `direction LR` form rendered as a blank block on github.com; replaced with a single-layer-per-node `flowchart LR` (Apps → Platform → Runtime → Engines → Kernel → Adapters → SDK) that lists each layer's components inline and keeps two dotted shortcuts to the SDK ring.
 
