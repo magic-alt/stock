@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-05-20
 
 ### Added
+- V6 Phase 7 (distribution split): add packaging manifests for `quant-platform-core`, `quant-platform-sdk`, `quant-platform-adapters-cn`, `quant-platform-ml`, `quant-platform-web`, and `quant-platform-cli` under `packages/`, with matching `quant_platform_*` import facades.
 - V6 Phase 6 (Platform / Runtime alignment): add BacktestRuntime, SandboxRuntime, and LiveRuntime contexts that boot the kernel with shared metrics, tracer, and plugin registry services; align MetricCollector / Tracer with the V6 MetricsPort / TracerPort; expose /api/v2/info with contract_version and runtime policy metadata.
 - V6 Phase 3 (open platform — Engines layer): introduce the `src/engines/` package with seven additive subpackages — `data`, `execution`, `risk`, `portfolio`, `backtest`, `research`, `report` — each re-exporting the canonical V5 implementation from its original location (`src.data_sources`, `src.core`, `src.simulation`, `src.backtest`, `src.mlops`). Nothing is moved or modified; the new import paths line up with the V6 Phase 2 ports so plugins, runtimes and the public SDK can depend on a stable, port-aligned namespace. The V5 `RiskCheckResult` is re-exposed as `RiskCheckOutcome` under `src.engines.risk` to avoid shadowing the V6 SSOT DTO of the same name.
 
@@ -20,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Core: re-export `ComponentState`, `InvalidStateTransition`, `Lifecycle`, `TransitionEvent`, `is_legal_transition`, `ComponentRecord`, `LIFECYCLE_TOPIC`, `PlatformKernel`, `get_kernel`, `reset_kernel` from `src.core` for downstream consumption. Existing imports from `src.core` are unchanged.
 
 ### Tests
+- Add Phase 7 packaging tests covering distribution manifests, layered dependencies, root package discovery, facade imports, and README discoverability.
 - Add runtime context and /api/v2/info tests, and re-run the PR 28/29/30 regression set for engines, adapters, and plugin SDK.
 - Add `tests/engines/test_engines_layer.py` (23 tests) verifying every engine subpackage imports cleanly, all `__all__` names resolve, and the re-exports are object-identical to their V5 originals (so behaviour cannot diverge).
 - Add adapter convergence tests proving the new canonical adapter imports resolve to the existing legacy implementations.
@@ -5270,5 +5272,6 @@ Successfully modularized the monolithic `unified_backtest_framework.py` (2138 li
 - 📝 Documentation
 - 🧪 Testing
 - 📊 Metrics
+
 
 

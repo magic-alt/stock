@@ -351,14 +351,14 @@
 | 4 | Adapters 收敛 | `src/adapters/data\|realtime\|broker\|storage\|ml\|messaging/`，旧路径保留 re-export | Re-exports |
 | 5 | Plugin SPI + SDK | 已落地：`src/sdk/`、`PluginRegistry`、cookiecutter 模板、示例插件、`quant-platform plugin test` CLI | Additive |
 | 6 | Platform / Runtime 对齐 | `BacktestRuntime/SandboxRuntime/LiveRuntime`、统一 `MetricsPort/Tracer`、`/api/v2/info` 暴露 `contract_version` | Internal refactor |
-| 7 | 分发拆包 | `quant_platform_core / sdk / adapters_cn / ml / web / cli` 多发布物，README 架构图重写 | Packaging |
+| 7 | 分发拆包 | 已落地：`quant_platform_core / sdk / adapters_cn / ml / web / cli` 多发布物 manifest、shim 包、README 架构图重写 | Packaging |
 | 8 | 迁移纪律 | `src/_legacy/` 兼容层 + deprecation warning，按 PR 持续清理 | Cleanup |
 
 关键决策默认值（可在后续 Phase 调整）：
 
 - 插件沙箱：保留 `src/core/strategy_loader.py` 的 AST `CodeSafety`；签名插件机制留给运营，subprocess / 容器化隔离由部署侧决定。
 - 默认 MessageBus：进程内（`src/core/message_bus.py`），Redis / ZMQ 适配器作为可选 `quant_platform.messaging` 插件。
-- 分发节奏：先在单包 `quant-stock` 内完成内核 + 引擎 + SDK 重组，API 稳定后再拆多 distribution。
+- 分发节奏：根包 `quant-stock` 继续作为 batteries-included 开发入口；`packages/` 下的多 distribution manifest 作为发布拆包边界。
 
 非目标（V6 不做）：语言层重写（Rust/C++ 内核）、微服务化、多市场扩张。这些仍属于第 9 节长期方向。
 

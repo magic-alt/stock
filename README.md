@@ -129,43 +129,69 @@ Main views:
 
 ## Architecture
 
-The platform is organized as concentric rings around a kernel. Each ring
-depends only on the rings below it and on a single SSOT contract layer, so
-strategies, gateways, indicators, data providers, risk rules and ML adapters
-can be developed and distributed as independent plugins.
+The platform now has two aligned views: runtime rings for how the system boots,
+and distribution packages for how the same code is installed. Runtime imports
+stay backward compatible under `src.*`; Phase 7 adds thin `quant_platform_*`
+facades and package manifests so plugin authors and operators can install only
+the parts they need.
 
 ```mermaid
 flowchart LR
-    Apps["<b>Apps</b><br/>CLI · Web Console<br/>Desktop GUI · Notebook"]
-    Platform["<b>Platform</b><br/>FastAPI v2 · JobQueue<br/>DataLake · Observability"]
-    Runtime["<b>Runtime</b><br/>Backtest · Sandbox<br/>Live"]
-    Engines["<b>Engines</b><br/>Data · Execution · Risk<br/>Portfolio · Backtest<br/>Research · Report"]
-    Kernel["<b>Kernel</b><br/>MessageBus · Cache · Clock<br/>PluginRegistry · LifecycleFSM<br/>Audit · Vault · Metrics"]
-    Adapters["<b>Adapters</b><br/>DataProviders · Realtime<br/>Broker · Storage<br/>ML · MessageBus backends"]
-    SDK["<b>SDK / Contracts (SSOT)</b><br/>DTOs · Ports<br/>Base classes · PluginManifest"]
+    subgraph RuntimeView["Runtime architecture"]
+        Apps["Apps<br/>CLI · Web · GUI · Notebook"]
+        Platform["Platform<br/>FastAPI · JobQueue · DataLake"]
+        Runtime["Runtime<br/>Backtest · Sandbox · Live"]
+        Engines["Engines<br/>Data · Execution · Risk · Portfolio · Research · Report"]
+        Kernel["Kernel<br/>MessageBus · PluginRegistry · LifecycleFSM"]
+        Adapters["Adapters<br/>Data · Realtime · Broker · Storage · ML"]
+        Contracts["SDK / Contracts<br/>DTOs · Ports · PluginManifest"]
+    end
 
-    Apps --> Platform
-    Platform --> Runtime
-    Runtime --> Engines
-    Engines --> Kernel
-    Kernel --> Adapters
-    Adapters --> SDK
-    Engines -.-> SDK
-    Runtime -.-> SDK
+    subgraph Packages["Distribution packages"]
+        CorePkg["quant_platform_core"]
+        SdkPkg["quant_platform_sdk"]
+        AdaptersPkg["quant_platform_adapters_cn"]
+        MlPkg["quant_platform_ml"]
+        WebPkg["quant_platform_web"]
+        CliPkg["quant_platform_cli"]
+    end
 
-    classDef layer fill:#f5f7fa,stroke:#5b6b7a,stroke-width:1px,color:#1f2933;
-    class Apps,Platform,Runtime,Engines,Kernel,Adapters,SDK layer;
+    Apps --> Platform --> Runtime --> Engines --> Kernel --> Adapters --> Contracts
+    Engines -.-> Contracts
+    Runtime -.-> Contracts
+
+    CorePkg --> Contracts
+    SdkPkg --> Contracts
+    AdaptersPkg --> Adapters
+    MlPkg --> Engines
+    WebPkg --> Platform
+    CliPkg --> Apps
+
+    classDef runtime fill:#f5f7fa,stroke:#5b6b7a,stroke-width:1px,color:#1f2933;
+    classDef package fill:#eef7ff,stroke:#2563eb,stroke-width:1px,color:#1f2933;
+    class Apps,Platform,Runtime,Engines,Kernel,Adapters,Contracts runtime;
+    class CorePkg,SdkPkg,AdaptersPkg,MlPkg,WebPkg,CliPkg package;
 ```
 
-The diagram above is the **V6 open-platform target**. The V5 production code
-still ships from the modules it lives in today; V6 is an additive,
-back-compat refactor that exposes existing kernel, plugin, audit and HA
-primitives behind stable ports so third parties can ship strategies,
-gateways, data sources, indicators, risk rules, fill models, reports,
-storage backends and ML adapters as separate Python packages.
+The diagram above is the **V6 open-platform target** with the Phase 7 packaging
+boundary added. V5 production code still ships from the modules it lives in
+today; V6 remains an additive, back-compat refactor that exposes existing
+kernel, plugin, audit and HA primitives behind stable ports.
+
+Distribution packages:
+
+| Package | Import facade | Contents |
+|---|---|---|
+| `quant-platform-core` | `quant_platform_core` | kernel, contracts, engines, backtest, simulation, pipeline |
+| `quant-platform-sdk` | `quant_platform_sdk` | plugin SDK, DTOs, ports, manifests, registry |
+| `quant-platform-adapters-cn` | `quant_platform_adapters_cn` | A-share data, realtime, broker, storage and messaging adapters |
+| `quant-platform-ml` | `quant_platform_ml` | MLOps, Qlib, FinRL and model adapter modules |
+| `quant-platform-web` | `quant_platform_web` | FastAPI platform services and web console metadata |
+| `quant-platform-cli` | `quant_platform_cli` | CLI commands, plugin testing and backtest entry points |
 
 Deep architecture references:
 
+- [packages/README.md](packages/README.md) — Phase 7 distribution split
 - [docs/architecture/open-platform.md](docs/architecture/open-platform.md) — V6 open-platform proposal
 - [docs/PLATFORM_GUIDE.md](docs/PLATFORM_GUIDE.md)
 - [docs/ARCHITECTURE_REVIEW.md](docs/ARCHITECTURE_REVIEW.md)

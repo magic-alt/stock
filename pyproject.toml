@@ -128,7 +128,7 @@ quant-platform = "src.cli.main:main"
 [project.entry-points."quant_platform.admission_gate"]
 
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["src*", "quant_platform_*"]
 
 # ---------------------------------------------------------------------------
 # Ruff (linter + formatter)
