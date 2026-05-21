@@ -191,6 +191,9 @@ re-export shims under `src/_legacy/`.
 
 ### Runtime contexts — Phase 6
 
+Status: implemented additively in src/runtime/ with platform-facing exports
+from src/platform/runtime.py.
+
 Three thin runtimes boot the kernel and wire adapters per config:
 
 - `BacktestRuntime` — historical data + simulated venue (mirrors Nautilus
@@ -207,6 +210,9 @@ adapters the runtime asks the kernel to register.
 `src/platform/` (FastAPI v2, JobQueue, Orchestrator, DataLake) resolves engines
 from the kernel instead of importing internal modules directly. Apps (CLI,
 Web, GUI, Notebook) speak only to the platform layer or to the SDK.
+
+/api/v2/info exposes the active platform version, V6 CONTRACT_VERSION, and
+runtime policy metadata for Backtest / Sandbox / Live contexts.
 
 ## Plugin SPI
 

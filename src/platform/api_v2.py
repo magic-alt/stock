@@ -20,8 +20,10 @@ from typing import Any, Dict, List, Optional
 from src.core.account_manager import AccountManager
 from src.backtest.admission_gates import DEFAULT_STRATEGY_GATE_ROOT, MissingStrategyGateStage, require_strategy_stage
 from src.core.capital_allocator import CapitalAllocator
+from src.core.contracts import CONTRACT_VERSION
 from src.core.logger import get_logger
 from src.core.monitoring import TraceContext, get_metric_collector, get_tracer
+from src.platform.runtime import BacktestRuntime, LiveRuntime, SandboxRuntime
 from src.platform.api_server import APIMetrics, GatewayService, MonitorService
 from src.platform.job_queue import JobQueue, JobStore
 
@@ -230,6 +232,11 @@ if HAS_FASTAPI:
         app.state.tracer = get_tracer()
         app.state.account_manager = AccountManager()
         app.state.capital_allocator = CapitalAllocator()
+        app.state.runtime_contexts = {
+            "backtest": BacktestRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
+            "sandbox": SandboxRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
+            "live": LiveRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
+        }
 
         if enable_cors:
             app.add_middleware(
@@ -294,6 +301,20 @@ if HAS_FASTAPI:
         @app.get("/api/v2/ready", tags=["Operations"])
         async def readiness():
             return {"ready": True}
+
+        @app.get("/api/v2/info", tags=["Operations"])
+        async def info(request: Request):
+            return ApiEnvelope(
+                data={
+                    "name": "Unified Quant Platform",
+                    "version": app.version,
+                    "contract_version": CONTRACT_VERSION,
+                    "runtimes": {
+                        name: runtime.info()
+                        for name, runtime in request.app.state.runtime_contexts.items()
+                    },
+                }
+            )
 
         @app.get("/api/v2/metrics", tags=["Operations"])
         async def metrics(request: Request, format: str = "json"):

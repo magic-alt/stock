@@ -13,6 +13,7 @@ http://localhost:8000/api/v2/docs
 ## Key endpoint groups
 
 - Health and readiness: `/api/v2/health`, `/api/v2/ready`
+- Platform info: `/api/v2/info` exposes the API version, V6 `contract_version`, and runtime policies.
 - Backtest execution: `/api/v2/backtest/run`, `/api/v2/backtest/jobs`
 - Strategy library and validation: `/api/v2/strategies`
 - Gateway operations: `/api/v2/gateway/*`
