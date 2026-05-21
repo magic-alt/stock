@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-platform-adapters-cn"
+version = "5.0.0"
+description = "China market data, realtime, storage and broker adapters for Quant Platform"
+readme = "../../README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Quant Platform Team"},
+]
+dependencies = [
+    "quant-platform-core==5.0.0",
+    "akshare>=1.12.0",
+    "websocket-client>=1.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/magic-alt/stock"
+Repository = "https://github.com/magic-alt/stock"
+
+[tool.setuptools.packages.find]
+where = ["../.."]
+include = [
+    "quant_platform_adapters_cn*",
+    "src.adapters*",
+    "src.data_sources*",
+    "src.gateways*",
+]

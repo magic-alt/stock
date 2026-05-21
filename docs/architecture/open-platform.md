@@ -265,6 +265,23 @@ python -m src.cli.main plugin test simple_momentum_plugin:MANIFEST --path exampl
 Installed distributions can expose the same command through the
 `quant-platform` console script.
 
+### Phase 7 distribution status
+
+Phase 7 keeps the monorepo layout and adds packaging boundaries:
+
+| Distribution | Import facade | Package manifest |
+|---|---|---|
+| `quant-platform-core` | `quant_platform_core` | `packages/quant_platform_core/pyproject.toml` |
+| `quant-platform-sdk` | `quant_platform_sdk` | `packages/quant_platform_sdk/pyproject.toml` |
+| `quant-platform-adapters-cn` | `quant_platform_adapters_cn` | `packages/quant_platform_adapters_cn/pyproject.toml` |
+| `quant-platform-ml` | `quant_platform_ml` | `packages/quant_platform_ml/pyproject.toml` |
+| `quant-platform-web` | `quant_platform_web` | `packages/quant_platform_web/pyproject.toml` |
+| `quant-platform-cli` | `quant_platform_cli` | `packages/quant_platform_cli/pyproject.toml` |
+
+The root `quant-stock` distribution remains the local development and
+batteries-included install target. The split packages are additive manifests
+over the same source tree and do not move V5 modules.
+
 ## Migration discipline
 
 V6 lands in eight additive phases. Each phase is its own branch and PR; every
@@ -280,7 +297,7 @@ phase must keep the existing test suite green (current baseline: 1157 passed,
 | 4 | Adapters reshuffle (`src/adapters/`) | Re-exports + new layout |
 | 5 | Plugin SPI + SDK (`src/sdk/`) + conformance tests + sample plugin | Additive |
 | 6 | Platform / runtime alignment, unified observability | Internal refactor |
-| 7 | Distribution split (`quant_platform_core / sdk / adapters_cn / ml / web / cli`) | Packaging |
+| 7 | Distribution split (`quant_platform_core / sdk / adapters_cn / ml / web / cli`) | Packaging (done as additive manifests) |
 | 8 | Deprecation of legacy paths via `src/_legacy/` shims | Cleanup |
 
 ## Non-goals for V6
@@ -301,3 +318,5 @@ phase must keep the existing test suite green (current baseline: 1157 passed,
 - [Target architecture (V5 baseline)](../ARCHITECTURE_TARGET_STATE.md)
 - [V5 upgrade plan](v5-upgrade.md)
 - [Roadmap](../ROADMAP.md)
+
+

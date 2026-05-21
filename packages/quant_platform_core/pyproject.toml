@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-platform-core"
+version = "5.0.0"
+description = "Core kernel, contracts, engines and backtesting modules for Quant Platform"
+readme = "../../README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Quant Platform Team"},
+]
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "PyYAML>=6.0.0",
+    "sortedcontainers>=2.4.0",
+    "exchange_calendars>=4.5.0",
+    "backtrader>=1.9.76",
+    "matplotlib>=3.5.0",
+    "pydantic>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/magic-alt/stock"
+Repository = "https://github.com/magic-alt/stock"
+
+[tool.setuptools.packages.find]
+where = ["../.."]
+include = [
+    "quant_platform_core*",
+    "src.core*",
+    "src.engines*",
+    "src.backtest*",
+    "src.pipeline*",
+    "src.simulation*",
+    "src.indicators*",
+    "src.optimizer*",
+    "src.bt_plugins*",
+]

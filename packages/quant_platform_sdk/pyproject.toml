@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "quant-platform-sdk"
+version = "5.0.0"
+description = "Plugin author SDK for Quant Platform"
+readme = "../../README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Quant Platform Team"},
+]
+dependencies = [
+    "quant-platform-core==5.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/magic-alt/stock"
+Repository = "https://github.com/magic-alt/stock"
+
+[tool.setuptools.packages.find]
+where = ["../.."]
+include = [
+    "quant_platform_sdk*",
+    "src.sdk*",
+]
