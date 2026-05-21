@@ -4,15 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - 2026-05-21
 
+### Added
+- Docs/Tooling: add `scripts/capture_frontend_previews.py` — a Playwright + Chromium driver that opens the live Docker frontend (`docker compose up -d api frontend`), runs a real `600519.SH` backtest in the Backtest Workbench, and writes `docs/assets/web-console-dashboard.png` and `docs/assets/web-console-backtest.png` straight from the running Vue console. Trailing blank padding is auto-cropped via Pillow.
+
 ### Changed
-- Docs: regenerate the README "Platform at a Glance" preview assets from a real `examples/one_click_demo.py` run. Adds `scripts/render_readme_preview.py` to deterministically rebuild `docs/assets/{backtest-preview,web-console-dashboard,web-console-backtest}.png` from the demo's JSON artifacts and redraws `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
-- Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows, and clarify that all preview images come from the bundled paper-trading demo.
+- Docs: the README "Platform at a Glance" previews now come from **real sources only** — the two Web Console screenshots are captured from the live Vue frontend running under `docker compose`, and the backtest chart is the actual matplotlib output of `python unified_backtest_framework.py run --strategy macd --symbols 600519.SH --plot` (taken from `report/<run-id>/backtest_result.png`). No synthesized/mock images.
+- Docs: rewrote the "Platform at a Glance" intro and image captions to name the real capture commands; redrew `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
+- Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
 
 ### Fixed
 - Docs: repair the README "CI Status" badge URL — switched from the legacy `workflows/CI/badge.svg` shortcut (which never matched the workflow name `CI/CD Pipeline`) to the canonical `actions/workflows/ci.yml/badge.svg?branch=main` form and pointed the click target at the workflow page.
 
 ### Removed
-- Docs: drop obsolete preview assets `docs/assets/web-console-dashboard.svg`, `docs/assets/web-console-backtest.svg`, and `docs/assets/demo-workflow.gif` (superseded by the regenerated PNGs).
+- Docs/Tooling: delete `scripts/render_readme_preview.py` — the synthetic matplotlib renderer is superseded by real captures from the live frontend and CLI plot.
+- Docs: drop obsolete preview assets `docs/assets/web-console-dashboard.svg`, `docs/assets/web-console-backtest.svg`, and `docs/assets/demo-workflow.gif` (superseded by the real PNG captures).
 
 ### Added
 - V6 Phase 7 (distribution split): add packaging manifests for `quant-platform-core`, `quant-platform-sdk`, `quant-platform-adapters-cn`, `quant-platform-ml`, `quant-platform-web`, and `quant-platform-cli` under `packages/`, with matching `quant_platform_*` import facades.
