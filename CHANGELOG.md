@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-05-20
+## [Unreleased] - 2026-05-21
+
+### Changed
+- Docs: regenerate the README "Platform at a Glance" preview assets from a real `examples/one_click_demo.py` run. Adds `scripts/render_readme_preview.py` to deterministically rebuild `docs/assets/{backtest-preview,web-console-dashboard,web-console-backtest}.png` from the demo's JSON artifacts and redraws `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
+- Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows, and clarify that all preview images come from the bundled paper-trading demo.
+
+### Fixed
+- Docs: repair the README "CI Status" badge URL — switched from the legacy `workflows/CI/badge.svg` shortcut (which never matched the workflow name `CI/CD Pipeline`) to the canonical `actions/workflows/ci.yml/badge.svg?branch=main` form and pointed the click target at the workflow page.
+
+### Removed
+- Docs: drop obsolete preview assets `docs/assets/web-console-dashboard.svg`, `docs/assets/web-console-backtest.svg`, and `docs/assets/demo-workflow.gif` (superseded by the regenerated PNGs).
 
 ### Added
 - V6 Phase 7 (distribution split): add packaging manifests for `quant-platform-core`, `quant-platform-sdk`, `quant-platform-adapters-cn`, `quant-platform-ml`, `quant-platform-web`, and `quant-platform-cli` under `packages/`, with matching `quant_platform_*` import facades.

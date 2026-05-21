@@ -2,24 +2,26 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![CI Status](https://github.com/magic-alt/stock/workflows/CI/badge.svg)](https://github.com/magic-alt/stock/actions)
+[![CI Status](https://github.com/magic-alt/stock/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/magic-alt/stock/actions/workflows/ci.yml)
 [![Code Coverage](https://codecov.io/gh/magic-alt/stock/branch/main/graph/badge.svg)](https://codecov.io/gh/magic-alt/stock)
 
 面向 A 股的开源量化研究与回测平台：策略准入、回测报告、仿真交易、Web 控制台和实盘网关适配器一体化。
 
 A-share quant research platform with strategy admission gates, backtesting, paper trading, a web console, and live gateway adapters.
 
-**Current version**: V5.0.0 | **Updated**: 2026-05-19 | **Status**: local and container workflows ready
+**Current version**: V5.0.0 | **Updated**: 2026-05-21 | **Status**: local and container workflows ready
 
-## 5-Second Preview
+## Platform at a Glance
 
-![Architecture overview](docs/assets/architecture-overview.svg)
+All preview images below are rendered from a real run of `examples/one_click_demo.py` (no broker SDKs or data tokens needed). Re-generate them any time with `python scripts/render_readme_preview.py`.
 
-| Dashboard | Backtest workbench |
+![V6 open-platform architecture](docs/assets/architecture-overview.svg)
+
+| Dashboard view | Backtest workbench view |
 |---|---|
-| ![Web console dashboard preview](docs/assets/web-console-dashboard.svg) | ![Web console backtest preview](docs/assets/web-console-backtest.svg) |
+| ![Web console dashboard rendered from demo artifacts](docs/assets/web-console-dashboard.png) | ![Web console backtest workbench rendered from demo artifacts](docs/assets/web-console-backtest.png) |
 
-![Five-minute demo workflow](docs/assets/demo-workflow.gif)
+![Backtest preview — paper-gateway run on the bundled A-share OHLCV fixture](docs/assets/backtest-preview.png)
 
 ## Why This Project
 
