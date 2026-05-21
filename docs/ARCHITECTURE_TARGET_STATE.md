@@ -17,6 +17,7 @@
 ### 2. Application
 - Backtest Application Service（编排参数校验、任务装配、执行调度）
 - Platform Job Orchestrator（队列调度、状态机、重试/超时）
+- Runtime Contexts：`BacktestRuntime` / `SandboxRuntime` / `LiveRuntime` 统一启动 Kernel、Metrics、Tracer 与 PluginRegistry
 
 ### 3. Domain
 - Strategy / Signal / Risk / Order / Fill / Portfolio
@@ -51,6 +52,7 @@
 ```
 - 认证：Bearer Token（可由环境变量或启动参数注入）。
 - 可用性端点：`/api/v2/health`、`/api/v2/ready`；v1 兼容 `healthz/readyz`。
+- 平台信息端点：`/api/v2/info` 暴露平台版本、`contract_version` 与 runtime 策略。
 - 可观测端点：`/api/v2/metrics`；v1 兼容指标端点视部署模式保留。
 
 ## 作业状态机
@@ -70,6 +72,7 @@
 ## 当前已实现映射
 - FastAPI v2：`src/platform/api_v2.py`
 - v1 兼容接口与平台服务：`src/platform/api_server.py`
+- Runtime 统一入口：`src/runtime/` 与平台侧 `src/platform/runtime.py`
 - Adapter 统一入口：`src/adapters/{data,realtime,broker,storage,ml,messaging}/`
 - 作业取消与指标：`src/platform/job_queue.py`
 - 启动参数：`scripts/run_platform_api.py`

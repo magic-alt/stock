@@ -12,7 +12,7 @@ import uuid
 import inspect
 import re
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, Mapping
 from dataclasses import dataclass, field
 from contextlib import contextmanager
 from threading import Thread, Event as ThreadEvent
@@ -649,7 +649,13 @@ class TraceContext:
 class Span:
     """A single operation span for tracing."""
 
-    def __init__(self, name: str, trace_id: str = "", parent_span_id: str = "") -> None:
+    def __init__(
+        self,
+        name: str,
+        trace_id: str = "",
+        parent_span_id: str = "",
+        on_exit: Optional[Callable[[], None]] = None,
+    ) -> None:
         self.name = name
         self.span_id = uuid.uuid4().hex[:16]
         self.trace_id = trace_id or uuid.uuid4().hex
@@ -660,9 +666,22 @@ class Span:
         self.status: str = "ok"
         self.children: List["Span"] = []
         self._error: Optional[str] = None
+        self._on_exit = on_exit
 
     def set_attribute(self, key: str, value: Any) -> None:
         self.attributes[key] = value
+
+    def __enter__(self) -> "Span":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if exc is not None:
+            self.status = "error"
+            self._error = str(exc)
+        if self._on_exit is not None:
+            self._on_exit()
+        else:
+            self.end()
 
     def end(self) -> None:
         self.end_time = time.time()
@@ -697,11 +716,20 @@ class Tracer:
         self._active_span: Optional[Span] = None
         self._lock = threading.Lock()
 
-    def start_span(self, name: str, trace_id: str = "", parent_span_id: str = "") -> Span:
+    def start_span(
+        self,
+        name: str,
+        trace_id: str = "",
+        parent_span_id: str = "",
+        *,
+        attributes: Optional[Mapping[str, Any]] = None,
+    ) -> Span:
         with self._lock:
             parent_id = parent_span_id or (self._active_span.span_id if self._active_span else "")
             active_trace_id = self._active_span.trace_id if self._active_span else ""
-            span = Span(name, trace_id=trace_id or active_trace_id, parent_span_id=parent_id)
+            span = Span(name, trace_id=trace_id or active_trace_id, parent_span_id=parent_id, on_exit=self.end_span)
+            for key, value in dict(attributes or {}).items():
+                span.set_attribute(str(key), value)
             if self._active_span:
                 self._active_span.children.append(span)
             self._spans.append(span)
@@ -762,15 +790,23 @@ class MetricCollector:
         with self._lock:
             self._counters[name] = self._counters.get(name, 0.0) + delta
 
-    def gauge(self, name: str, value: float) -> None:
+    def incr(self, name: str, value: float = 1.0, *, tags: Optional[Mapping[str, str]] = None) -> None:
+        """MetricsPort-compatible counter increment."""
+        self.counter(_metric_name_with_tags(name, tags), value)
+
+    def gauge(self, name: str, value: float, *, tags: Optional[Mapping[str, str]] = None) -> None:
         with self._lock:
-            self._gauges[name] = value
+            self._gauges[_metric_name_with_tags(name, tags)] = value
 
     def histogram(self, name: str, value: float) -> None:
         with self._lock:
             if name not in self._histograms:
                 self._histograms[name] = []
             self._histograms[name].append(value)
+
+    def timing(self, name: str, ms: float, *, tags: Optional[Mapping[str, str]] = None) -> None:
+        """MetricsPort-compatible timing recorder."""
+        self.histogram(_metric_name_with_tags(name, tags), ms)
 
     def export(self) -> Dict[str, Any]:
         with self._lock:
@@ -875,6 +911,13 @@ def _prometheus_metric_name(name: str, *, suffix: str = "") -> str:
     if suffix and not metric.endswith(f"_{suffix}"):
         metric = f"{metric}_{suffix}"
     return metric
+
+
+def _metric_name_with_tags(name: str, tags: Optional[Mapping[str, str]]) -> str:
+    if not tags:
+        return name
+    suffix = ".".join(f"{key}.{value}" for key, value in sorted(tags.items()))
+    return f"{name}.{suffix}" if suffix else name
 
 
 def _span_to_otlp_json(span: Dict[str, Any]) -> Dict[str, Any]:
