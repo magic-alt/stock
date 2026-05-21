@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-05-21
 
 ### Added
+- V6 Phase 8 (open platform — legacy shim layer): introduce `src/_legacy/` as the single mechanism for handling deprecated import paths. Adds `emit_deprecation()` (one-shot `DeprecationWarning` + structured `quant_platform.legacy` log record), `install_module_alias()` (registers a legacy dotted name in `sys.modules` as an alias of its canonical V6 module), an empty `LEGACY_ALIASES` catalogue that PR reviewers can grep, and `reset_deprecation_cache()` for tests. Entries are added per PR as legacy paths are formally retired.
+- V6 Phase 7 fill-out (`quant_platform_*` package contents): the `quant_platform_adapters_cn` facade now re-exports the six canonical adapter subpackages (`broker`, `data`, `messaging`, `ml`, `realtime`, `storage`) from `src.adapters`, and `ADAPTER_GROUPS` is updated to list all six. The `quant_platform_ml` facade now re-exports the full `src.mlops` public surface (`ModelRegistry`, `ModelMetadata`, `InferenceService`, `BatchInferenceRunner`, `SignalSchema`, trainer adapters, training-config helpers, etc.), exposes `src.adapters.ml` as a `quant_platform_ml.adapters` namespace, and ships dedicated `quant_platform_ml.training`, `quant_platform_ml.registry`, and `quant_platform_ml.inference` submodules for ergonomic imports. All re-exports preserve object identity with the canonical `src.*` implementations.
 - Docs/Tooling: add `scripts/capture_frontend_previews.py` — a Playwright + Chromium driver that opens the live Docker frontend (`docker compose up -d api frontend`), runs a real `600519.SH` backtest in the Backtest Workbench, and writes `docs/assets/web-console-dashboard.png` and `docs/assets/web-console-backtest.png` straight from the running Vue console. Trailing blank padding is auto-cropped via Pillow.
 
 ### Changed
@@ -36,6 +38,8 @@ All notable changes to this project will be documented in this file.
 - Core: re-export `ComponentState`, `InvalidStateTransition`, `Lifecycle`, `TransitionEvent`, `is_legal_transition`, `ComponentRecord`, `LIFECYCLE_TOPIC`, `PlatformKernel`, `get_kernel`, `reset_kernel` from `src.core` for downstream consumption. Existing imports from `src.core` are unchanged.
 
 ### Tests
+- Add V6 Phase 8 legacy shim tests (`tests/test_legacy_shim.py`) covering one-shot `DeprecationWarning` emission, structured log record fields, separate-key emission, `sys.modules` aliasing, the `LEGACY_ALIASES` catalogue surface, and the public `__all__`.
+- Add V6 Phase 7 facade fill-out tests (`tests/test_quant_platform_facades.py`) covering `quant_platform_adapters_cn` subpackage identity, `quant_platform_ml` re-export identity against `src.mlops`, the new `quant_platform_ml.{training,registry,inference}` submodules, and that `quant_platform_core`/`quant_platform_sdk`/`quant_platform_cli`/`quant_platform_web` still expose their existing surface.
 - Add Phase 7 packaging tests covering distribution manifests, layered dependencies, root package discovery, facade imports, and README discoverability.
 - Add runtime context and /api/v2/info tests, and re-run the PR 28/29/30 regression set for engines, adapters, and plugin SDK.
 - Add `tests/engines/test_engines_layer.py` (23 tests) verifying every engine subpackage imports cleanly, all `__all__` names resolve, and the re-exports are object-identical to their V5 originals (so behaviour cannot diverge).
