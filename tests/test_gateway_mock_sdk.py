@@ -9,7 +9,6 @@ from __future__ import annotations
 import threading
 import time
 from queue import Queue
-from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
@@ -19,7 +18,6 @@ from src.gateways.base_live_gateway import (
     OrderStatus,
     OrderSide,
     OrderType,
-    OrderUpdate,
     AccountUpdate,
     PositionUpdate,
     QueryResultCache,
@@ -379,7 +377,7 @@ class TestGatewayConfig:
     def test_sdk_path_config(self):
         import sys
         original_path = sys.path.copy()
-        config = GatewayConfig(
+        _config = GatewayConfig(
             account_id="TEST",
             broker="xtp",
             sdk_path=None,  # None should not modify sys.path

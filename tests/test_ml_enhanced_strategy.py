@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import types
 
-import pytest
 
 import src.strategies.ml_enhanced_strategy as mes
 

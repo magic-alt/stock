@@ -144,14 +144,14 @@ def __getattr__(name):
 
 # V6 Open Platform (Phase 1): kernel + component lifecycle FSM. Additive
 # only — existing modules do not depend on these symbols yet.
-from .component_state import (
+from .component_state import (  # noqa: F401
     ComponentState,
     InvalidStateTransition,
     Lifecycle,
     TransitionEvent,
     is_legal_transition,
 )
-from .kernel import (
+from .kernel import (  # noqa: F401
     ComponentRecord,
     LIFECYCLE_TOPIC,
     PlatformKernel,

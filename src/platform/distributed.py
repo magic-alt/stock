@@ -9,7 +9,6 @@ Supports:
 from __future__ import annotations
 
 from concurrent.futures import ProcessPoolExecutor, as_completed, Future
-from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Protocol
 
 from src.platform.backtest_task import run_backtest_job

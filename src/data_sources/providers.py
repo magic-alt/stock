@@ -18,10 +18,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import time
 from typing import Dict, Optional, Sequence, Tuple
 
-import numpy as np
 import pandas as pd
 
 from src.data_sources.db_manager import SQLiteDataManager
@@ -298,7 +296,7 @@ class AkshareProvider(DataProvider):
         Uses SQLite3 database for caching. Only fetches missing data ranges.
         """
         try:
-            import akshare as ak
+            import akshare as ak  # noqa: F401
         except ImportError as exc:
             raise DataProviderUnavailable("akshare not available") from exc
 
@@ -391,7 +389,7 @@ class AkshareProvider(DataProvider):
             Standardized DataFrame or None
         """
         try:
-            import akshare as ak
+            import akshare as ak  # noqa: F401
         except ImportError:
             return None
         
@@ -434,7 +432,7 @@ class AkshareProvider(DataProvider):
         Uses SQLite3 database for caching with incremental updates.
         """
         try:
-            import akshare as ak
+            import akshare as ak  # noqa: F401
         except ImportError as exc:
             raise DataProviderUnavailable("akshare not available") from exc
 
@@ -506,7 +504,7 @@ class AkshareProvider(DataProvider):
             Standardized DataFrame or None
         """
         try:
-            import akshare as ak
+            import akshare as ak  # noqa: F401
         except ImportError:
             return None
         
@@ -690,7 +688,7 @@ class YFinanceProvider(DataProvider):
     ) -> Dict[str, pd.DataFrame]:
         """Load daily OHLCV data with intelligent caching."""
         try:
-            import yfinance as yf
+            import yfinance as yf  # noqa: F401
         except ImportError as exc:
             raise DataProviderUnavailable("yfinance not available") from exc
 
@@ -750,7 +748,7 @@ class YFinanceProvider(DataProvider):
     ) -> Optional[pd.DataFrame]:
         """Fetch stock data from YFinance API."""
         try:
-            import yfinance as yf
+            import yfinance as yf  # noqa: F401
         except ImportError:
             return None
         
@@ -775,7 +773,7 @@ class YFinanceProvider(DataProvider):
     ) -> pd.Series:
         """Load index data with SQLite3 caching."""
         try:
-            import yfinance as yf
+            import yfinance as yf  # noqa: F401
         except ImportError as exc:
             raise DataProviderUnavailable("yfinance not available") from exc
 
@@ -828,7 +826,7 @@ class YFinanceProvider(DataProvider):
     ) -> Optional[pd.DataFrame]:
         """Fetch index data from YFinance API."""
         try:
-            import yfinance as yf
+            import yfinance as yf  # noqa: F401
         except ImportError:
             return None
         

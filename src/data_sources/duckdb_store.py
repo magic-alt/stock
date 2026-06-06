@@ -7,10 +7,8 @@ replacing SQLite for OHLCV queries. Zero-configuration embedded database.
 from __future__ import annotations
 
 import os
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, Generator, List, Optional, Sequence
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Sequence
 
 import pandas as pd
 

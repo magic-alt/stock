@@ -5,10 +5,9 @@ from __future__ import annotations
 
 import time
 import threading
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Dict, Optional, Set
 
-from src.core.auth import Authorizer, Permission, Role, Subject
+from src.core.auth import Authorizer, Permission, Subject
 from src.core.audit import AuditLogger
 
 from .router import RequestContext, ResponseContext, Handler

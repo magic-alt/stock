@@ -8,9 +8,6 @@ Covers:
 - D-4: Jupyter notebook magic / QuantHelper
 - F-3: Scaffold generator
 """
-import os
-import json
-import pytest
 from pathlib import Path
 
 

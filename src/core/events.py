@@ -11,8 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from queue import Queue, Empty
 from threading import Thread, Event as TEvent
-from typing import Callable, Dict, List, Any, Protocol
-import time
+from typing import Dict, List, Any, Protocol
 
 
 @dataclass(slots=True)

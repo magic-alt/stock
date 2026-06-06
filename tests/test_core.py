@@ -6,7 +6,6 @@ import pytest
 import tempfile
 import shutil
 from datetime import datetime
-from pathlib import Path
 
 from src.core.objects import (
     Direction, OrderType, OrderStatus, Exchange,
@@ -60,7 +59,7 @@ class TestCoreObjects:
         
         # 异常情况 - high < low 会抛出错误
         with pytest.raises(ValueError):
-            bar2 = BarData(
+            _bar2 = BarData(
                 symbol="600519.SH",
                 datetime=datetime(2024, 1, 1),
                 open=100.0,

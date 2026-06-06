@@ -151,7 +151,7 @@ class TestGridSearchCaching:
 
     def test_metrics_cache_attribute_exists(self):
         """BacktestEngine must expose _metrics_cache dict."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
         with patch("src.backtest.engine.EventEngine"):
             from src.backtest.engine import BacktestEngine
             engine = BacktestEngine.__new__(BacktestEngine)

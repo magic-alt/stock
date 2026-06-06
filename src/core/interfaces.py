@@ -8,10 +8,10 @@ V3.0.0: Initial release - consolidates interfaces from events.py, gateway.py
 """
 from __future__ import annotations
 
-from typing import Protocol, Iterable, Dict, Any, Optional, List, Callable, Union
+from typing import Protocol, Iterable, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 import pandas as pd
 
 from src.core.events import Event
@@ -22,11 +22,8 @@ from src.core.events import Event
 # ---------------------------------------------------------------------------
 
 from src.core.contracts.dto import (
-    OrderStatus,
     OrderStatusEnum,
-    normalize_order_status,
     is_active_order_status,
-    is_terminal_order_status,
 )
 
 

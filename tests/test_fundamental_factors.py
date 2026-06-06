@@ -19,7 +19,6 @@ from src.pipeline.fundamental_factors import (
     DividendYield,
     EarningsYield,
     DebtToEquity,
-    FinancialDataProvider,
     fundamental_pipeline,
     full_fundamental_pipeline,
 )
@@ -229,7 +228,7 @@ class TestFindRedundantFactors:
             {"a": [1, 2, 3, 4, 5], "b": [2, 4, 6, 8, 10], "c": [5, 4, 3, 2, 1]}
         )
         pairs = find_redundant_factors(df, threshold=0.85)
-        names = {(p[0], p[1]) for p in pairs}
+        _names = {(p[0], p[1]) for p in pairs}
         # a-b (corr=1.0) and a-c (|corr|=1.0) should be detected
         assert len(pairs) >= 2
 

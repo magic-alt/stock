@@ -4,7 +4,7 @@ Tests for multi-account routing and AccountManager.
 import pytest
 
 from src.core.auth import Authorizer, Permission, ResourceScope, Role, Subject
-from src.core.account_manager import AccountManager, AccountInfo
+from src.core.account_manager import AccountManager
 
 
 class TestAccountManager:

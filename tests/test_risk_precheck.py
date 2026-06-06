@@ -11,7 +11,7 @@ Covers:
 - Integration tests with a real RiskManagerV2 instance
 """
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +481,7 @@ class TestTradingGatewayRiskEvents:
                 self.events.append(event)
 
         events = _EventSink()
-        received = []
+        _received = []
         risk_manager = RiskManagerV2(RiskConfig(max_order_value=1.0, max_order_pct=0.99, max_position_pct=0.99))
         gateway = TradingGateway.create_paper(
             initial_cash=100_000.0,

@@ -19,8 +19,6 @@ V3.0.0-beta.4 专家级策略优化
 - 信号确认 (Signal Confirmation): RSI 共振、动能确认、斜率验证
 """
 import backtrader as bt
-import numpy as np
-import pandas as pd
 from typing import Dict, Any
 
 

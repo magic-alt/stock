@@ -8,10 +8,7 @@ Covers:
 - E-4: Strategy hot-loader (strategy_loader.py)
 """
 import json
-import time
-import threading
 import pytest
-from pathlib import Path
 
 
 # ===========================================================================
@@ -159,7 +156,7 @@ class TestPluginManager:
         assert len(pm.list_plugins()) == 0
 
     def test_discover_directory(self, tmp_path):
-        from src.core.plugin import PluginManager, PluginBase
+        from src.core.plugin import PluginManager
 
         # Create a plugin file
         plugin_code = '''

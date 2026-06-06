@@ -34,15 +34,14 @@ Usage (Legacy StrategyTemplate - backward compatible):
 
 from __future__ import annotations
 
-from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING, Callable
+from typing import Dict, Any, Optional, List, Union, Callable
 import pandas as pd
 from datetime import datetime
-from abc import ABC
 import time
-from threading import Event as ThreadEvent, Thread
+from threading import Event as ThreadEvent
 
 # V3 imports
-from src.core.interfaces import BarData, Side, OrderTypeEnum
+from src.core.interfaces import BarData
 from src.core.strategy_base import BaseStrategy
 from src.core.context import EventEngineContext
 from src.core.paper_gateway_v3 import PaperGateway as PaperGatewayV3

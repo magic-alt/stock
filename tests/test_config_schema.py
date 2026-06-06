@@ -10,7 +10,6 @@ Covers:
 - ConfigManager path-based load / save / reload round-trip
 - ConfigManager environment-variable override
 """
-import os
 import pytest
 import yaml
 from pydantic import ValidationError

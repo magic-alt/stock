@@ -18,7 +18,7 @@ from .base import (
 )
 
 # Auto-import all plugins to trigger registration
-from . import fees_cn
+from . import fees_cn  # noqa: F401
 
 __all__ = [
     "FeePlugin",

@@ -1,7 +1,6 @@
 """
 Tests for modular API router and middleware.
 """
-import pytest
 
 from src.platform.api.router import APIRouter, RequestContext, ResponseContext
 from src.platform.api.middleware import (
@@ -10,7 +9,7 @@ from src.platform.api.middleware import (
     RequestValidator,
     AuditMiddleware,
 )
-from src.core.auth import Authorizer, Permission, Role, Subject
+from src.core.auth import Authorizer, Role, Subject
 from src.core.audit import AuditLogger
 
 

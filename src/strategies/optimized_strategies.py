@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import backtrader as bt
 import datetime
-from typing import Dict, Any
 
 
 # =============================================================================

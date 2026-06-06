@@ -6,23 +6,19 @@ import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import sys
 import subprocess
-import json
 
 # 导入所有核心模块
-from src.core.objects import Direction, OrderType, BarData, AccountData
-from src.core.events import EventEngine, EventType
+from src.core.objects import BarData
+from src.core.events import EventEngine
 from src.data_sources.providers import get_provider
 from src.data_sources.db_manager import SQLiteDataManager
 from src.data_sources.data_portal import DataPortal
 from src.backtest.engine import BacktestEngine
-from src.backtest.analysis import pareto_front
-from src.simulation.order import Order
-from src.simulation.slippage import FixedSlippage
 
 
 class TestSystemDataFlow:
@@ -334,7 +330,7 @@ class TestSystemIntegration:
         """测试端到端工作流"""
         try:
             # 1. 数据获取 - 使用正确的DataPortal参数
-            portal = DataPortal(
+            _portal = DataPortal(
                 provider="akshare",
                 cache_dir=str(self.cache_dir)
             )
@@ -462,7 +458,6 @@ class TestSystemPerformance:
     
     def test_memory_efficiency(self):
         """测试内存效率"""
-        import sys
         
         # 创建多个数据集
         datasets = {}

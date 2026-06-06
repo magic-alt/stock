@@ -9,7 +9,7 @@ from __future__ import annotations
 import ast
 import textwrap
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from src.platform.api.router import APIRouter, RequestContext, ResponseContext
 from src.core.logger import get_logger

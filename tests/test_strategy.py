@@ -6,16 +6,12 @@ V3.1.0 更新: 使用 core/strategy_base.py 替代废弃的 strategy/template.py
 """
 import pytest
 from datetime import datetime
-import pandas as pd
-import numpy as np
 
 # V3.1.0: 使用统一的策略基类和接口
 from src.core.strategy_base import BaseStrategy, BacktraderStrategyAdapter
 from src.core.interfaces import (
-    BarData, PositionInfo, AccountInfo, StrategyContext,
-    Side, OrderTypeEnum
+    BarData, PositionInfo, AccountInfo, StrategyContext
 )
-from src.core.objects import Direction, OrderType
 
 
 class TestStrategyComponents:

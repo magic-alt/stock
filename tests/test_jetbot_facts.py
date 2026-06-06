@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pandas as pd
@@ -11,8 +10,6 @@ import pytest
 
 from src.data_sources.jetbot_facts import (
     CORE_METRICS,
-    JetbotExportEnvelope,
-    JetbotFactRecord,
     JetbotFactsProvider,
     get_jetbot_facts_provider,
 )

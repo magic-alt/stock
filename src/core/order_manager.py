@@ -27,7 +27,6 @@ Usage:
 """
 from __future__ import annotations
 
-import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta

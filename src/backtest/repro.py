@@ -11,7 +11,7 @@ import os
 import platform
 import subprocess
 import sys
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 

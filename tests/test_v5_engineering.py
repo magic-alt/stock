@@ -8,7 +8,6 @@ Covers:
 - F-4: MkDocs configuration
 - GitHub Actions CI workflow validation
 """
-import os
 import pytest
 from pathlib import Path
 
@@ -51,8 +50,7 @@ class TestExceptionHierarchy:
 
     def test_data_errors(self):
         from src.core.exceptions import (
-            DataProviderError, DataValidationError,
-            DataNotFoundError, InsufficientDataError,
+            DataProviderError, DataNotFoundError, InsufficientDataError,
         )
         e1 = DataProviderError("akshare", "timeout")
         assert "akshare" in str(e1)
@@ -66,8 +64,7 @@ class TestExceptionHierarchy:
 
     def test_strategy_errors(self):
         from src.core.exceptions import (
-            StrategyNotFoundError, StrategyInitializationError,
-            StrategyExecutionError, StrategyValidationError,
+            StrategyNotFoundError,
         )
         e = StrategyNotFoundError("macd", available=["rsi", "boll"])
         assert "macd" in str(e)
@@ -75,16 +72,14 @@ class TestExceptionHierarchy:
 
     def test_order_errors(self):
         from src.core.exceptions import (
-            OrderValidationError, OrderRejectedError,
-            InsufficientFundsError, DuplicateOrderError,
+            InsufficientFundsError,
         )
         e = InsufficientFundsError(10000, 5000, symbol="600519.SH")
         assert e.error_code == "INSUFFICIENT_FUNDS"
 
     def test_gateway_errors(self):
         from src.core.exceptions import (
-            GatewayConnectionError, GatewayTimeoutError,
-            GatewayAuthError, GatewayNotReadyError,
+            GatewayTimeoutError,
         )
         e = GatewayTimeoutError("xtp", "login", 30.0)
         assert e.error_code == "GATEWAY_TIMEOUT"
@@ -92,7 +87,7 @@ class TestExceptionHierarchy:
 
     def test_risk_errors(self):
         from src.core.exceptions import (
-            RiskLimitExceeded, PositionLimitExceeded, DrawdownLimitExceeded,
+            DrawdownLimitExceeded,
         )
         e = DrawdownLimitExceeded(0.15, 0.10)
         assert e.error_code == "DRAWDOWN_LIMIT_EXCEEDED"

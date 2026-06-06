@@ -6,12 +6,10 @@ import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from datetime import datetime, timedelta
 import pandas as pd
 
 from src.data_sources.providers import (
-    DataProvider, AkshareProvider, TuShareProvider,
-    get_provider
+    AkshareProvider, get_provider
 )
 from src.data_sources.db_manager import SQLiteDataManager
 from src.data_sources.data_portal import DataPortal

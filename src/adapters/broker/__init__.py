@@ -8,9 +8,6 @@ from __future__ import annotations
 
 from src.gateways import (
     GATEWAY_REGISTRY,
-    _GATEWAY_IMPORTS,
-    _LazyGatewayRegistry,
-    _load_gateway_class,
     create_gateway,
 )
 from src.gateways.base_live_gateway import (

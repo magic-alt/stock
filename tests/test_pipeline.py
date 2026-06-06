@@ -3,9 +3,6 @@
 覆盖: factor_engine, handlers
 """
 import pytest
-from datetime import datetime
-import pandas as pd
-import numpy as np
 
 from src.pipeline.factor_engine import (
     Factor, Pipeline, create_pipeline,

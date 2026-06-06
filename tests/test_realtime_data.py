@@ -9,7 +9,7 @@ import threading
 import time
 from datetime import datetime
 from typing import List
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -212,7 +212,7 @@ class TestAKShareDataProvider:
 
         with patch("akshare.stock_bid_ask_em", side_effect=RuntimeError("Network down")):
             # Manually run one poll iteration (single symbol)
-            original_fetch = provider._fetch_tick
+            _original_fetch = provider._fetch_tick
 
             def raising_fetch(sym):
                 raise RuntimeError("Network down")
@@ -223,7 +223,7 @@ class TestAKShareDataProvider:
             try:
                 for symbol in list(provider._subscribed_symbols):
                     try:
-                        tick = provider._fetch_tick(symbol)
+                        _tick = provider._fetch_tick(symbol)
                     except Exception as e:
                         errors.append(e)
             except Exception:

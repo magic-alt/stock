@@ -5,9 +5,8 @@ Tests order management, order book, slippage models, and matching engine.
 """
 import pytest
 import pandas as pd
-from datetime import datetime
 
-from src.simulation.order import Order, Trade, OrderStatus, OrderType, OrderDirection
+from src.simulation.order import Order, OrderStatus, OrderType, OrderDirection
 from src.simulation.order_book import OrderBook
 from src.simulation.slippage import FixedSlippage, PercentSlippage, VolumeShareSlippage, SquareRootImpactSlippage
 from src.simulation.execution_models import VolumeBasedFill, FixedDelay

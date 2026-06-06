@@ -21,7 +21,6 @@ Usage (EventEngine):
 """
 from __future__ import annotations
 
-from typing import Optional
 from src.core.strategy_base import BaseStrategy
 from src.core.interfaces import BarData, StrategyContext
 

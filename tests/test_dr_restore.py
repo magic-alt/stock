@@ -1,8 +1,6 @@
 """
 Tests for DR failover, drill runner, and snapshot store extensions.
 """
-import json
-import os
 import tempfile
 import time
 

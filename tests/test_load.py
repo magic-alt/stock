@@ -74,7 +74,7 @@ class TestJobQueueLoad:
                 results["completed"] += 1
             return {"done": True}
 
-        num_jobs = 80
+        _num_jobs = 80
         submit_errors = []
 
         def submit_batch(start, count):
@@ -189,7 +189,7 @@ class TestFactorPipelineLoad:
 
     def test_multi_symbol_factor_computation(self, large_dataset):
         """Compute factors across 50 symbols × 1000 bars."""
-        from src.pipeline.factor_engine import SMA, RSI
+        from src.pipeline.factor_engine import SMA
 
         factor = SMA(period=20)
 
@@ -244,7 +244,7 @@ class TestFactorPipelineLoad:
 
         start = time.time()
         corr = compute_factor_correlation(factor_data)
-        redundant = find_redundant_factors(factor_data, threshold=0.85)
+        _redundant = find_redundant_factors(factor_data, threshold=0.85)
         elapsed = time.time() - start
 
         assert corr.shape == (n_factors, n_factors)

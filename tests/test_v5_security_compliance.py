@@ -8,8 +8,6 @@ Covers:
 - C-4: pyproject.toml validation
 """
 
-import json
-import os
 import time
 import pytest
 from pathlib import Path
@@ -48,7 +46,7 @@ class TestFastAPIApp:
         from src.platform.api_v2 import create_app
 
         app = create_app(enable_cors=True)
-        has_cors = any("CORSMiddleware" in str(type(m)) for m in app.user_middleware)
+        _has_cors = any("CORSMiddleware" in str(type(m)) for m in app.user_middleware)
         # CORS is added via add_middleware, check middleware stack
         assert app is not None  # app was created without error
 
@@ -78,10 +76,6 @@ class TestFastAPIApp:
         from src.platform.api_v2 import (
             ApiEnvelope,
             HealthResponse,
-            BacktestRequest,
-            StrategyValidateRequest,
-            OrderRequest,
-            ConnectRequest,
         )
 
         # Verify models can be instantiated

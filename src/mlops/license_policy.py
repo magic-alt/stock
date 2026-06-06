@@ -4,7 +4,7 @@ License policy utilities for AI framework integration.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Set
+from typing import Set
 
 
 def normalize_license(license_id: str) -> str:

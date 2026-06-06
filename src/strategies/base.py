@@ -4,7 +4,6 @@
 
 from abc import ABC, abstractmethod
 import pandas as pd
-from typing import Dict, List, Optional
 
 
 class BaseStrategy(ABC):

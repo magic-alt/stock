@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import itertools
 import hashlib
-import json
 import math
 import os
 import pickle
@@ -28,7 +27,7 @@ try:
 except ImportError as exc:
     raise ImportError("backtrader is required: pip install backtrader") from exc
 
-from src.data_sources.providers import get_provider, DataProviderError, CACHE_DEFAULT
+from src.data_sources.providers import CACHE_DEFAULT
 from src.data_sources.trading_calendar import TradingCalendar, apply_trading_calendar
 from src.data_sources.quality import run_quality_checks
 from src.backtest.repro import compute_data_fingerprint
@@ -41,14 +40,11 @@ from src.backtest.attribution import (
     compute_concentration_metrics,
     compute_sector_exposure,
 )
-from src.strategies.backtrader_registry import BACKTRADER_STRATEGY_REGISTRY
 
 # Import strategy modules (will be defined in separate files)
 from .strategy_modules import (
     StrategyModule, 
     TURNING_POINT_MODULE, 
-    RISK_PARITY_MODULE, 
-    STRATEGY_REGISTRY,
     IntentLogger, 
     GenericPandasData
 )
@@ -596,7 +592,7 @@ class BacktestEngine:
                 
             total_closed = float(_dig(ta, "total", "closed", default=0.0))
             won_total = float(_dig(ta, "won", "total", default=0.0))
-            lost_total = float(_dig(ta, "lost", "total", default=0.0))
+            _lost_total = float(_dig(ta, "lost", "total", default=0.0))
             gross_won = float(_dig(ta, "pnl", "gross", "won", default=0.0))
             gross_lost = float(_dig(ta, "pnl", "gross", "lost", default=0.0))
             avg_win = float(_dig(ta, "won", "pnl", "average", default=float("nan")))

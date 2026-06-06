@@ -156,7 +156,7 @@ def run_quality_checks(
         }
         summaries[symbol] = summary
 
-    summary_rows = list(per_symbol.values())
+    _summary_rows = list(per_symbol.values())
     overall = {
         "symbols": len(per_symbol),
         "total_rows": int(sum(v.get("rows", 0) for v in per_symbol.values())),

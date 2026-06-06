@@ -5,7 +5,6 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest.mock import Mock, patch
 
 import numpy as np
 import pandas as pd

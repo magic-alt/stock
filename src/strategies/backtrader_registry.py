@@ -2,7 +2,7 @@
 Backtrader策略注册中心
 统一管理所有Backtrader策略的注册和访问
 """
-from typing import Dict, Any, Type, Callable
+from typing import Dict, Type, Callable
 import backtrader as bt
 
 # 导入所有策略模块
@@ -62,7 +62,6 @@ from .enhanced_strategies import (
 # V3.0.0-beta.4: ML 增强策略
 from .ml_enhanced_strategy import (
     MLEnhancedStrategy, MLEnsembleStrategy,
-    _coerce_ml_enhanced,
     ML_ENHANCED_CONFIG, ML_ENSEMBLE_CONFIG,
 )
 from .qlib_registered_strategy import (
