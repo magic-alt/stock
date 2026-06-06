@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 import sys
 
 import pytest
@@ -9,7 +12,6 @@ from scripts.backtest_gui import (
     GridConfig,
     RunConfig,
 )
-
 
 def test_run_command_builder_includes_fee_and_benchmark_source():
     cfg = RunConfig(
@@ -42,7 +44,6 @@ def test_run_command_builder_includes_fee_and_benchmark_source():
     assert "--fee-params" in cmd
     assert cfg.cache_dir in cmd
 
-
 def test_grid_command_builder_rejects_bad_json():
     cfg = GridConfig(
         strategy="macd",
@@ -56,7 +57,6 @@ def test_grid_command_builder_rejects_bad_json():
 
     with pytest.raises(ValueError):
         CommandBuilder.build_grid(cfg)
-
 
 def test_auto_command_builder_flags_scope_and_benchmark_source():
     cfg = AutoConfig(
@@ -84,7 +84,6 @@ def test_auto_command_builder_flags_scope_and_benchmark_source():
     assert cmd[cmd.index("--benchmark_source") + 1] == "akshare"
     # strategies are appended correctly
     assert cmd[cmd.index("--strategies") + 1 : cmd.index("--strategies") + 3] == ["ema", "macd"]
-
 
 def test_combo_command_builder_handles_allow_short_and_output(tmp_path):
     nav1 = tmp_path / "a.csv"

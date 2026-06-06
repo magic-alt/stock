@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -11,7 +14,6 @@ from src.strategies.ml_strategies import (
     EnsembleVotingStrategy,
     RegimeAdaptiveMLStrategy,
 )
-
 
 def _dummy_df(rows: int = 120) -> pd.DataFrame:
     idx = pd.date_range("2023-01-01", periods=rows, freq="D")
@@ -27,7 +29,6 @@ def _dummy_df(rows: int = 120) -> pd.DataFrame:
         index=idx,
     )
 
-
 def _dummy_df_en(rows: int = 120) -> pd.DataFrame:
     idx = pd.date_range("2023-01-01", periods=rows, freq="D")
     base = np.linspace(100, 120, rows) + np.random.normal(0, 1, rows)
@@ -42,7 +43,6 @@ def _dummy_df_en(rows: int = 120) -> pd.DataFrame:
         index=idx,
     )
 
-
 def test_deep_sequence_strategy_outputs_signal_and_prob():
     df = _dummy_df()
     strat = DeepSequenceStrategy(arch="lstm", lookback=30, threshold=0.52)
@@ -51,14 +51,12 @@ def test_deep_sequence_strategy_outputs_signal_and_prob():
     assert set(["signal", "prob"]).issubset(res.columns)
     assert res["signal"].iloc[-1] in (-1, 0, 1)
 
-
 def test_rl_strategy_generates_actions():
     df = _dummy_df()
     strat = ReinforcementLearningSignalStrategy(epsilon=0.0, lookback=15)
     res = strat.generate_signals(df)
     assert not res.empty
     assert res["signal"].isin([-1, 0, 1]).all()
-
 
 def test_feature_selection_and_ensemble():
     df = _dummy_df()
@@ -75,7 +73,6 @@ def test_feature_selection_and_ensemble():
     assert "prob" in res
     assert res["signal"].isin([-1, 0, 1]).any()
 
-
 def test_regime_adaptive_filters_high_vol():
     df = _dummy_df()
     strat = RegimeAdaptiveMLStrategy(regime_window=10, prob_floor=0.4, prob_cap=0.6)
@@ -85,14 +82,12 @@ def test_regime_adaptive_filters_high_vol():
     noisy_idx = res["regime_vol"].idxmax()
     assert res.loc[noisy_idx, "prob"] == 0.5
 
-
 def test_ml_walkforward_insufficient_data_returns_zero_signal():
     df = _dummy_df(rows=40)
     strat = MLWalkForwardStrategy(min_train=120, model="auto")
     res = strat.generate_signals(df)
     assert "Signal" in res
     assert res["Signal"].eq(0).all()
-
 
 def test_ml_walkforward_model_none_returns_zero_signal(monkeypatch):
     df = _dummy_df(rows=80)
@@ -101,7 +96,6 @@ def test_ml_walkforward_model_none_returns_zero_signal(monkeypatch):
     res = strat.generate_signals(df)
     assert "Signal" in res
     assert res["Signal"].eq(0).all()
-
 
 def test_ml_walkforward_dummy_model_generates_signals():
     df = _dummy_df(rows=80)
@@ -126,12 +120,10 @@ def test_ml_walkforward_dummy_model_generates_signals():
     assert res["ML_Prob"].iloc[15] == pytest.approx(0.7)
     assert res["Signal"].abs().sum() > 0
 
-
 def test_ml_walkforward_ta_accepts_english_columns():
     df = _dummy_df_en(rows=40)
     feats = MLWalkForwardStrategy._ta(df)
     assert {"ret1", "macd", "boll_z", "v_ratio"} <= set(feats.columns)
-
 
 def test_ml_walkforward_partial_fit_path():
     df = _dummy_df(rows=80)
@@ -154,7 +146,6 @@ def test_ml_walkforward_partial_fit_path():
     assert model.calls > 0
     assert res["ML_Prob"].iloc[15] == pytest.approx(0.6)
 
-
 def test_ml_walkforward_decision_function_path_and_regime():
     df = _dummy_df(rows=80)
 
@@ -170,7 +161,6 @@ def test_ml_walkforward_decision_function_path_and_regime():
     res = strat.generate_signals(df)
     assert res["Signal"].abs().sum() > 0
 
-
 def test_ml_walkforward_torch_helpers():
     torch = pytest.importorskip("torch")
     strat = MLWalkForwardStrategy(min_train=5, model="mlp")
@@ -183,7 +173,6 @@ def test_ml_walkforward_torch_helpers():
     net = strat._torch_fit(model_ctor, X_train, y_train)
     prob = strat._torch_predict(net, np.random.normal(0, 1, (1, 3)))
     assert 0.0 <= prob <= 1.0
-
 
 def test_ml_walkforward_make_model_branches(monkeypatch):
     from src.strategies import ml_strategies as ms
@@ -228,7 +217,6 @@ def test_ml_walkforward_make_model_branches(monkeypatch):
     assert isinstance(model, tuple)
     assert model[0] == "torch_mlp"
 
-
 def test_ml_walkforward_torch_mlp_branch(monkeypatch):
     df = _dummy_df(rows=60)
     strat = MLWalkForwardStrategy(min_train=10, model="mlp", use_regime_ma=0)
@@ -238,7 +226,6 @@ def test_ml_walkforward_torch_mlp_branch(monkeypatch):
     res = strat.generate_signals(df)
     assert res["ML_Prob"].iloc[15] == pytest.approx(0.7)
 
-
 def test_basic_features_fallback_no_price_columns():
     from src.strategies import ml_strategies as ms
 
@@ -246,12 +233,10 @@ def test_basic_features_fallback_no_price_columns():
     feats = ms._basic_features(df)
     assert "ret1" in feats.columns
 
-
 def test_deep_sequence_empty_df_returns_zero():
     strat = DeepSequenceStrategy(arch="lstm", lookback=5)
     res = strat.generate_signals(pd.DataFrame())
     assert res["signal"].eq(0).all()
-
 
 def test_deep_sequence_no_torch(monkeypatch):
     from src.strategies import ml_strategies as ms
@@ -261,18 +246,15 @@ def test_deep_sequence_no_torch(monkeypatch):
     score = strat._torch_score(np.zeros((3, 2)))
     assert score is None
 
-
 def test_rl_strategy_empty_df_returns_zero():
     strat = ReinforcementLearningSignalStrategy(lookback=5)
     res = strat.generate_signals(pd.DataFrame())
     assert res["signal"].eq(0).all()
 
-
 def test_feature_selection_empty_df_returns_zero():
     strat = FeatureSelectionStrategy(top_k=3)
     res = strat.generate_signals(pd.DataFrame())
     assert res["signal"].eq(0).all()
-
 
 def test_feature_selection_constant_features_fallback():
     idx = pd.date_range("2023-01-01", periods=30, freq="D")
@@ -291,12 +273,10 @@ def test_feature_selection_constant_features_fallback():
     assert strat.selected_features
     assert "score" in res
 
-
 def test_ensemble_voting_empty_strategies_returns_zero():
     strat = EnsembleVotingStrategy([])
     res = strat.generate_signals(_dummy_df(rows=30))
     assert res["signal"].eq(0).all()
-
 
 def test_ensemble_voting_majority_vote():
     df = _dummy_df(rows=30)
@@ -311,7 +291,6 @@ def test_ensemble_voting_majority_vote():
     ensemble = EnsembleVotingStrategy([DummyStrat(1), DummyStrat(-1)], vote="majority")
     res = ensemble.generate_signals(df)
     assert "prob" in res
-
 
 def test_regime_adaptive_empty_df_returns_zero():
     strat = RegimeAdaptiveMLStrategy(regime_window=5)

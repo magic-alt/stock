@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import time
-import threading
 import math
 import uuid
 from dataclasses import asdict, is_dataclass
@@ -30,9 +29,9 @@ from src.platform.job_queue import JobQueue, JobStore
 logger = get_logger("platform.api_v2")
 
 try:
-    from fastapi import FastAPI, HTTPException, Depends, Request, Response
+    from fastapi import FastAPI, HTTPException, Depends, Request, Response  # noqa: F401
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, JSONResponse  # noqa: F401
     from pydantic import BaseModel, Field
     HAS_FASTAPI = True
 except ImportError:

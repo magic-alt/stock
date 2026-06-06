@@ -3,7 +3,6 @@ Tests for V5.0-A: Interactive report generator and Strategy API.
 """
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 

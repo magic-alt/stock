@@ -8,16 +8,25 @@ V3.0.0: Initial release - consolidates interfaces from events.py, gateway.py
 """
 from __future__ import annotations
 
-from typing import Protocol, Iterable, Dict, Any, Optional, List, Callable, Union
+from typing import Protocol, Iterable, Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum, auto
+from enum import Enum
 import pandas as pd
+
+from src.core.events import Event
 
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
+from src.core.contracts.dto import (
+    OrderStatusEnum,
+    is_active_order_status,
+    normalize_order_status,  # noqa: F401  (re-exported for trading_gateway etc.)
+)
+
 
 class Side(str, Enum):
     """Order side enumeration."""
@@ -31,65 +40,6 @@ class OrderTypeEnum(str, Enum):
     LIMIT = "limit"
     STOP = "stop"
     STOP_LIMIT = "stop_limit"
-
-
-class OrderStatusEnum(str, Enum):
-    """Order status enumeration."""
-    CREATED = "created"
-    PENDING = "pending"
-    SUBMITTED = "submitted"
-    ACCEPTED = "accepted"
-    PARTIALLY_FILLED = "partial_filled"
-    PARTIAL = "partial"
-    FILLED = "filled"
-    CANCELLED = "cancelled"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-
-
-_ORDER_STATUS_ALIASES = {
-    "created": OrderStatusEnum.CREATED,
-    "pending": OrderStatusEnum.CREATED,
-    "pending_submit": OrderStatusEnum.CREATED,
-    "submitted": OrderStatusEnum.SUBMITTED,
-    "accepted": OrderStatusEnum.ACCEPTED,
-    "partial": OrderStatusEnum.PARTIALLY_FILLED,
-    "partial_fill": OrderStatusEnum.PARTIALLY_FILLED,
-    "partial_filled": OrderStatusEnum.PARTIALLY_FILLED,
-    "filled": OrderStatusEnum.FILLED,
-    "cancelled": OrderStatusEnum.CANCELLED,
-    "canceled": OrderStatusEnum.CANCELLED,
-    "rejected": OrderStatusEnum.REJECTED,
-    "error": OrderStatusEnum.REJECTED,
-    "expired": OrderStatusEnum.EXPIRED,
-}
-
-
-def normalize_order_status(status: Union[OrderStatusEnum, str]) -> OrderStatusEnum:
-    """Return the canonical order status for legacy or broker status values."""
-    if isinstance(status, OrderStatusEnum):
-        status = status.value
-    return _ORDER_STATUS_ALIASES.get(str(status).lower(), OrderStatusEnum.CREATED)
-
-
-def is_active_order_status(status: Union[OrderStatusEnum, str]) -> bool:
-    """Return True when an order status can still receive execution updates."""
-    return normalize_order_status(status) in {
-        OrderStatusEnum.CREATED,
-        OrderStatusEnum.SUBMITTED,
-        OrderStatusEnum.ACCEPTED,
-        OrderStatusEnum.PARTIALLY_FILLED,
-    }
-
-
-def is_terminal_order_status(status: Union[OrderStatusEnum, str]) -> bool:
-    """Return True when an order status is terminal."""
-    return normalize_order_status(status) in {
-        OrderStatusEnum.FILLED,
-        OrderStatusEnum.CANCELLED,
-        OrderStatusEnum.REJECTED,
-        OrderStatusEnum.EXPIRED,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -340,18 +290,6 @@ class ExecutionReport:
 # ---------------------------------------------------------------------------
 # Event Protocol
 # ---------------------------------------------------------------------------
-
-@dataclass(slots=True)
-class Event:
-    """
-    Event object for the event-driven architecture.
-    
-    Attributes:
-        type: Event type identifier
-        data: Associated payload data
-    """
-    type: str
-    data: Any = None
 
 
 class EventHandler(Protocol):

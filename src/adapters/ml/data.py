@@ -1,5 +1,7 @@
 """Canonical ML data adapter exports."""
 
+from __future__ import annotations
+
 from src.mlops.data_adapter import (
     align_to_trading_calendar,
     build_feature_frame,

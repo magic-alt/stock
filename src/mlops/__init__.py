@@ -2,6 +2,8 @@
 MLOps utilities for AI signal integration.
 """
 
+from __future__ import annotations
+
 from .signals import SignalSchema, SignalAction, normalize_signal_output
 from .strategy_adapter import AISignalStrategy, default_feature_builder
 from .data_adapter import normalize_ohlcv_frame, align_to_trading_calendar, build_feature_frame

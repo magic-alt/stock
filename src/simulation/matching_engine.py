@@ -206,7 +206,7 @@ class MatchingEngine:
         if order.symbol not in self.order_books:
             self.order_books[order.symbol] = OrderBook(order.symbol)
         
-        order_book = self.order_books[order.symbol]
+        _order_book = self.order_books[order.symbol]
         
         # 2. 延迟/立即激活
         delay = self.delay_model.delay_bars(order) if self.delay_model else 0

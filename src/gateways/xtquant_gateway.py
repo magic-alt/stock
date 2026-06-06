@@ -55,26 +55,21 @@ References:
 """
 from __future__ import annotations
 
-import os
 import threading
 import time
-from datetime import datetime
 from queue import Queue
 from typing import Any, Dict, List, Optional
 
 from src.gateways.base_live_gateway import (
     BaseLiveGateway,
     GatewayConfig,
-    GatewayStatus,
     OrderStatus,
     OrderType,
-    OrderSide,
     OrderRequest,
     OrderUpdate,
     TradeUpdate,
     AccountUpdate,
     PositionUpdate,
-    GatewayEventType,
 )
 from src.gateways.mappers import SymbolMapper, OrderMapper
 
@@ -87,8 +82,8 @@ xttrader = None
 xtdata = None
 
 try:
-    from xtquant import xttrader  # type: ignore
-    from xtquant import xtdata  # type: ignore
+    from xtquant import xttrader  # noqa: F401  # type: ignore
+    from xtquant import xtdata  # noqa: F401  # type: ignore
     from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback  # type: ignore
     from xtquant.xttype import StockAccount  # type: ignore
     XTQUANT_AVAILABLE = True

@@ -86,7 +86,7 @@ class MLWalkForwardStrategy(BaseStrategy):
             df = df.rename(columns={"open":"开盘","high":"最高","low":"最低","close":"收盘","volume":"成交量"})
         out = pd.DataFrame(index=df.index)
         close = df['收盘']
-        high, low = df['最高'], df['最低']
+        _high, _low = df['最高'], df['最低']
 
         # 收益/波动/斜率
         out['ret1'] = close.pct_change(1)

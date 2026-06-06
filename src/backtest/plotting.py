@@ -6,7 +6,6 @@ Provides plotting utilities for backtest results with technical indicators.
 from __future__ import annotations
 
 from typing import Optional, Tuple, List
-import pandas as pd
 import datetime
 import os
 import traceback
@@ -32,7 +31,7 @@ class TradeLogger(bt.Observer):
     def next(self):
         # 记录当前日期和价格
         current_date = self.data.datetime.date(0)
-        close_price = self.data.close[0]
+        _close_price = self.data.close[0]
         
         # 检查是否有订单执行
         for order in self._owner.broker.orders:
@@ -608,13 +607,13 @@ def plot_backtest_with_indicators(
                     if has_macd or 'macd' in ylabel or 'macd' in title:
                         # 获取所有 bar container（histogram 是 bar 类型）
                         # Backtrader 绘制的 histogram 包含在 ax.containers 中
-                        bars_found = False
+                        _bars_found = False
                         for container in ax.containers:
                             # BarContainer 包含多个 Rectangle patches
                             if hasattr(container, '__iter__'):
                                 rectangles = [p for p in container if isinstance(p, matplotlib.patches.Rectangle)]
                                 if rectangles:
-                                    bars_found = True
+                                    _bars_found = True
                                     # 遍历每个柱状图，根据高度设置颜色
                                     colored_bars = 0
                                     for bar in rectangles:

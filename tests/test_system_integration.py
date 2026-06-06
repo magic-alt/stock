@@ -2,28 +2,26 @@
 系统集成测试 - 覆盖率目标 >95%
 测试所有模块的端到端集成，包括完整的回测流程
 """
+
+from __future__ import annotations
+
 import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import sys
 import subprocess
-import json
 
 # 导入所有核心模块
-from src.core.objects import Direction, OrderType, BarData, AccountData
-from src.core.events import EventEngine, EventType
+from src.core.objects import BarData
+from src.core.events import EventEngine
 from src.data_sources.providers import get_provider
 from src.data_sources.db_manager import SQLiteDataManager
 from src.data_sources.data_portal import DataPortal
 from src.backtest.engine import BacktestEngine
-from src.backtest.analysis import pareto_front
-from src.simulation.order import Order
-from src.simulation.slippage import FixedSlippage
-
 
 class TestSystemDataFlow:
     """测试系统数据流"""
@@ -105,7 +103,6 @@ class TestSystemDataFlow:
         assert len(loaded_data) == 10
         
         # db_manager2.close()
-
 
 class TestSystemBacktestFlow:
     """测试系统回测流程"""
@@ -216,7 +213,6 @@ class TestSystemBacktestFlow:
         except Exception as e:
             pytest.skip(f"Backtest with analysis failed: {e}")
 
-
 class TestSystemCLI:
     """测试CLI命令行接口"""
     
@@ -286,7 +282,6 @@ class TestSystemCLI:
         except Exception as e:
             pytest.skip(f"CLI list failed: {e}")
 
-
 class TestSystemGUI:
     """测试GUI接口"""
     
@@ -314,7 +309,6 @@ class TestSystemGUI:
         assert isinstance(valid_config['symbols'], list)
         assert len(valid_config['symbols']) > 0
 
-
 class TestSystemIntegration:
     """系统集成测试 - 端到端场景"""
     
@@ -334,7 +328,7 @@ class TestSystemIntegration:
         """测试端到端工作流"""
         try:
             # 1. 数据获取 - 使用正确的DataPortal参数
-            portal = DataPortal(
+            _portal = DataPortal(
                 provider="akshare",
                 cache_dir=str(self.cache_dir)
             )
@@ -435,7 +429,6 @@ class TestSystemIntegration:
         # 验证结果
         assert len(errors) == 0 or len(results) >= 1  # 至少有一个成功
 
-
 class TestSystemPerformance:
     """系统性能测试"""
     
@@ -462,7 +455,6 @@ class TestSystemPerformance:
     
     def test_memory_efficiency(self):
         """测试内存效率"""
-        import sys
         
         # 创建多个数据集
         datasets = {}
@@ -477,7 +469,6 @@ class TestSystemPerformance:
         
         # 清理
         del datasets
-
 
 class TestSystemErrorHandling:
     """测试系统错误处理"""
@@ -510,7 +501,6 @@ class TestSystemErrorHandling:
         
         # 系统应该能够处理或标记缺失数据
         assert data.isna().any().any()  # 确实有缺失值
-
 
 class TestSystemCoverage:
     """测试覆盖率相关场景"""
@@ -580,7 +570,6 @@ class TestSystemCoverage:
         # 4. 数据提供商
         provider = get_provider("akshare")
         assert provider is not None
-
 
 if __name__ == "__main__":
     # 运行测试并生成覆盖率报告

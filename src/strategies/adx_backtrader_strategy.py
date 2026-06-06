@@ -6,9 +6,11 @@ V3.0.0 优化:
 - 增加 ATR 移动止损 (Trailing Stop) 锁定利润
 - 解决 ADX 信号滞后导致的利润回吐问题
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class ADXTrendStrategy(bt.Strategy):
     """
@@ -111,7 +113,6 @@ class ADXTrendStrategy(bt.Strategy):
                 self.log(f"SELL CREATE (Trailing Stop @ {self.stop_price:.2f})")
                 self.order = self.close()
 
-
 def _coerce_adx(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce ADX parameters to correct types."""
     out = params.copy()
@@ -124,7 +125,6 @@ def _coerce_adx(params: Dict[str, Any]) -> Dict[str, Any]:
     if "trail_mult" in out:
         out["trail_mult"] = float(out["trail_mult"])
     return out
-
 
 # 策略配置
 STRATEGY_CONFIG = {

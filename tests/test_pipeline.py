@@ -2,10 +2,10 @@
 测试管道模块 (src/pipeline/*)
 覆盖: factor_engine, handlers
 """
+
+from __future__ import annotations
+
 import pytest
-from datetime import datetime
-import pandas as pd
-import numpy as np
 
 from src.pipeline.factor_engine import (
     Factor, Pipeline, create_pipeline,
@@ -15,7 +15,6 @@ from src.pipeline.handlers import (
     PipelineEventCollector, make_pipeline_handlers,
     ProgressTrackingCollector, make_progress_handlers
 )
-
 
 class TestFactorClasses:
     """测试因子类"""
@@ -48,7 +47,6 @@ class TestFactorClasses:
         """测试MACD因子存在"""
         assert MACD is not None
 
-
 class TestPipelineClass:
     """测试Pipeline类"""
     
@@ -67,7 +65,6 @@ class TestPipelineClass:
             assert pipeline is not None
         except TypeError:
             pytest.skip("Pipeline需要参数")
-
 
 class TestHandlers:
     """测试处理器"""
@@ -97,7 +94,6 @@ class TestHandlers:
         """测试创建progress处理器"""
         handlers = make_progress_handlers(out_dir="./test_output")
         assert isinstance(handlers, list)
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List, Optional, Protocol
+from typing import Any, Dict, Iterable, Optional, Protocol
 
 from src.core.events import Event, EventType
 from src.data_sources.level2.models import Level2Snapshot, OrderBookLevel, TradeTick

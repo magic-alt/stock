@@ -8,14 +8,14 @@
 - 实时数据流 (RealtimeDataManager)
 """
 
+from __future__ import annotations
+
 import pytest
 from datetime import datetime, date, timedelta
-from unittest.mock import Mock, MagicMock
 
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 
 # ===========================================================================
 # TradingGateway Tests
@@ -28,11 +28,7 @@ class TestTradingGatewayModule:
         """测试模块导入"""
         from src.core.trading_gateway import (
             TradingMode,
-            GatewayConfig,
-            TradingGateway,
-            PaperTradingAdapter,
             BrokerType,
-            GatewayStatus,
         )
         assert TradingMode.PAPER.value == "paper"
         assert TradingMode.LIVE.value == "live"
@@ -231,7 +227,7 @@ class TestTradingGatewayModule:
     
     def test_trading_gateway_buy_sell(self):
         """测试交易网关买卖"""
-        from src.core.trading_gateway import TradingGateway, GatewayConfig
+        from src.core.trading_gateway import TradingGateway
         from src.core.interfaces import OrderTypeEnum
         
         gateway = TradingGateway.create_paper(initial_cash=1_000_000.0)
@@ -246,7 +242,6 @@ class TestTradingGatewayModule:
         positions = gateway.get_positions()
         assert "600519.SH" in positions
 
-
 # ===========================================================================
 # OrderManager Tests
 # ===========================================================================
@@ -258,10 +253,7 @@ class TestOrderManagerModule:
         """测试模块导入"""
         from src.core.order_manager import (
             OrderEvent,
-            OrderManager,
-            ManagedOrder,
         )
-        from src.core.interfaces import Side, OrderTypeEnum, OrderStatusEnum
         
         assert OrderEvent.CREATED.value == "order.created"
         assert OrderEvent.FILLED.value == "order.filled"
@@ -333,7 +325,7 @@ class TestOrderManagerModule:
     def test_order_manager_submit_order(self):
         """测试提交订单"""
         from src.core.order_manager import OrderManager
-        from src.core.interfaces import Side, OrderTypeEnum
+        from src.core.interfaces import Side
         from src.core.trading_gateway import TradingGateway, GatewayConfig
         
         # 创建 TradingGateway (Paper 模式)
@@ -455,7 +447,6 @@ class TestOrderManagerModule:
         result = manager.cancel_order("invalid_id")
         assert result is False
 
-
 # ===========================================================================
 # RiskManagerV2 Tests
 # ===========================================================================
@@ -467,10 +458,6 @@ class TestRiskManagerV2Module:
         """测试模块导入"""
         from src.core.risk_manager_v2 import (
             RiskLevel,
-            RiskConfig,
-            RiskManagerV2,
-            RiskCheckResult,
-            RiskEventType,
         )
         assert RiskLevel.INFO.value == "info"
         assert RiskLevel.WARNING.value == "warning"
@@ -657,7 +644,6 @@ class TestRiskManagerV2Module:
         assert stats.daily_return == pytest.approx(0.05, rel=1e-3)
         assert stats.win_rate == pytest.approx(0.7, rel=1e-3)
 
-
 # ===========================================================================
 # RealtimeDataManager Tests
 # ===========================================================================
@@ -671,8 +657,6 @@ class TestRealtimeDataModule:
             DataSource,
             DataType,
             DataEvent,
-            RealtimeDataManager,
-            RealtimeQuote,
         )
         assert DataSource.SINA.value == "sina"
         assert DataType.TICK.value == "tick"
@@ -771,7 +755,6 @@ class TestRealtimeDataModule:
         provider.subscribe(["600519.SH"])
         provider.disconnect()
 
-
 # ===========================================================================
 # Integration Tests
 # ===========================================================================
@@ -781,7 +764,7 @@ class TestIntegration:
     
     def test_gateway_with_order_manager(self):
         """测试网关与订单管理器集成"""
-        from src.core.trading_gateway import TradingGateway, GatewayConfig
+        from src.core.trading_gateway import TradingGateway
         from src.core.order_manager import OrderManager
         from src.core.interfaces import Side
         
@@ -846,10 +829,10 @@ class TestIntegration:
     
     def test_full_trading_flow(self):
         """测试完整交易流程"""
-        from src.core.trading_gateway import TradingGateway, GatewayConfig
+        from src.core.trading_gateway import TradingGateway
         from src.core.order_manager import OrderManager
         from src.core.risk_manager_v2 import RiskManagerV2, RiskConfig
-        from src.core.interfaces import Side, AccountInfo
+        from src.core.interfaces import Side
         
         # 初始化组件
         gateway = TradingGateway.create_paper(initial_cash=1_000_000.0)
@@ -886,7 +869,6 @@ class TestIntegration:
             # 提交订单
             success = order_manager.submit_order(order.order_id)
             assert success is True
-
 
 # ===========================================================================
 # Error Handling Tests
@@ -948,7 +930,6 @@ class TestErrorHandling:
         
         tick = manager.get_latest_tick("NOT_SUBSCRIBED")
         assert tick is None
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

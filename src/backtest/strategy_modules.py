@@ -1103,7 +1103,7 @@ if _ML_AVAILABLE:
 
             hi, lo, gap = float(self.p.hi), float(self.p.lo), float(self.p.band_gap)
             enter_long, exit_long = hi, max(0.5, hi-gap)
-            enter_short, exit_short = (1.0-lo), min(0.5, lo+gap)
+            _enter_short, exit_short = (1.0-lo), min(0.5, lo+gap)
 
             intent = self._state
             if self._state == 0:

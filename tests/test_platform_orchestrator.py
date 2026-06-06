@@ -1,22 +1,22 @@
+
+from __future__ import annotations
+
 import time
 
 import pytest
 
 from src.platform import orchestrator
 
-
 def _register_temp_task(task_name, fn):
     previous = orchestrator.get_workflow_tasks().get(task_name)
     orchestrator.register_workflow_task(task_name, fn)
     return previous
-
 
 def _restore_task(task_name, previous):
     if previous is None:
         orchestrator.unregister_workflow_task(task_name)
     else:
         orchestrator.register_workflow_task(task_name, previous)
-
 
 def test_workflow_retry_then_success():
     attempts = {"count": 0}
@@ -40,7 +40,6 @@ def test_workflow_retry_then_success():
         assert result["results"][0]["attempts"] == 2
     finally:
         _restore_task("flaky", prev)
-
 
 def test_workflow_continue_on_failure():
     def always_fail(_payload):
@@ -69,7 +68,6 @@ def test_workflow_continue_on_failure():
         _restore_task("always_fail", prev_fail)
         _restore_task("always_ok", prev_ok)
 
-
 def test_workflow_abort_on_failure():
     def always_fail(_payload):
         raise RuntimeError("failed")
@@ -86,7 +84,6 @@ def test_workflow_abort_on_failure():
             )
     finally:
         _restore_task("always_fail_abort", prev)
-
 
 def test_workflow_timeout():
     def sleepy(_payload):
@@ -111,13 +108,11 @@ def test_workflow_timeout():
     finally:
         _restore_task("sleepy", prev)
 
-
 # ---------------------------------------------------------------------------
 # DAG Workflow tests (V4.0-C)
 # ---------------------------------------------------------------------------
 
 from src.platform.orchestrator import run_dag_workflow
-
 
 def test_dag_linear_dependency():
     """A -> B -> C linear chain."""
@@ -143,7 +138,6 @@ def test_dag_linear_dependency():
     finally:
         _restore_task("dag_task", prev)
 
-
 def test_dag_parallel_independent():
     """A, B independent -> C depends on both."""
     def ok_task(_payload):
@@ -161,7 +155,6 @@ def test_dag_parallel_independent():
         assert result["success_steps"] == 3
     finally:
         _restore_task("par_task", prev)
-
 
 def test_dag_diamond_dependency():
     """A -> B,C -> D diamond pattern."""
@@ -182,7 +175,6 @@ def test_dag_diamond_dependency():
     finally:
         _restore_task("diamond_task", prev)
 
-
 def test_dag_cycle_detection_raises():
     def ok_task(_payload):
         return {"ok": True}
@@ -199,7 +191,6 @@ def test_dag_cycle_detection_raises():
     finally:
         _restore_task("cycle_task", prev)
 
-
 def test_dag_missing_dependency_raises():
     def ok_task(_payload):
         return {"ok": True}
@@ -214,7 +205,6 @@ def test_dag_missing_dependency_raises():
             })
     finally:
         _restore_task("miss_task", prev)
-
 
 def test_dag_step_failure_abort():
     def fail_task(_payload):
@@ -241,7 +231,6 @@ def test_dag_step_failure_abort():
     finally:
         _restore_task("dag_fail", prev_f)
         _restore_task("dag_ok", prev_o)
-
 
 def test_dag_step_failure_continue():
     def fail_task(_payload):

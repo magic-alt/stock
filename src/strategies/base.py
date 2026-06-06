@@ -2,10 +2,10 @@
 策略基类
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 import pandas as pd
-from typing import Dict, List, Optional
-
 
 class BaseStrategy(ABC):
     """策略基类"""

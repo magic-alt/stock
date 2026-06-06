@@ -36,19 +36,12 @@ import threading
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 
 from .exceptions import (
     QuantBaseError,
-    DataError,
-    StrategyError,
-    OrderError,
-    GatewayError,
-    RiskError,
-    ConfigurationError,
-    BacktestError,
     classify_exception,
     wrap_exception,
 )
@@ -354,7 +347,7 @@ def handle_errors(
                 suppress=False,
                 log_level=log_level,
                 recovery=recovery,
-            ) as handler:
+            ) as _handler:
                 try:
                     return func(*args, **kwargs)
                 except tuple(suppress_types) as e:
@@ -397,7 +390,6 @@ def handle_errors_async(
     suppress_types = suppress_types or []
     
     def decorator(func: Callable) -> Callable:
-        import asyncio
         
         op_name = operation or func.__name__
         

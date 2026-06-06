@@ -3,7 +3,7 @@ Data/feature adapters for AI framework integration.
 """
 from __future__ import annotations
 
-from typing import Dict, Iterable, Optional
+from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd

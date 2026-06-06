@@ -15,7 +15,7 @@ import tempfile
 import threading
 import time
 from queue import Queue
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd

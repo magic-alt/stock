@@ -8,7 +8,7 @@ binding contract — adapter authors must respect the documented semantics
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, AsyncIterator, Iterable, Mapping, Optional, Protocol, Sequence, runtime_checkable
+from typing import Any, AsyncIterator, Iterable, Optional, Protocol, Sequence, runtime_checkable
 
 from ..dto import AccountSnapshot, Bar, Fill, Instrument, Order, OrderBookSnapshot, Position, Tick
 

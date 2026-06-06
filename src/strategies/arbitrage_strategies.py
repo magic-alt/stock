@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
 """
 套利策略集合
 
@@ -9,7 +12,6 @@ V3.0.0 优化:
 import numpy as np
 import pandas as pd
 from .base import BaseStrategy
-
 
 class AlphaHedgeStrategy(BaseStrategy):
     """
@@ -41,7 +43,6 @@ class AlphaHedgeStrategy(BaseStrategy):
         out['Signal'] = sig.shift(1).fillna(0)
         out['Position'] = out['Signal'].diff().fillna(0)
         return out
-
 
 class CrossCommodityArbStrategy(BaseStrategy):
     """
@@ -84,7 +85,6 @@ class CrossCommodityArbStrategy(BaseStrategy):
         out['Signal'] = sig.shift(1).fillna(0)
         out['Position'] = out['Signal'].diff().fillna(0)
         return out
-
 
 class CalendarSpreadArbStrategy(BaseStrategy):
     """

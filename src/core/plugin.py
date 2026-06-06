@@ -18,10 +18,9 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import inspect
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Type
+from typing import Any, Callable, Dict, List, Optional, Type
 
 
 # ---------------------------------------------------------------------------

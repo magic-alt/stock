@@ -8,11 +8,10 @@ Covers:
 - D-4: Jupyter notebook magic / QuantHelper
 - F-3: Scaffold generator
 """
-import os
-import json
-import pytest
-from pathlib import Path
 
+from __future__ import annotations
+
+from pathlib import Path
 
 # ===========================================================================
 # D-1: Docker configuration validation
@@ -75,7 +74,6 @@ class TestDockerConfig:
         assert "__pycache__" in content
         assert "node_modules" in content
 
-
 # ===========================================================================
 # D-2: CLI v2 tests
 # ===========================================================================
@@ -94,7 +92,6 @@ class TestCLIHelpers:
     def test_print_panel(self):
         from src.cli.main import _print_panel
         _print_panel("Title", "Content")
-
 
 class TestCLICommands:
     """Test CLI Click commands."""
@@ -166,7 +163,6 @@ class TestCLICommands:
         result = runner.invoke(cli, ["trading", "status"])
         assert result.exit_code == 0
 
-
 # ===========================================================================
 # D-4: Notebook / QuantHelper tests
 # ===========================================================================
@@ -201,7 +197,6 @@ class TestQuantHelper:
         helper = QuantHelper()
         result = helper.generate_report(None)
         assert isinstance(result, str)
-
 
 # ===========================================================================
 # F-3: Scaffold generator tests
@@ -276,7 +271,6 @@ class TestScaffoldGenerator:
         assert _to_class_name("my_test_strategy") == "MyTestStrategy"
         assert _to_class_name("alpha") == "Alpha"
         assert _to_class_name("pe_ratio_factor") == "PeRatioFactor"
-
 
 class TestScaffoldCLI:
     """Test scaffold CLI commands."""

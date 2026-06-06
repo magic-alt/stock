@@ -1,9 +1,10 @@
 """Tests for V6 runtime contexts."""
 
+from __future__ import annotations
+
 from src.core.contracts import CONTRACT_VERSION, MetricsPort, TracerPort
 from src.core.monitoring import MetricCollector, Tracer
 from src.runtime import BacktestRuntime, LiveRuntime, RuntimeState, SandboxRuntime
-
 
 def test_runtime_modes_declare_adapter_policy() -> None:
     backtest = BacktestRuntime()
@@ -18,7 +19,6 @@ def test_runtime_modes_declare_adapter_policy() -> None:
     assert live.info()["realtime_data"] is True
     assert live.info()["live_execution"] is True
 
-
 def test_runtime_boot_registers_shared_kernel_services() -> None:
     runtime = BacktestRuntime()
 
@@ -26,7 +26,6 @@ def test_runtime_boot_registers_shared_kernel_services() -> None:
 
     assert runtime.state is RuntimeState.BOOTED
     assert runtime.kernel.names() == ["runtime", "metrics", "tracer", "plugin_registry"]
-
 
 def test_runtime_start_and_shutdown_drive_kernel_lifecycle() -> None:
     metrics = MetricCollector()
@@ -51,7 +50,6 @@ def test_runtime_start_and_shutdown_drive_kernel_lifecycle() -> None:
     runtime.shutdown()
 
     assert runtime.state is RuntimeState.SHUTDOWN
-
 
 def test_observability_singletons_satisfy_ports() -> None:
     metrics = MetricCollector()

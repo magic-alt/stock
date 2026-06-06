@@ -8,8 +8,6 @@ Tests that verify complete workflows spanning multiple modules:
 """
 from __future__ import annotations
 
-import os
-import tempfile
 import time
 from queue import Queue
 
@@ -92,7 +90,7 @@ class TestPaperTradingWorkflow:
 
     @pytest.fixture
     def gateway_setup(self):
-        from src.gateways.base_live_gateway import GatewayConfig, OrderSide, OrderType
+        from src.gateways.base_live_gateway import GatewayConfig
         from src.gateways.xtp_gateway import XtpGateway
 
         config = GatewayConfig(

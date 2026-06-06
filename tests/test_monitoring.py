@@ -1,11 +1,13 @@
 """
 Tests for heartbeat monitoring utilities.
 """
+
+from __future__ import annotations
+
 import time
 
 from src.core.events import EventEngine, EventType
 from src.core.monitoring import HeartbeatEmitter, HeartbeatMonitor, run_with_heartbeat_monitor
-
 
 def test_heartbeat_emitter_emits():
     events = EventEngine()
@@ -29,7 +31,6 @@ def test_heartbeat_emitter_emits():
 
     assert received
     assert received[0].data.get("source") == "unit-test"
-
 
 def test_heartbeat_monitor_timeout():
     events = EventEngine()
@@ -57,7 +58,6 @@ def test_heartbeat_monitor_timeout():
     events.stop()
 
     assert timed_out["value"]
-
 
 def test_run_with_heartbeat_monitor_restarts():
     events = EventEngine()

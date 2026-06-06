@@ -142,7 +142,7 @@ class TestListVersions:
     def test_list_versions_returns_version_info(self, tmp_path):
         lake = ParquetDataLake(base_dir=str(tmp_path))
         df = _make_price_df()
-        entry = lake.write_dataset("V", df, kind="factor")
+        _entry = lake.write_dataset("V", df, kind="factor")
         versions = lake.list_versions("V", kind="factor")
         assert len(versions) == 1
         vi = versions[0]

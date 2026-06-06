@@ -34,7 +34,6 @@ this bundle — it uses an in-memory vectorised simulation by default.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Iterable, Optional, Sequence
 
 import pandas as pd

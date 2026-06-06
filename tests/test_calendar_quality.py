@@ -1,9 +1,11 @@
+
+from __future__ import annotations
+
 import pandas as pd
 import pytest
 
 from src.data_sources.trading_calendar import TradingCalendar, align_frame_to_calendar
 from src.data_sources.quality import run_quality_checks
-
 
 def _xshg_has_2024_spring_festival() -> bool:
     """Return True only if the installed exchange_calendars XSHG data
@@ -17,7 +19,6 @@ def _xshg_has_2024_spring_festival() -> bool:
     except Exception:
         return False
 
-
 _skip_if_no_cn_holidays = pytest.mark.skipif(
     not _xshg_has_2024_spring_festival(),
     reason=(
@@ -26,13 +27,11 @@ _skip_if_no_cn_holidays = pytest.mark.skipif(
     ),
 )
 
-
 def test_trading_calendar_sessions_weekdays():
     calendar = TradingCalendar()
     sessions = calendar.sessions("2024-01-01", "2024-01-07")
     assert len(sessions) == 5
     assert all(sessions.dayofweek < 5)
-
 
 def test_align_frame_fill_suspensions():
     dates = pd.to_datetime(["2024-01-01", "2024-01-03"])
@@ -54,7 +53,6 @@ def test_align_frame_fill_suspensions():
     assert aligned.loc[pd.Timestamp("2024-01-02"), "close"] == aligned.loc[pd.Timestamp("2024-01-01"), "close"]
     assert aligned.loc[pd.Timestamp("2024-01-02"), "suspended"] == True
 
-
 def test_quality_report_missing_sessions():
     dates = pd.to_datetime(["2024-01-01", "2024-01-03"])
     df = pd.DataFrame(
@@ -70,7 +68,6 @@ def test_quality_report_missing_sessions():
     report = run_quality_checks({"AAA": df}, start="2024-01-01", end="2024-01-03")
     assert report["per_symbol"]["AAA"]["missing_sessions"] == 1
 
-
 @_skip_if_no_cn_holidays
 def test_cn_calendar_skips_exchange_holidays() -> None:
     calendar = TradingCalendar.for_source("akshare")
@@ -83,7 +80,6 @@ def test_cn_calendar_skips_exchange_holidays() -> None:
         "2024-02-19",
         "2024-02-20",
     ]
-
 
 @_skip_if_no_cn_holidays
 def test_quality_report_ignores_cn_holiday_gap_when_exchange_calendar_is_used() -> None:

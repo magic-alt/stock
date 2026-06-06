@@ -2,13 +2,14 @@
 Preflight decision seed parameter tests for launch gate workflow.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 from types import SimpleNamespace
 
 from scripts import start_production as sp
 from src.backtest.admission_gates import promote_strategy_gate
-
 
 def _build_config():
     return SimpleNamespace(
@@ -19,7 +20,6 @@ def _build_config():
             slippage=0.0,
         ),
     )
-
 
 def _build_args(**kwargs):
     args = argparse.Namespace(
@@ -61,10 +61,8 @@ def _build_args(**kwargs):
         setattr(args, k, v)
     return args
 
-
 def _promote_baseline_gate(gate_root, params):
     promote_strategy_gate("macd", "baseline_registered", params=params, gate_root=str(gate_root), source="test.baseline")
-
 
 def test_extract_replay_params_from_decision_payload():
     payload = {
@@ -75,7 +73,6 @@ def test_extract_replay_params_from_decision_payload():
     }
     params = sp._extract_replay_params_from_decision(payload)
     assert params == {"fast": 10, "slow": 30}
-
 
 def test_run_preflight_uses_seed_replay_params(tmp_path, monkeypatch):
     seed_file = tmp_path / "seed_decision.json"
@@ -134,7 +131,6 @@ def test_run_preflight_uses_seed_replay_params(tmp_path, monkeypatch):
     assert passed is True
     assert calls["params"] == {"fast": 8, "slow": 21}
 
-
 def test_run_preflight_cli_params_override_seed(tmp_path, monkeypatch):
     seed_file = tmp_path / "seed_decision.json"
     gate_root = tmp_path / "gates"
@@ -185,7 +181,6 @@ def test_run_preflight_cli_params_override_seed(tmp_path, monkeypatch):
     assert passed is True
     assert calls["params"] == {"fast": 13, "slow": 34}
 
-
 def test_run_preflight_auto_regression_uses_seed_in_next_round(tmp_path, monkeypatch):
     seed_file = tmp_path / "seed_decision.json"
     decision_file = tmp_path / "decision.json"
@@ -229,7 +224,6 @@ def test_run_preflight_auto_regression_uses_seed_in_next_round(tmp_path, monkeyp
     assert len(calls) == 2
     assert calls[0] is None
     assert calls[1] is None
-
 
 def test_run_preflight_auto_regression_stops_when_missing_replay(tmp_path, monkeypatch):
     seed_file = tmp_path / "seed_decision.json"

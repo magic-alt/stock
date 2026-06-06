@@ -13,6 +13,8 @@ V3.0.0: Added unified interfaces and strategy base class.
 V3.0.0-beta: Added logging, context, paper_runner_v3.
 """
 
+from __future__ import annotations
+
 from .events import Event, EventEngine, EventType, Handler
 from .gateway import (
     HistoryGateway,
@@ -127,7 +129,6 @@ from .audit import AuditLogger
 from .auth import Authorizer, Subject, Role, Permission, ResourceScope
 from .ha import SnapshotStore, ComponentRegistry, HealthCheckResult
 
-
 def __getattr__(name):
     """Lazily resolve heavy optional exports to avoid import cycles."""
     if name in {"LiveStrategyContext", "LiveRunResult", "run_live"}:
@@ -144,14 +145,14 @@ def __getattr__(name):
 
 # V6 Open Platform (Phase 1): kernel + component lifecycle FSM. Additive
 # only — existing modules do not depend on these symbols yet.
-from .component_state import (
+from .component_state import (  # noqa: F401
     ComponentState,
     InvalidStateTransition,
     Lifecycle,
     TransitionEvent,
     is_legal_transition,
 )
-from .kernel import (
+from .kernel import (  # noqa: F401
     ComponentRecord,
     LIFECYCLE_TOPIC,
     PlatformKernel,

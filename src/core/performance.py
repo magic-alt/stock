@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_compl
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, TypeVar
 
 from .logger import get_logger
 
@@ -628,7 +628,6 @@ def optimize_dataframe(df, category_threshold: float = 0.5) -> None:
         >>> optimize_dataframe(df)
         >>> # Memory usage reduced
     """
-    import numpy as np
     import pandas as pd
     
     start_mem = df.memory_usage(deep=True).sum()

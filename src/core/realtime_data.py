@@ -26,7 +26,6 @@ Usage:
 """
 from __future__ import annotations
 
-import asyncio
 import json
 import threading
 import time
@@ -35,9 +34,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
-from queue import Queue
 from typing import Any, Callable, Dict, List, Optional, Set
-from urllib.error import URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 

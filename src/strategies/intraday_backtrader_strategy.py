@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
 """
 日内回转策略 - Backtrader版本
 基于开盘价的日内均值回归
@@ -9,7 +12,6 @@ V3.0.0 优化:
 - 避免开盘、尾盘剧烈波动期交易
 """
 import backtrader as bt
-
 
 class IntradayReversionStrategy(bt.Strategy):
     """
@@ -140,7 +142,6 @@ class IntradayReversionStrategy(bt.Strategy):
         # 强制100股整数倍（A股规则）
         lots = max(1, size // 100)
         return lots * 100
-
 
 def _coerce_intraday(d: dict) -> dict:
     return {

@@ -64,8 +64,6 @@ import os
 import logging
 import threading
 import time
-from ctypes import c_char_p, c_int, c_double, c_uint64, Structure, POINTER
-from datetime import datetime
 from pathlib import Path
 from queue import Queue
 from typing import Any, Dict, List, Optional
@@ -73,10 +71,7 @@ from typing import Any, Dict, List, Optional
 from src.gateways.base_live_gateway import (
     BaseLiveGateway,
     GatewayConfig,
-    GatewayStatus,
     OrderStatus,
-    OrderType,
-    OrderSide,
     OrderRequest,
     OrderUpdate,
     TradeUpdate,

@@ -1,5 +1,7 @@
 """Adapter namespace convergence tests."""
 
+from __future__ import annotations
+
 from src.adapters.broker import GatewayConfig as CanonicalGatewayConfig
 from src.adapters.broker import create_gateway as canonical_create_gateway
 from src.adapters.broker.base_live_gateway import (
@@ -31,36 +33,30 @@ from src.gateways import GatewayConfig, create_gateway
 from src.gateways.base_live_gateway import BaseLiveGateway
 from src.mlops.data_adapter import normalize_ohlcv_frame
 
-
 def test_data_adapter_namespace_reexports_legacy_data_objects() -> None:
     assert CanonicalDataProvider is DataProvider
     assert canonical_get_provider is get_provider
     assert CanonicalDataPortal is DataPortal
 
-
 def test_realtime_adapter_namespace_reexports_legacy_realtime_objects() -> None:
     assert CanonicalRealtimeDataManager is RealtimeDataManager
     assert CanonicalSinaDataProvider is SinaDataProvider
 
-
 def test_broker_adapter_namespace_reexports_legacy_gateway_objects() -> None:
     assert CanonicalGatewayConfig is GatewayConfig
     assert CanonicalBaseLiveGateway is BaseLiveGateway
-    assert canonical_create_gateway is not create_gateway
+    assert canonical_create_gateway is create_gateway
     assert canonical_create_gateway(
         "xtquant", GatewayConfig(account_id="demo", broker="xtquant"), None
     ).__class__.__name__ == ("XtQuantGateway")
-
 
 def test_storage_adapter_namespace_reexports_legacy_storage_objects() -> None:
     assert CanonicalSQLiteDataManager is SQLiteDataManager
     assert CanonicalMemoryRepository is MemoryRepository
     assert canonical_create_repository is create_repository
 
-
 def test_ml_adapter_namespace_reexports_legacy_ml_objects() -> None:
     assert canonical_normalize_ohlcv_frame is normalize_ohlcv_frame
-
 
 def test_messaging_adapter_namespace_reexports_legacy_message_bus_objects() -> None:
     assert CanonicalMessageBus is MessageBus

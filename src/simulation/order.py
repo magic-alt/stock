@@ -10,19 +10,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-
-class OrderStatus(Enum):
-    """订单状态枚举"""
-    CREATED = "created"          # 已创建
-    PENDING = "pending"          # 挂单中
-    SUBMITTED = "submitted"      # 已报
-    ACCEPTED = "accepted"        # 已受理
-    PARTIAL = "partial"          # 部分成交
-    PARTIALLY_FILLED = "partial_filled"  # 部分成交（规范状态）
-    FILLED = "filled"            # 完全成交
-    CANCELLED = "cancelled"      # 已撤单
-    REJECTED = "rejected"        # 已拒绝
-    EXPIRED = "expired"          # 已过期
+from src.core.contracts.dto import OrderStatus
 
 
 class OrderType(Enum):

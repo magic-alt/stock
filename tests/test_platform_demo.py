@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 import json
 import subprocess
 import sys
@@ -10,7 +13,6 @@ from src.platform.api_server import APIMetrics, GatewayService, MonitorService
 from src.platform.demo import run_paper_trading_demo, write_demo_report
 from src.platform.job_queue import JobQueue, JobStore
 
-
 @pytest.fixture()
 def demo_queue():
     queue = JobQueue(store=JobStore(), max_workers=1)
@@ -18,7 +20,6 @@ def demo_queue():
         yield queue
     finally:
         queue.shutdown()
-
 
 def test_run_paper_trading_demo_end_to_end(demo_queue):
     report = run_paper_trading_demo(
@@ -51,11 +52,9 @@ def test_run_paper_trading_demo_end_to_end(demo_queue):
         "collect_monitor_summary",
     ]
 
-
 def test_run_paper_trading_demo_rejects_bad_quantity():
     with pytest.raises(ValueError, match="quantity"):
         run_paper_trading_demo(GatewayService(), quantity=0)
-
 
 def test_gateway_service_disconnect_returns_without_deadlock():
     service = GatewayService()
@@ -74,7 +73,6 @@ def test_gateway_service_disconnect_returns_without_deadlock():
     assert result["status"]["connected"] is False
     assert service.status()["connected"] is False
 
-
 def test_write_demo_report_creates_json(tmp_path, demo_queue):
     report = run_paper_trading_demo(
         GatewayService(),
@@ -87,7 +85,6 @@ def test_write_demo_report_creates_json(tmp_path, demo_queue):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["ok"] is True
     assert payload["summary"]["trades"] == 1
-
 
 def test_demo_script_writes_report(tmp_path):
     out_path = tmp_path / "platform_console_demo.json"
@@ -104,5 +101,4 @@ def test_demo_script_writes_report(tmp_path):
     payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["ok"] is True
     assert payload["summary"]["trades"] == 1
-
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from decimal import Decimal
 from typing import Any, AsyncIterator, Iterable, Mapping, Optional, Sequence
 
 from src.core.contracts import (
@@ -19,7 +18,6 @@ from src.core.contracts import (
     Instrument,
     Order,
     OrderBookSnapshot,
-    OrderStatus,
     Position,
     RiskCheckResult,
     RiskDecision,
