@@ -19,6 +19,15 @@ import pandas as pd
 # Enums
 # ---------------------------------------------------------------------------
 
+from src.core.contracts.dto import (
+    OrderStatus,
+    OrderStatusEnum,
+    normalize_order_status,
+    is_active_order_status,
+    is_terminal_order_status,
+)
+
+
 class Side(str, Enum):
     """Order side enumeration."""
     BUY = "buy"
@@ -31,65 +40,6 @@ class OrderTypeEnum(str, Enum):
     LIMIT = "limit"
     STOP = "stop"
     STOP_LIMIT = "stop_limit"
-
-
-class OrderStatusEnum(str, Enum):
-    """Order status enumeration."""
-    CREATED = "created"
-    PENDING = "pending"
-    SUBMITTED = "submitted"
-    ACCEPTED = "accepted"
-    PARTIALLY_FILLED = "partial_filled"
-    PARTIAL = "partial"
-    FILLED = "filled"
-    CANCELLED = "cancelled"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-
-
-_ORDER_STATUS_ALIASES = {
-    "created": OrderStatusEnum.CREATED,
-    "pending": OrderStatusEnum.CREATED,
-    "pending_submit": OrderStatusEnum.CREATED,
-    "submitted": OrderStatusEnum.SUBMITTED,
-    "accepted": OrderStatusEnum.ACCEPTED,
-    "partial": OrderStatusEnum.PARTIALLY_FILLED,
-    "partial_fill": OrderStatusEnum.PARTIALLY_FILLED,
-    "partial_filled": OrderStatusEnum.PARTIALLY_FILLED,
-    "filled": OrderStatusEnum.FILLED,
-    "cancelled": OrderStatusEnum.CANCELLED,
-    "canceled": OrderStatusEnum.CANCELLED,
-    "rejected": OrderStatusEnum.REJECTED,
-    "error": OrderStatusEnum.REJECTED,
-    "expired": OrderStatusEnum.EXPIRED,
-}
-
-
-def normalize_order_status(status: Union[OrderStatusEnum, str]) -> OrderStatusEnum:
-    """Return the canonical order status for legacy or broker status values."""
-    if isinstance(status, OrderStatusEnum):
-        status = status.value
-    return _ORDER_STATUS_ALIASES.get(str(status).lower(), OrderStatusEnum.CREATED)
-
-
-def is_active_order_status(status: Union[OrderStatusEnum, str]) -> bool:
-    """Return True when an order status can still receive execution updates."""
-    return normalize_order_status(status) in {
-        OrderStatusEnum.CREATED,
-        OrderStatusEnum.SUBMITTED,
-        OrderStatusEnum.ACCEPTED,
-        OrderStatusEnum.PARTIALLY_FILLED,
-    }
-
-
-def is_terminal_order_status(status: Union[OrderStatusEnum, str]) -> bool:
-    """Return True when an order status is terminal."""
-    return normalize_order_status(status) in {
-        OrderStatusEnum.FILLED,
-        OrderStatusEnum.CANCELLED,
-        OrderStatusEnum.REJECTED,
-        OrderStatusEnum.EXPIRED,
-    }
 
 
 # ---------------------------------------------------------------------------

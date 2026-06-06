@@ -34,12 +34,13 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from src.core.contracts.dto import OrderStatus, OrderStatusEnum, normalize_order_status
 from src.core.interfaces import (
-    AccountInfo, OrderInfo, PositionInfo, TradeInfo, Side, OrderTypeEnum, OrderStatusEnum,
-    OrderRequest, OrderEventPayload, is_active_order_status, normalize_order_status,
+    AccountInfo, OrderInfo, PositionInfo, TradeInfo, Side, OrderTypeEnum,
+    OrderRequest, OrderEventPayload, is_active_order_status,
 )
 from src.core.events import EventEngine, Event, EventType
-from src.core.order_state import OrderStateMachine, OrderStatus, to_lifecycle_status
+from src.core.order_state import OrderStateMachine, to_lifecycle_status
 from src.core.pre_trade_risk import evaluate_pre_trade_risk
 from src.core.audit import AuditLogger, audit_event
 from src.core.auth import Authorizer, Permission, ResourceScope, Subject
