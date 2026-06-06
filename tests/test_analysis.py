@@ -84,6 +84,7 @@ class TestSaveHeatmap(unittest.TestCase):
     
     def setUp(self):
         """设置测试环境"""
+        pytest.importorskip("matplotlib")
         self.test_dir = tempfile.mkdtemp()
     
     def tearDown(self):
@@ -165,6 +166,7 @@ class TestAnalysisIntegration(unittest.TestCase):
     
     def setUp(self):
         """设置测试环境"""
+        pytest.importorskip("matplotlib")
         self.test_dir = tempfile.mkdtemp()
     
     def tearDown(self):

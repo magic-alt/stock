@@ -2,6 +2,8 @@ import sys
 
 import pytest
 
+pytest.importorskip("matplotlib")
+
 from scripts.backtest_gui import (
     AutoConfig,
     ComboConfig,

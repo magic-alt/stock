@@ -116,6 +116,7 @@ class TestAnalysis:
     
     def test_save_heatmap(self):
         """测试保存热力图"""
+        pytest.importorskip("matplotlib")
         temp_dir = tempfile.mkdtemp()
         
         try:

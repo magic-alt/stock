@@ -13,6 +13,13 @@ import json
 import pytest
 from pathlib import Path
 
+# Check for optional click dependency
+try:
+    import click  # noqa: F401
+    _HAS_CLICK = True
+except ImportError:
+    _HAS_CLICK = False
+
 
 # ===========================================================================
 # D-1: Docker configuration validation
@@ -96,6 +103,7 @@ class TestCLIHelpers:
         _print_panel("Title", "Content")
 
 
+@pytest.mark.skipif(not _HAS_CLICK, reason="click not installed")
 class TestCLICommands:
     """Test CLI Click commands."""
 
@@ -278,6 +286,7 @@ class TestScaffoldGenerator:
         assert _to_class_name("pe_ratio_factor") == "PeRatioFactor"
 
 
+@pytest.mark.skipif(not _HAS_CLICK, reason="click not installed")
 class TestScaffoldCLI:
     """Test scaffold CLI commands."""
 
