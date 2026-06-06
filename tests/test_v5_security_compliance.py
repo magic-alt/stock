@@ -14,12 +14,20 @@ import time
 import pytest
 from pathlib import Path
 
+# Check for optional FastAPI dependency
+try:
+    import fastapi  # noqa: F401
+    _HAS_FASTAPI = True
+except ImportError:
+    _HAS_FASTAPI = False
+
 
 # ===========================================================================
 # C-1: FastAPI api_v2 tests
 # ===========================================================================
 
 
+@pytest.mark.skipif(not _HAS_FASTAPI, reason="fastapi not installed")
 class TestFastAPIApp:
     """Test FastAPI application creation and endpoints."""
 
@@ -133,6 +141,7 @@ class TestFastAPIApp:
         assert app is not None
 
 
+@pytest.mark.skipif(not _HAS_FASTAPI, reason="fastapi not installed")
 class TestFastAPIEndpoints:
     """Test API endpoints using TestClient."""
 
