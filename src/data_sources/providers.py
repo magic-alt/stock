@@ -729,17 +729,6 @@ class YFinanceProvider(DataProvider):
                             record_count=len(df_new),
                             checksum=checksum,
                         )
-                        checksum = _data_checksum(df_new)
-                        self.db.record_lineage(
-                            symbol=symbol,
-                            data_type="stock",
-                            adj_type=adj_type,
-                            source=self.name,
-                            start_date=str(df_new.index.min().date()),
-                            end_date=str(df_new.index.max().date()),
-                            record_count=len(df_new),
-                            checksum=checksum,
-                        )
                 
                 # Load complete data
                 final_df = self.db.load_stock_data(symbol, start_clean, end_clean, adj_type)
@@ -809,17 +798,6 @@ class YFinanceProvider(DataProvider):
                 df_new = self._fetch_index_from_source(index_code, fetch_start, fetch_end)
                 if df_new is not None:
                     self.db.save_index_data(index_code, df_new, adj_type)
-                    checksum = _data_checksum(df_new)
-                    self.db.record_lineage(
-                        symbol=index_code,
-                        data_type="index",
-                        adj_type=adj_type,
-                        source=self.name,
-                        start_date=str(df_new.index.min().date()),
-                        end_date=str(df_new.index.max().date()),
-                        record_count=len(df_new),
-                        checksum=checksum,
-                    )
                     checksum = _data_checksum(df_new)
                     self.db.record_lineage(
                         symbol=index_code,
