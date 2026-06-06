@@ -1,0 +1,36 @@
+# ── Line endings ──────────────────────────────────────────────
+* text=auto
+
+# Force LF for files that must not have CRLF
+*.sh         text eol=lf
+*.py         text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+Dockerfile   text eol=lf
+Makefile     text eol=lf
+
+# ── Merge strategies ──────────────────────────────────────────
+CHANGELOG.md merge=union
+
+# ── Diff drivers ──────────────────────────────────────────────
+*.py   diff=python
+*.vue  diff=vue
+*.ts   diff=typescript
+*.js   diff=javascript
+
+# ── Binary files ──────────────────────────────────────────────
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.eot   binary
+
+# ── Vendored / generated (exclude from language stats) ────────
+frontend/dist/**        linguist-vendored
+frontend/node_modules/** linguist-vendored
+sample_data/**          linguist-vendored
+site/**                 linguist-vendored
