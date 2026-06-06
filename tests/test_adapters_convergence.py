@@ -46,7 +46,7 @@ def test_realtime_adapter_namespace_reexports_legacy_realtime_objects() -> None:
 def test_broker_adapter_namespace_reexports_legacy_gateway_objects() -> None:
     assert CanonicalGatewayConfig is GatewayConfig
     assert CanonicalBaseLiveGateway is BaseLiveGateway
-    assert canonical_create_gateway is not create_gateway
+    assert canonical_create_gateway is create_gateway
     assert canonical_create_gateway(
         "xtquant", GatewayConfig(account_id="demo", broker="xtquant"), None
     ).__class__.__name__ == ("XtQuantGateway")
