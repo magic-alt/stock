@@ -14,6 +14,8 @@ from datetime import datetime
 from enum import Enum, auto
 import pandas as pd
 
+from src.core.events import Event
+
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -290,18 +292,6 @@ class ExecutionReport:
 # ---------------------------------------------------------------------------
 # Event Protocol
 # ---------------------------------------------------------------------------
-
-@dataclass(slots=True)
-class Event:
-    """
-    Event object for the event-driven architecture.
-    
-    Attributes:
-        type: Event type identifier
-        data: Associated payload data
-    """
-    type: str
-    data: Any = None
 
 
 class EventHandler(Protocol):
