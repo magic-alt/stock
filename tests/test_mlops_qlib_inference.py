@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 import pandas as pd
 
 from src.mlops.model_registry import ModelRegistry
@@ -8,13 +11,11 @@ from src.mlops.qlib_inference import (
     to_qlib_symbol,
 )
 
-
 def test_symbol_roundtrip():
     assert to_qlib_symbol("600519.SH") == "SH600519"
     assert to_qlib_symbol("000001.SZ") == "SZ000001"
     assert from_qlib_symbol("SH600519") == "600519.SH"
     assert from_qlib_symbol("SZ000001") == "000001.SZ"
-
 
 def test_resolve_registry_model(tmp_path):
     registry = ModelRegistry(
@@ -31,7 +32,6 @@ def test_resolve_registry_model(tmp_path):
     assert resolved.model_id == model.model_id
     resolved_by_id = resolve_registry_model(model_id=model.model_id, registry=registry)
     assert resolved_by_id.model_id == model.model_id
-
 
 def test_extract_instrument_scores():
     idx = pd.MultiIndex.from_product(

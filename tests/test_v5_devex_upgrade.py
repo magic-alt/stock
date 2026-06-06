@@ -8,10 +8,6 @@ Covers:
 - D-4: Jupyter notebook magic / QuantHelper
 - F-3: Scaffold generator
 """
-import os
-import json
-import pytest
-from pathlib import Path
 
 # Check for optional click dependency
 try:
@@ -81,7 +77,6 @@ class TestDockerConfig:
         content = di.read_text(encoding="utf-8")
         assert "__pycache__" in content
         assert "node_modules" in content
-
 
 # ===========================================================================
 # D-2: CLI v2 tests
@@ -174,7 +169,6 @@ class TestCLICommands:
         result = runner.invoke(cli, ["trading", "status"])
         assert result.exit_code == 0
 
-
 # ===========================================================================
 # D-4: Notebook / QuantHelper tests
 # ===========================================================================
@@ -209,7 +203,6 @@ class TestQuantHelper:
         helper = QuantHelper()
         result = helper.generate_report(None)
         assert isinstance(result, str)
-
 
 # ===========================================================================
 # F-3: Scaffold generator tests

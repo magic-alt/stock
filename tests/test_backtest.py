@@ -2,11 +2,13 @@
 测试回测模块 (src/backtest/*)
 覆盖: engine, plotting, analysis, strategy_modules
 """
+
+from __future__ import annotations
+
 import pytest
 import tempfile
 import shutil
 from pathlib import Path
-from datetime import datetime
 import pandas as pd
 import numpy as np
 
@@ -16,7 +18,6 @@ from src.backtest.plotting import (
     generate_backtest_report, plot_backtest_with_indicators
 )
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
-
 
 class TestBacktestEngine:
     """测试回测引擎"""
@@ -89,7 +90,6 @@ class TestBacktestEngine:
         metrics = _compute_metrics_vectorized(pd.Series([1.0]))
         assert np.isnan(metrics["sharpe"])
 
-
 class TestAnalysis:
     """测试分析模块"""
     
@@ -137,7 +137,6 @@ class TestAnalysis:
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-
 class TestPlotting:
     """测试绘图模块"""
     
@@ -165,7 +164,6 @@ class TestPlotting:
         """测试plot_backtest_with_indicators函数可调用"""
         assert callable(plot_backtest_with_indicators)
 
-
 class TestStrategyModules:
     """测试策略模块"""
     
@@ -189,7 +187,6 @@ class TestStrategyModules:
         known = {"ema", "macd", "bollinger", "rsi"}
         found = known & set(STRATEGY_REGISTRY.keys())
         assert len(found) >= 2, f"Expected at least 2 of {known}, found {found}"
-
 
 class TestBacktestIntegration:
     """回测模块集成测试"""
@@ -221,7 +218,6 @@ class TestBacktestIntegration:
             assert hasattr(module, 'coerce')
             assert hasattr(module, 'param_names')
             assert hasattr(module, 'grid_defaults')
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

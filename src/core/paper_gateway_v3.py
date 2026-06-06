@@ -42,7 +42,7 @@ except ImportError:
 
 # Risk manager (optional, avoids circular dependency via try/except)
 try:
-    from src.core.risk_manager_v2 import RiskManagerV2 as _RiskManagerV2
+    from src.core.risk_manager_v2 import RiskManagerV2 as _RiskManagerV2  # noqa: F401
     _RISK_MANAGER_AVAILABLE = True
 except ImportError:
     _RISK_MANAGER_AVAILABLE = False

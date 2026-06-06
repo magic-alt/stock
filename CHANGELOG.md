@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Docs/Tooling: add `scripts/capture_frontend_previews.py` — a Playwright + Chromium driver that opens the live Docker frontend (`docker compose up -d api frontend`), runs a real `600519.SH` backtest in the Backtest Workbench, and writes `docs/assets/web-console-dashboard.png` and `docs/assets/web-console-backtest.png` straight from the running Vue console. Trailing blank padding is auto-cropped via Pillow.
 
 ### Changed
+- Core quality: migrate configuration models to Pydantic v2 APIs, deduplicate gateway factory paths, remove adapter double-hop re-exports, consolidate pytest settings into `pyproject.toml`, and replace backtest engine `print()` output with structured logging.
 - Docs: the README "Platform at a Glance" previews now come from **real sources only** — the two Web Console screenshots are captured from the live Vue frontend running under `docker compose`, and the backtest chart is the actual matplotlib output of `python unified_backtest_framework.py run --strategy macd --symbols 600519.SH --plot` (taken from `report/<run-id>/backtest_result.png`). No synthesized/mock images.
 - Docs: rewrote the "Platform at a Glance" intro and image captions to name the real capture commands; redrew `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.

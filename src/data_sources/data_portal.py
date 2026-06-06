@@ -18,8 +18,8 @@ from typing import Dict, List, Optional, Union, Sequence
 from datetime import datetime, timedelta
 import logging
 
-from src.data_sources.providers import DataProvider, get_provider, PROVIDER_NAMES
-from src.core.objects import BarData, Exchange, parse_symbol
+from src.data_sources.providers import DataProvider, get_provider
+from src.core.objects import BarData, parse_symbol
 
 logger = logging.getLogger(__name__)
 

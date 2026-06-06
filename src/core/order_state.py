@@ -8,26 +8,9 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
-if TYPE_CHECKING:
-    from src.core.interfaces import OrderStatusEnum
-
-
-class OrderStatus(str, Enum):
-    """Gateway-facing order states for lifecycle validation."""
-
-    PENDING_SUBMIT = "pending_submit"
-    SUBMITTED = "submitted"
-    ACCEPTED = "accepted"
-    PARTIALLY_FILLED = "partial_fill"
-    FILLED = "filled"
-    CANCEL_PENDING = "cancel_pending"
-    CANCELLED = "cancelled"
-    REJECTED = "rejected"
-    EXPIRED = "expired"
-    ERROR = "error"
+from src.core.contracts.dto import OrderStatus
 
 
 class InvalidOrderStateTransition(Exception):
@@ -197,37 +180,31 @@ class OrderStateMachine:
 
 
 def to_lifecycle_status(status: object) -> OrderStatus:
-    """Map core/API status values onto the shared lifecycle state machine."""
-    from src.core.interfaces import OrderStatusEnum, normalize_order_status
+    """Map any status value onto the shared lifecycle state machine.
+
+    Since OrderStatus is now unified, most values map directly.  The only
+    special cases are CREATED/PENDING (which map to the state-machine's
+    initial state PENDING_SUBMIT) and legacy string aliases.
+    """
+    from src.core.contracts.dto import normalize_order_status
 
     canonical = normalize_order_status(status)  # type: ignore[arg-type]
-    mapping = {
-        OrderStatusEnum.CREATED: OrderStatus.PENDING_SUBMIT,
-        OrderStatusEnum.SUBMITTED: OrderStatus.SUBMITTED,
-        OrderStatusEnum.ACCEPTED: OrderStatus.ACCEPTED,
-        OrderStatusEnum.PARTIALLY_FILLED: OrderStatus.PARTIALLY_FILLED,
-        OrderStatusEnum.FILLED: OrderStatus.FILLED,
-        OrderStatusEnum.CANCELLED: OrderStatus.CANCELLED,
-        OrderStatusEnum.REJECTED: OrderStatus.REJECTED,
-        OrderStatusEnum.EXPIRED: OrderStatus.EXPIRED,
+    if canonical in (OrderStatus.CREATED, OrderStatus.PENDING):
+        return OrderStatus.PENDING_SUBMIT
+    # PARTIAL is an alias for PARTIALLY_FILLED; already handled by normalize.
+    return canonical
+
+
+def from_lifecycle_status(status: OrderStatus) -> OrderStatus:
+    """Map state-machine states back to canonical DTO status values.
+
+    With a unified enum this is almost an identity mapping; only the
+    state-machine-only states (PENDING_SUBMIT, CANCEL_PENDING, ERROR)
+    need translation.
+    """
+    _OVERRIDES = {
+        OrderStatus.PENDING_SUBMIT: OrderStatus.CREATED,
+        OrderStatus.CANCEL_PENDING: OrderStatus.SUBMITTED,
+        OrderStatus.ERROR: OrderStatus.REJECTED,
     }
-    return mapping[canonical]
-
-
-def from_lifecycle_status(status: OrderStatus) -> "OrderStatusEnum":
-    """Map state-machine states to canonical core/API status values."""
-    from src.core.interfaces import OrderStatusEnum
-
-    mapping = {
-        OrderStatus.PENDING_SUBMIT: OrderStatusEnum.CREATED,
-        OrderStatus.SUBMITTED: OrderStatusEnum.SUBMITTED,
-        OrderStatus.ACCEPTED: OrderStatusEnum.ACCEPTED,
-        OrderStatus.PARTIALLY_FILLED: OrderStatusEnum.PARTIALLY_FILLED,
-        OrderStatus.FILLED: OrderStatusEnum.FILLED,
-        OrderStatus.CANCEL_PENDING: OrderStatusEnum.SUBMITTED,
-        OrderStatus.CANCELLED: OrderStatusEnum.CANCELLED,
-        OrderStatus.REJECTED: OrderStatusEnum.REJECTED,
-        OrderStatus.EXPIRED: OrderStatusEnum.EXPIRED,
-        OrderStatus.ERROR: OrderStatusEnum.REJECTED,
-    }
-    return mapping[status]
+    return _OVERRIDES.get(status, status)

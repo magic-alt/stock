@@ -7,9 +7,11 @@ V3.1.0 优化:
 - 增加动态仓位管理
 - 修复 sell() 为 close() 防止意外做空
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class TripleMAStrategy(bt.Strategy):
     """
@@ -129,7 +131,6 @@ class TripleMAStrategy(bt.Strategy):
                 )
                 self.order = self.close()
 
-
 def _coerce_tma(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce Triple MA parameters to correct types."""
     out = params.copy()
@@ -143,7 +144,6 @@ def _coerce_tma(params: Dict[str, Any]) -> Dict[str, Any]:
     if "risk_pct" in out:
         out["risk_pct"] = float(out["risk_pct"])
     return out
-
 
 # 策略配置
 STRATEGY_CONFIG = {

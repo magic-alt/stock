@@ -23,12 +23,11 @@ Usage:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from enum import Enum, IntEnum
-from typing import Any, Dict, Optional, Tuple
+from typing import Tuple
 
 from src.gateways.base_live_gateway import (
-    OrderType, OrderSide, OrderStatus, TimeInForce
+    OrderType, OrderSide, OrderStatus
 )
 
 

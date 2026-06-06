@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import List, Optional
+from typing import List
 
 try:
     import click
@@ -30,7 +30,6 @@ try:
     from rich.table import Table
     from rich.panel import Panel
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-    from rich.text import Text
     HAS_RICH = True
 except ImportError:
     HAS_RICH = False

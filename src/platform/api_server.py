@@ -727,7 +727,7 @@ class PlatformAPIHandler(BaseHTTPRequestHandler):
             from datetime import datetime, timedelta
             end = datetime.now().strftime("%Y-%m-%d")
             start = (datetime.now() - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
-            from src.data_sources.providers import AkshareProvider, DataProviderError
+            from src.data_sources.providers import AkshareProvider
             provider = AkshareProvider()
             data_map = provider.load_stock_daily([symbol], start, end)
             if symbol not in data_map or data_map[symbol].empty:

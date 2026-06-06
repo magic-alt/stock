@@ -2,10 +2,10 @@
 测试管道模块 (src/pipeline/*)
 覆盖: factor_engine, handlers
 """
+
+from __future__ import annotations
+
 import pytest
-from datetime import datetime
-import pandas as pd
-import numpy as np
 
 from src.pipeline.factor_engine import (
     Factor, Pipeline, create_pipeline,
@@ -138,7 +138,6 @@ class TestFactorClasses:
         assert "Momentum" in repr_str
         assert "20" in repr_str
 
-
 class TestPipelineClass:
     """测试Pipeline类 - 添加因子和运行"""
 
@@ -204,7 +203,6 @@ class TestPipelineClass:
         # get_latest returns a DataFrame
         assert isinstance(latest, pd.DataFrame)
 
-
 class TestHandlers:
     """测试处理器"""
 
@@ -227,7 +225,6 @@ class TestHandlers:
         """测试make_progress_handlers返回列表"""
         handlers = make_progress_handlers(out_dir="./test_output")
         assert isinstance(handlers, list)
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

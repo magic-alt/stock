@@ -1,5 +1,7 @@
 """Canonical realtime provider adapter exports."""
 
+from __future__ import annotations
+
 from src.adapters.realtime.feed import (
     AKShareDataProvider,
     EastmoneyDataProvider,

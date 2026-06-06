@@ -14,6 +14,8 @@ from enum import Enum
 from typing import Optional, Dict, Any
 import json
 
+from src.core.contracts.dto import OrderStatus
+
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -34,19 +36,6 @@ class OrderType(str, Enum):
     LIMIT = "limit"  # Limit order
     STOP = "stop"  # Stop order
     STOP_LIMIT = "stop_limit"  # Stop limit order
-    
-    def __str__(self) -> str:
-        return self.value
-
-
-class OrderStatus(str, Enum):
-    """Order status."""
-    PENDING = "pending"  # Order created but not submitted
-    SUBMITTED = "submitted"  # Order submitted to exchange
-    PARTIAL = "partial"  # Partially filled
-    FILLED = "filled"  # Fully filled
-    CANCELLED = "cancelled"  # Cancelled
-    REJECTED = "rejected"  # Rejected by exchange/broker
     
     def __str__(self) -> str:
         return self.value

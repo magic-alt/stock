@@ -38,7 +38,7 @@ Pipeline = None
 try:
     from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
     from sklearn.preprocessing import StandardScaler
-    from sklearn.pipeline import Pipeline
+    from sklearn.pipeline import Pipeline  # noqa: F401
     _HAS_SKLEARN = True
 except ImportError:
     pass
@@ -253,7 +253,7 @@ class MLEnhancedStrategy(BaseStrategy):
             
         # 特征工程
         X = self._ta(df)
-        feature_cols = X.columns.tolist()
+        _feature_cols = X.columns.tolist()
         
         # 获取收盘价
         if "close" in df.columns:
@@ -321,7 +321,7 @@ class MLEnhancedStrategy(BaseStrategy):
                     elif prob < (1 - self.prob_threshold):
                         df_out.iloc[i, df_out.columns.get_loc('Signal')] = -1
                         
-                except Exception as e:
+                except Exception:
                     pass
                     
         return df_out

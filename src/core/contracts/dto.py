@@ -58,13 +58,78 @@ class OrderType(str, Enum):
 
 
 class OrderStatus(str, Enum):
+    """Unified order status — single source of truth for all modules.
+
+    Merges states from interfaces.py, order_state.py, objects.py, and
+    simulation/order.py into one canonical enumeration.
+    """
+    CREATED = "created"
     PENDING = "pending"
+    PENDING_SUBMIT = "pending_submit"
     SUBMITTED = "submitted"
+    ACCEPTED = "accepted"
     PARTIALLY_FILLED = "partially_filled"
+    PARTIAL = "partial"  # alias kept for backward compatibility
     FILLED = "filled"
+    CANCEL_PENDING = "cancel_pending"
     CANCELLED = "cancelled"
     REJECTED = "rejected"
     EXPIRED = "expired"
+    ERROR = "error"
+
+
+# Alias kept for modules that used the ``OrderStatusEnum`` name.
+OrderStatusEnum = OrderStatus
+
+# Mapping from legacy / broker string values to canonical OrderStatus members.
+_ORDER_STATUS_ALIASES: dict[str, OrderStatus] = {
+    "created": OrderStatus.CREATED,
+    "pending": OrderStatus.PENDING,
+    "pending_submit": OrderStatus.PENDING_SUBMIT,
+    "submitted": OrderStatus.SUBMITTED,
+    "accepted": OrderStatus.ACCEPTED,
+    "partial": OrderStatus.PARTIALLY_FILLED,
+    "partial_fill": OrderStatus.PARTIALLY_FILLED,
+    "partial_filled": OrderStatus.PARTIALLY_FILLED,
+    "partially_filled": OrderStatus.PARTIALLY_FILLED,
+    "filled": OrderStatus.FILLED,
+    "cancel_pending": OrderStatus.CANCEL_PENDING,
+    "cancelled": OrderStatus.CANCELLED,
+    "canceled": OrderStatus.CANCELLED,
+    "rejected": OrderStatus.REJECTED,
+    "error": OrderStatus.ERROR,
+    "expired": OrderStatus.EXPIRED,
+}
+
+
+def normalize_order_status(status: OrderStatus | str) -> OrderStatus:
+    """Return the canonical OrderStatus for legacy or broker status values."""
+    if isinstance(status, OrderStatus):
+        return status
+    return _ORDER_STATUS_ALIASES.get(str(status).lower(), OrderStatus.CREATED)
+
+
+def is_active_order_status(status: OrderStatus | str) -> bool:
+    """Return True when an order status can still receive execution updates."""
+    return normalize_order_status(status) in {
+        OrderStatus.CREATED,
+        OrderStatus.PENDING,
+        OrderStatus.PENDING_SUBMIT,
+        OrderStatus.SUBMITTED,
+        OrderStatus.ACCEPTED,
+        OrderStatus.PARTIALLY_FILLED,
+    }
+
+
+def is_terminal_order_status(status: OrderStatus | str) -> bool:
+    """Return True when an order status is terminal."""
+    return normalize_order_status(status) in {
+        OrderStatus.FILLED,
+        OrderStatus.CANCELLED,
+        OrderStatus.REJECTED,
+        OrderStatus.EXPIRED,
+        OrderStatus.ERROR,
+    }
 
 
 class TimeInForce(str, Enum):
@@ -558,8 +623,13 @@ __all__ = [
     "Side",
     "OrderType",
     "OrderStatus",
+    "OrderStatusEnum",
     "TimeInForce",
     "RiskDecision",
+    # helpers
+    "normalize_order_status",
+    "is_active_order_status",
+    "is_terminal_order_status",
     # DTOs
     "Instrument",
     "Bar",

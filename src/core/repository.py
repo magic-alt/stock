@@ -21,8 +21,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Dict, List, Optional, Protocol, runtime_checkable
 
 
 # ---------------------------------------------------------------------------

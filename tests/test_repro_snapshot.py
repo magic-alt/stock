@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 import pandas as pd
 
 from src.backtest.repro import (
@@ -5,7 +8,6 @@ from src.backtest.repro import (
     compute_data_fingerprint,
     compute_report_signature,
 )
-
 
 def test_snapshot_signature_stable():
     dates = pd.to_datetime(["2024-01-01", "2024-01-02"])
@@ -30,7 +32,6 @@ def test_snapshot_signature_stable():
     sig1 = compute_report_signature(payload)
     sig2 = compute_report_signature(payload)
     assert sig1 == sig2
-
 
 def test_snapshot_payload_normalizes_non_finite_numbers():
     dates = pd.to_datetime(["2024-01-01", "2024-01-02"])

@@ -10,9 +10,11 @@ Covers:
 - Correct data (symbol, side, price, account, positions) forwarded to check_order
 - Integration tests with a real RiskManagerV2 instance
 """
-import pytest
-from unittest.mock import MagicMock, patch, call
 
+from __future__ import annotations
+
+import pytest
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,12 +25,10 @@ def _make_pass_result():
     from src.core.risk_manager_v2 import RiskCheckResult, RiskLevel
     return RiskCheckResult(passed=True, reason="OK", level=RiskLevel.INFO, rule_name="all_checks")
 
-
 def _make_fail_result(reason="Position too large", rule_name="max_position_pct"):
     """Return a real RiskCheckResult that evaluates to False."""
     from src.core.risk_manager_v2 import RiskCheckResult, RiskLevel
     return RiskCheckResult(passed=False, reason=reason, level=RiskLevel.WARNING, rule_name=rule_name)
-
 
 def _build_gateway(events, risk_manager=None, initial_cash=100_000.0):
     """
@@ -52,7 +52,6 @@ def _build_gateway(events, risk_manager=None, initial_cash=100_000.0):
         )
     # matching_engine is now a MagicMock; submit_order calls are captured
     return gw
-
 
 # ---------------------------------------------------------------------------
 # Unit tests
@@ -358,7 +357,6 @@ class TestRiskPrecheckInPaperGateway:
         kwargs = mock_risk_manager.check_order.call_args.kwargs
         assert "600519.SH" not in kwargs["positions"]
 
-
 # ---------------------------------------------------------------------------
 # Integration tests with real RiskManagerV2
 # ---------------------------------------------------------------------------
@@ -459,7 +457,6 @@ class TestRiskPrecheckIntegration:
         with pytest.raises(ValueError):
             gw.send_order("600519.SH", "buy", 10, price=100.0, order_type="limit")
 
-
 class TestTradingGatewayRiskEvents:
     def test_trading_gateway_publishes_risk_checked_and_rejected_events(self):
         from src.core.events import EventType
@@ -481,7 +478,7 @@ class TestTradingGatewayRiskEvents:
                 self.events.append(event)
 
         events = _EventSink()
-        received = []
+        _received = []
         risk_manager = RiskManagerV2(RiskConfig(max_order_value=1.0, max_order_pct=0.99, max_position_pct=0.99))
         gateway = TradingGateway.create_paper(
             initial_cash=100_000.0,

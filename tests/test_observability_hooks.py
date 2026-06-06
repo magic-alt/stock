@@ -1,6 +1,9 @@
 """
 Tests for observability: TraceContext, Span, Tracer, MetricCollector.
 """
+
+from __future__ import annotations
+
 import time
 
 from src.core.monitoring import (
@@ -13,7 +16,6 @@ from src.core.monitoring import (
     get_tracer,
 )
 
-
 class TestTraceContext:
     def test_trace_context_creation(self):
         ctx = TraceContext(trace_id="t1", span_id="s1")
@@ -25,7 +27,6 @@ class TestTraceContext:
     def test_trace_context_with_baggage(self):
         ctx = TraceContext(trace_id="t1", span_id="s1", baggage={"key": "val"})
         assert ctx.baggage["key"] == "val"
-
 
 class TestSpan:
     def test_span_nesting(self):
@@ -60,7 +61,6 @@ class TestSpan:
         assert d["attributes"] == {"k": "v"}
         assert d["status"] == "ok"
         assert isinstance(d["duration_ms"], float)
-
 
 class TestTracer:
     def test_start_span_returns_span(self):
@@ -119,7 +119,6 @@ class TestTracer:
         assert span.parent_span_id == "parent-456"
         tracer.reset()
 
-
 class TestMetricCollector:
     def test_counter_increment(self):
         mc = MetricCollector()
@@ -172,12 +171,10 @@ class TestMetricCollector:
         assert "queue_depth 2.0" in text
         assert "latency_ms_count 1.0" in text
 
-
 class TestOtlpExporter:
     def test_export_empty_spans_is_noop(self):
         exporter = OtlpJsonSpanExporter("http://127.0.0.1:4318/v1/traces")
         assert exporter.export([]) == 0
-
 
 class TestTracerSingleton:
     def test_tracer_singleton(self):

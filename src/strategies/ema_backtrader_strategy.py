@@ -11,9 +11,11 @@ V3.0.0 优化:
 - 增加 EMA 斜率判断，过滤震荡市场的假突破
 - 只在 EMA 上行趋势中做多
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class EMAStrategy(bt.Strategy):
     """
@@ -159,7 +161,6 @@ class EMAStrategy(bt.Strategy):
                 self.log(f"CLOSE POSITION (EMA cross down), {self.data.close[0]:.2f}")
                 self.order = self.close()
 
-
 def _coerce_ema(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce EMA parameters to correct types."""
     out = params.copy()
@@ -178,7 +179,6 @@ def _coerce_ema(params: Dict[str, Any]) -> Dict[str, Any]:
     if "use_atr_sizing" in out:
         out["use_atr_sizing"] = bool(out["use_atr_sizing"])
     return out
-
 
 # 策略配置
 STRATEGY_CONFIG = {

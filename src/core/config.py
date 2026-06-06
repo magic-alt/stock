@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import yaml
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pathlib import Path
 import logging
 
@@ -60,7 +60,8 @@ class BacktestConfig(BaseModel):
     min_trade_unit: int = Field(100, description="Minimum trade lot size", gt=0)
     allow_short: bool = Field(False, description="Allow short selling")
 
-    @validator("commission")
+    @field_validator("commission")
+    @classmethod
     def validate_commission(cls, v):
         if v < 0 or v > 0.1:
             raise ValueError("Commission must be between 0 and 0.1 (10%)")
@@ -68,19 +69,41 @@ class BacktestConfig(BaseModel):
 
 
 class RiskConfig(BaseModel):
-    """Risk management configuration."""
+    """Risk management configuration.
+
+    Unified model that merges the former Pydantic config and the dataclass
+    version from risk_manager_v2.py.  All field names follow the dataclass
+    convention since that is what RiskManagerV2 and all tests reference.
+    """
+
+    # -- switches --
     enabled: bool = Field(True, description="Enable risk checks")
     strict_mode: bool = Field(True, description="Reject order on any rule failure")
-    max_position_pct: float = Field(0.3, description="Max position as % of portfolio", gt=0, le=1.0)
-    max_daily_loss_pct: float = Field(0.05, description="Max daily loss %", gt=0, le=1.0)
-    max_order_size: float = Field(10000.0, description="Max order size", gt=0)
-    max_price_deviation_pct: float = Field(0.05, description="Max price deviation %", gt=0, le=1.0)
+
+    # -- account level --
+    max_leverage: float = Field(1.0, description="Max leverage ratio", gt=0)
+    max_drawdown_pct: float = Field(0.20, description="Max account drawdown", gt=0, le=1.0)
+    daily_loss_limit_pct: float = Field(0.05, description="Max daily loss %", gt=0, le=1.0)
+    margin_call_level: float = Field(0.50, description="Margin call threshold", ge=0, le=1.0)
+    force_liquidation_level: float = Field(0.30, description="Force liquidation threshold", ge=0, le=1.0)
+
+    # -- position level --
+    max_position_pct: float = Field(0.30, description="Max single-position % of equity", gt=0)
     max_positions: int = Field(10, description="Maximum active positions", gt=0)
-    daily_loss_limit: float = Field(0.05, description="Alias used by config.yaml.example", gt=0, le=1.0)
-    max_drawdown_limit: float = Field(0.20, description="Maximum account drawdown", gt=0, le=1.0)
-    max_order_value: float = Field(100000.0, description="Maximum order notional value", gt=0)
-    min_order_value: float = Field(1000.0, description="Minimum order notional value", ge=0)
-    min_order_interval_sec: int = Field(0, description="Minimum interval between orders for the same symbol", ge=0)
+    max_sector_exposure: float = Field(0.50, description="Max sector exposure %", ge=0, le=1.0)
+    min_position_value: float = Field(1000.0, description="Min position notional value", ge=0)
+
+    # -- order level --
+    max_order_value: float = Field(100_000.0, description="Max order notional value", gt=0)
+    max_order_pct: float = Field(0.10, description="Max order as % of portfolio", gt=0)
+    price_deviation_limit: float = Field(0.05, description="Max price deviation %", gt=0, le=1.0)
+    min_order_interval_sec: int = Field(1, description="Min interval between orders (seconds)", ge=0)
+
+    # -- stop-loss / take-profit --
+    default_stop_loss_pct: float = Field(0.05, description="Default stop-loss %", ge=0, le=1.0)
+    default_take_profit_pct: float = Field(0.15, description="Default take-profit %", ge=0, le=1.0)
+    trailing_stop_pct: float = Field(0.05, description="Trailing stop %", ge=0, le=1.0)
+    enable_auto_stop: bool = Field(True, description="Auto-apply stop-loss/take-profit")
 
 
 class ExecutionConfig(BaseModel):
@@ -111,7 +134,8 @@ class LoggingConfig(BaseModel):
     rotate_size: int = Field(10 * 1024 * 1024, description="Log rotate size in bytes", gt=0)
     rotate_count: int = Field(5, description="Number of rotated log files", ge=0)
 
-    @validator("level")
+    @field_validator("level")
+    @classmethod
     def validate_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
@@ -135,35 +159,38 @@ class LiveTradingConfig(BaseModel):
     auto_reconnect: bool = True
     max_orders_per_second: float = 10.0
 
-    @validator("broker")
+    @field_validator("broker")
+    @classmethod
     def broker_must_be_valid(cls, v):
         valid = {"xtp", "hundsun", "xtquant", "qmt", "vnpy", "vnpy_qmt", "paper"}
         if v not in valid:
             raise ValueError(f"broker must be one of {valid}")
         return v
 
-    @validator("gateway_provider")
+    @field_validator("gateway_provider")
+    @classmethod
     def gateway_provider_must_be_valid(cls, v):
         valid = {"self", "vnpy", "third_party"}
         if v not in valid:
             raise ValueError(f"gateway_provider must be one of {valid}")
         return v
 
-    @validator("qmt_provider")
+    @field_validator("qmt_provider")
+    @classmethod
     def qmt_provider_must_be_valid(cls, v):
         valid = {"self", "xtquant", "vnpy", "vnpy_qmt", "third_party"}
         if v not in valid:
             raise ValueError(f"qmt_provider must be one of {valid}")
         return v
 
-    @validator("max_orders_per_second")
+    @field_validator("max_orders_per_second")
+    @classmethod
     def max_orders_positive(cls, v):
         if v <= 0:
             raise ValueError("max_orders_per_second must be positive")
         return v
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class RealtimeDataConfig(BaseModel):
@@ -176,41 +203,46 @@ class RealtimeDataConfig(BaseModel):
     bar_intervals: List[int] = Field(default_factory=lambda: [1, 5])
     level2_provider: str = "stub"
 
-    @validator("provider")
+    @field_validator("provider")
+    @classmethod
     def provider_must_be_valid(cls, v):
         valid = {"simulation", "akshare", "sina", "eastmoney", "tencent"}
         if v not in valid:
             raise ValueError(f"provider must be one of {valid}")
         return v
 
-    @validator("fallback_providers", each_item=True)
+    @field_validator("fallback_providers")
+    @classmethod
     def fallback_provider_must_be_valid(cls, v):
         valid = {"simulation", "akshare", "sina", "eastmoney", "tencent"}
-        if v not in valid:
-            raise ValueError(f"fallback provider must be one of {valid}")
+        for item in v:
+            if item not in valid:
+                raise ValueError(f"fallback provider must be one of {valid}")
         return v
 
-    @validator("level2_provider")
+    @field_validator("level2_provider")
+    @classmethod
     def level2_provider_must_be_valid(cls, v):
         valid = {"stub", "mock", "xtp", "hundsun", "uft", "qmt", "xtquant"}
         if v not in valid:
             raise ValueError(f"level2_provider must be one of {valid}")
         return v
 
-    @validator("interval_seconds")
+    @field_validator("interval_seconds")
+    @classmethod
     def interval_positive(cls, v):
         if v <= 0:
             raise ValueError("interval_seconds must be positive")
         return v
 
-    @validator("request_timeout_seconds")
+    @field_validator("request_timeout_seconds")
+    @classmethod
     def timeout_positive(cls, v):
         if v <= 0:
             raise ValueError("request_timeout_seconds must be positive")
         return v
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class PortfolioConfig(BaseModel):
@@ -222,21 +254,22 @@ class PortfolioConfig(BaseModel):
     optimization_objective: str = "sharpe"  # sharpe, min_vol, equal_risk
     capital_allocation: Dict[str, Any] = Field(default_factory=dict)
 
-    @validator("max_weight_per_strategy")
+    @field_validator("max_weight_per_strategy")
+    @classmethod
     def max_weight_valid(cls, v):
         if not 0 < v <= 1.0:
             raise ValueError("max_weight_per_strategy must be between 0 and 1")
         return v
 
-    @validator("optimization_objective")
+    @field_validator("optimization_objective")
+    @classmethod
     def objective_must_be_valid(cls, v):
         valid = {"sharpe", "min_vol", "equal_risk"}
         if v not in valid:
             raise ValueError(f"optimization_objective must be one of {valid}")
         return v
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class DatabaseConfig(BaseModel):
@@ -246,8 +279,7 @@ class DatabaseConfig(BaseModel):
     backup_interval_hours: int = Field(24, gt=0)
     backup_retention_days: int = Field(30, gt=0)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class PlatformConfig(BaseModel):
@@ -256,8 +288,7 @@ class PlatformConfig(BaseModel):
     job_store_fallback: bool = True
     job_max_workers: int = Field(2, gt=0)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class MonitoringConfig(BaseModel):
@@ -269,8 +300,7 @@ class MonitoringConfig(BaseModel):
     otlp_endpoint: str = ""
     alert_channels: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class PerformanceConfig(BaseModel):
@@ -279,8 +309,7 @@ class PerformanceConfig(BaseModel):
     cache_enabled: bool = True
     cache_expire_days: int = Field(1, ge=0)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class GlobalConfig(BaseModel):
@@ -300,10 +329,7 @@ class GlobalConfig(BaseModel):
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
 
-    class Config:
-        """Pydantic config."""
-        validate_assignment = True  # Validate on attribute assignment
-        extra = "forbid"  # Forbid extra fields
+    model_config = ConfigDict(validate_assignment=True, extra="forbid")
 
     def validate_all(self) -> List[str]:
         """
@@ -530,7 +556,7 @@ class ConfigManager:
         try:
             with open(path_obj, "w", encoding="utf-8") as f:
                 yaml.dump(
-                    self.config.dict(),
+                    self.config.model_dump(),
                     f,
                     default_flow_style=False,
                     allow_unicode=True,
@@ -564,7 +590,7 @@ class ConfigManager:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
-        return self.config.dict()
+        return self.config.model_dump()
 
     def __getattr__(self, name: str):
         """Delegate attribute access to config."""
@@ -642,9 +668,9 @@ risk:
   enabled: true
   strict_mode: true
   max_position_pct: 0.3  # 30% max per position
-  max_daily_loss_pct: 0.05  # 5% max daily loss
-  max_order_size: 10000.0
-  max_price_deviation_pct: 0.05  # 5% max deviation from market
+  daily_loss_limit_pct: 0.05  # 5% max daily loss
+  max_order_value: 100_000.0
+  price_deviation_limit: 0.05  # 5% max deviation from market
 
 # Execution Configuration
 execution:

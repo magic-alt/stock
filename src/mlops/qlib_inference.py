@@ -3,7 +3,7 @@ Qlib inference helpers for registered models.
 """
 from __future__ import annotations
 
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 import os
 import pickle
 

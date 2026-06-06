@@ -1,9 +1,11 @@
+
+from __future__ import annotations
+
 import tempfile
 
 from src.core.ha import SnapshotStore
 from src.core.order_manager import OrderManager
 from src.core.interfaces import Side, OrderTypeEnum
-
 
 def test_snapshot_store_roundtrip():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:

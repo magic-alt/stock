@@ -3,12 +3,14 @@
 包含所有用于 unified_backtest_framework 的 Backtrader 策略
 """
 
+from __future__ import annotations
+
 # 策略基类（用于扩展）
 from .base import BaseStrategy
 
 # Backtrader策略注册系统（主要使用）
 try:
-    from .backtrader_registry import (
+    from .backtrader_registry import (  # noqa: F401
         StrategyModule,
         BACKTRADER_STRATEGY_REGISTRY,
         list_backtrader_strategies,
@@ -51,14 +53,14 @@ except ImportError:
 # 特殊策略（套利、ML等 - 保留用于未来扩展）
 # 这些策略继承 BaseStrategy，需要单独的回测引擎或多数据源支持
 try:
-    from .ml_strategies import MLWalkForwardStrategy
-    from .ml_strategies import (
+    from .ml_strategies import MLWalkForwardStrategy  # noqa: F401
+    from .ml_strategies import (  # noqa: F401
         DeepSequenceStrategy,
         ReinforcementLearningSignalStrategy,
         FeatureSelectionStrategy,
         EnsembleVotingStrategy,
     )
-    from .arbitrage_strategies import (
+    from .arbitrage_strategies import (  # noqa: F401
         AlphaHedgeStrategy, CrossCommodityArbStrategy, CalendarSpreadArbStrategy
     )
     

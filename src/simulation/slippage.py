@@ -6,7 +6,6 @@ Provides various slippage calculation models for realistic order execution simul
 from __future__ import annotations
 
 from typing import Protocol
-import pandas as pd
 
 from .order import Order, OrderDirection
 

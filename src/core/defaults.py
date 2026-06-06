@@ -81,12 +81,12 @@ RISK_CONFIG: Dict[str, Any] = {
     "max_positions": 10,            # 最大持仓数量
     
     # Loss limits
-    "daily_loss_limit": 0.05,       # 日亏损限制 5%
-    "max_drawdown_limit": 0.20,     # 最大回撤限制 20%
+    "daily_loss_limit_pct": 0.05,   # 日亏损限制 5%
+    "max_drawdown_pct": 0.20,       # 最大回撤限制 20%
     
     # Order limits
     "max_order_value": 100000.0,    # 单笔最大订单金额
-    "min_order_value": 1000.0,      # 单笔最小订单金额
+    "min_position_value": 1000.0,   # 单笔最小订单金额
 }
 
 

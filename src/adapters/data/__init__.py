@@ -1,5 +1,7 @@
 """Data adapter exports."""
 
+from __future__ import annotations
+
 from src.adapters.data.level2 import (
     HundsunLevel2Provider,
     Level2DataProvider,

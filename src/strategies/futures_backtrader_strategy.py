@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
 """
 期货Backtrader策略集合
 包含：双均线、网格交易、做市商、海龟交易法
 """
 import backtrader as bt
-
 
 class FuturesMACrossStrategy(bt.Strategy):
     """期货双均线策略 - EMA交叉"""
@@ -36,7 +38,6 @@ class FuturesMACrossStrategy(bt.Strategy):
         risk_amount = self.broker.getvalue() * 0.02
         size = int(risk_amount / (self.atr[0] * self.p.atr_mult))
         return max(1, size)
-
 
 class FuturesGridStrategy(bt.Strategy):
     """
@@ -103,7 +104,6 @@ class FuturesGridStrategy(bt.Strategy):
                 return i
         return len(self.grid_lines)
 
-
 class FuturesMarketMakingStrategy(bt.Strategy):
     """期货做市商策略 - 均值回归"""
     params = (
@@ -144,7 +144,6 @@ class FuturesMarketMakingStrategy(bt.Strategy):
             self.inventory = max(-self.p.inventory_limit, actual_pos)
         else:
             self.inventory = 0
-
 
 class TurtleFuturesStrategy(bt.Strategy):
     """海龟交易法 - 唐奇安通道突破 + ATR止损"""
@@ -193,7 +192,6 @@ class TurtleFuturesStrategy(bt.Strategy):
         size = int(risk_amount / (self.atr[0] * self.p.atr_mult))
         return max(1, size)
 
-
 # 参数转换函数
 def _coerce_futures_ma(d: dict) -> dict:
     return {
@@ -202,7 +200,6 @@ def _coerce_futures_ma(d: dict) -> dict:
         'atr_period': int(d.get('atr_period', 14)),
         'atr_mult': float(d.get('atr_mult', 2.0)),
     }
-
 
 def _coerce_futures_grid(d: dict) -> dict:
     return {
@@ -213,14 +210,12 @@ def _coerce_futures_grid(d: dict) -> dict:
         'lookback': int(d.get('lookback', 50)),
     }
 
-
 def _coerce_futures_mm(d: dict) -> dict:
     return {
         'band_pct': float(d.get('band_pct', 0.003)),
         'inventory_limit': int(d.get('inventory_limit', 2)),
         'ma_period': int(d.get('ma_period', 50)),
     }
-
 
 def _coerce_turtle(d: dict) -> dict:
     return {

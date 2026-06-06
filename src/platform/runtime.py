@@ -1,5 +1,7 @@
 """Platform-facing runtime context exports."""
 
+from __future__ import annotations
+
 from src.runtime import (
     BacktestRuntime,
     BaseRuntime,

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from src.backtest.engine import BacktestEngine
 from src.backtest.plotting import plot_backtest_with_indicators

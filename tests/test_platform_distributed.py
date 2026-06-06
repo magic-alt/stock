@@ -1,6 +1,9 @@
 """
 Tests for distributed backtest runner backends.
 """
+
+from __future__ import annotations
+
 import pytest
 
 from src.platform.distributed import (
@@ -8,16 +11,13 @@ from src.platform.distributed import (
     LocalProcessPoolBackend,
 )
 
-
 def _identity_job(payload):
     return {"value": payload.get("x", 0) + 1}
-
 
 def _failing_job(payload):
     if payload.get("fail"):
         raise ValueError("intentional failure")
     return {"value": payload.get("x", 0)}
-
 
 class TestLocalProcessPoolBackend:
     def test_submit_and_collect(self):
@@ -54,7 +54,6 @@ class TestLocalProcessPoolBackend:
         assert backend.max_workers == 1
         backend.shutdown()
 
-
 class TestDistributedRunner:
     def test_default_backend_is_local(self):
         runner = DistributedRunner(backend="local", max_workers=1)
@@ -86,7 +85,6 @@ class TestDistributedRunner:
         assert isinstance(results, list)
         assert len(results) == 1
 
-
 class TestRayBackend:
     @pytest.fixture(autouse=True)
     def skip_if_no_ray(self):
@@ -100,7 +98,6 @@ class TestRayBackend:
         results = backend.collect_results()
         backend.shutdown()
         assert results[0]["value"] == 6
-
 
 class TestDaskBackend:
     @pytest.fixture(autouse=True)

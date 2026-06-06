@@ -1,9 +1,11 @@
+
+from __future__ import annotations
+
 import threading
 
 import pytest
 
 from src.platform.job_queue import JobQueue, JobStore
-
 
 def test_job_queue_runs(tmp_path):
     store = JobStore(path=str(tmp_path / "jobs.json"))
@@ -20,7 +22,6 @@ def test_job_queue_runs(tmp_path):
         assert record.result["value"] == 3
     finally:
         queue.shutdown()
-
 
 def test_job_queue_cancel_pending_job(tmp_path):
     store = JobStore(path=str(tmp_path / "jobs.json"))
@@ -48,7 +49,6 @@ def test_job_queue_cancel_pending_job(tmp_path):
     finally:
         queue.shutdown()
 
-
 def test_job_queue_cancel_running_job_rejected(tmp_path):
     store = JobStore(path=str(tmp_path / "jobs.json"))
     queue = JobQueue(store=store, max_workers=1)
@@ -72,7 +72,6 @@ def test_job_queue_cancel_running_job_rejected(tmp_path):
     finally:
         queue.shutdown()
 
-
 def test_job_queue_metrics(tmp_path):
     store = JobStore(path=str(tmp_path / "jobs.json"))
     queue = JobQueue(store=store, max_workers=1)
@@ -91,7 +90,6 @@ def test_job_queue_metrics(tmp_path):
     finally:
         queue.shutdown()
 
-
 def test_job_store_sqlite_backend(tmp_path):
     store = JobStore(path=str(tmp_path / "jobs.db"))
     queue = JobQueue(store=store, max_workers=1)
@@ -105,7 +103,6 @@ def test_job_store_sqlite_backend(tmp_path):
         assert store.backend_type == "sqlite"
     finally:
         queue.shutdown()
-
 
 def test_job_queue_submit_idempotency(tmp_path):
     store = JobStore(path=str(tmp_path / "jobs.db"))
@@ -129,11 +126,9 @@ def test_job_queue_submit_idempotency(tmp_path):
     finally:
         queue.shutdown()
 
-
 # ---------------------------------------------------------------------------
 # Redis backend tests (V4.0-C)
 # ---------------------------------------------------------------------------
-
 
 def test_redis_backend_fallback_to_json(tmp_path):
     """When redis is unavailable, JobStore falls back to in-memory JSON."""
@@ -150,7 +145,6 @@ def test_redis_backend_fallback_to_json(tmp_path):
     finally:
         queue.shutdown()
 
-
 def test_redis_backend_idempotency_via_fallback():
     """Idempotency works through the fallback backend."""
     store = JobStore(path="redis://localhost:19999/0")
@@ -162,7 +156,6 @@ def test_redis_backend_idempotency_via_fallback():
         queue.wait(id1, timeout=5)
     finally:
         queue.shutdown()
-
 
 def test_redis_backend_list_via_fallback():
     """List works through the fallback backend."""
@@ -176,17 +169,14 @@ def test_redis_backend_list_via_fallback():
     finally:
         queue.shutdown()
 
-
 def test_redis_backend_hard_fail_when_fallback_disabled(monkeypatch):
     monkeypatch.setenv("PLATFORM_JOB_STORE_FALLBACK", "false")
     with pytest.raises(RuntimeError, match="Redis job store unavailable"):
         JobStore(path="redis://localhost:19999/0")
 
-
 # ---------------------------------------------------------------------------
 # PostgreSQL backend tests
 # ---------------------------------------------------------------------------
-
 
 def test_postgres_backend_fallback_to_json(monkeypatch):
     monkeypatch.setenv("PLATFORM_JOB_STORE_FALLBACK", "true")
@@ -203,7 +193,6 @@ def test_postgres_backend_fallback_to_json(monkeypatch):
         assert rec.result == {"v": 42}
     finally:
         queue.shutdown()
-
 
 def test_postgres_backend_hard_fail_when_fallback_disabled(monkeypatch):
     monkeypatch.setenv("PLATFORM_JOB_STORE_FALLBACK", "false")

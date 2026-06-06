@@ -6,9 +6,11 @@ V3.0.0 优化:
 - 增加 RSI 超卖确认，过滤假突破
 - 只在 RSI < rsi_oversold 时才触发买入
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class BollingerStrategy(bt.Strategy):
     """
@@ -115,7 +117,6 @@ class BollingerStrategy(bt.Strategy):
                     self.log(f"SELL CREATE (reached upper), {close:.2f} >= {top:.2f}")
                     self.order = self.close()
 
-
 def _coerce_bb(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce Bollinger parameters to correct types."""
     out = params.copy()
@@ -164,7 +165,6 @@ def _coerce_bb(params: Dict[str, Any]) -> Dict[str, Any]:
     if "max_hold" in out:
         out["max_hold"] = int(out["max_hold"])
     return out
-
 
 class Bollinger_EnhancedStrategy(bt.Strategy):
     """
@@ -362,7 +362,6 @@ class Bollinger_EnhancedStrategy(bt.Strategy):
         self.highest_since_entry = None
         self.tp1_done = False
         self.tp2_done = False
-
 
 # 策略配置
 STRATEGY_CONFIG = {

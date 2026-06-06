@@ -8,9 +8,11 @@ V3.1.0 优化:
 - 动态仓位管理
 - 修复 sell() 为 close()
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class RSIStrategy(bt.Strategy):
     """
@@ -125,7 +127,6 @@ class RSIStrategy(bt.Strategy):
                 self.log(f"CLOSE POSITION (RSI overbought), RSI={rsi_val:.2f}, {self.data.close[0]:.2f}")
                 self.order = self.close()
 
-
 class RSIMaFilterStrategy(bt.Strategy):
     """
     RSI + MA Filter strategy
@@ -175,7 +176,6 @@ class RSIMaFilterStrategy(bt.Strategy):
             if not in_uptrend or rsi_val > 50:
                 self.log(f"SELL CREATE (exit condition), RSI={rsi_val:.2f}")
                 self.order = self.sell()
-
 
 class RSIDivergenceStrategy(bt.Strategy):
     """
@@ -242,7 +242,6 @@ class RSIDivergenceStrategy(bt.Strategy):
             if current_price >= max_price and current_rsi < max_rsi:
                 self.log(f"SELL CREATE (bearish divergence), RSI={current_rsi:.2f}")
                 self.order = self.sell()
-
 
 def _coerce_rsi(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce RSI parameters to correct types."""

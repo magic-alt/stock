@@ -8,7 +8,7 @@ Includes progress tracking, Telegram/Email notifications.
 from __future__ import annotations
 
 import os
-from typing import List, Tuple, Dict, Any, Callable, Optional
+from typing import List, Tuple, Dict, Any, Optional
 import pandas as pd
 
 from src.core.events import Event, EventType, Handler

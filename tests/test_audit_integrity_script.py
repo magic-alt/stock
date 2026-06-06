@@ -1,8 +1,10 @@
+
+from __future__ import annotations
+
 import json
 
 from src.core.audit import AuditLogger
 from scripts.audit_integrity_check import run_check
-
 
 def test_audit_integrity_check_ok(tmp_path):
     log_path = tmp_path / "audit.log"
@@ -12,7 +14,6 @@ def test_audit_integrity_check_ok(tmp_path):
     result = run_check(str(log_path), max_age_minutes=5)
     assert result["status"] == "ok"
     assert result["chain_ok"] is True
-
 
 def test_audit_integrity_check_detects_tamper(tmp_path):
     log_path = tmp_path / "audit.log"
