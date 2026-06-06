@@ -44,11 +44,11 @@ risk:
   strict_mode: true  # 严格模式：任何规则失败都拒绝订单
   max_position_pct: 0.30  # 单只股票最大仓位（30%）
   max_positions: 10  # 最大持仓数量
-  daily_loss_limit: 0.05  # 日亏损限制（5%）
-  max_drawdown_limit: 0.20  # 最大回撤限制（20%）
+  daily_loss_limit_pct: 0.05  # 日亏损限制（5%）
+  max_drawdown_pct: 0.20  # 最大回撤限制（20%）
   max_order_value: 100000.0  # 单笔最大订单金额
-  min_order_value: 1000.0  # 单笔最小订单金额
-  max_price_deviation_pct: 0.05  # 最大价格偏差（5%）
+  min_position_value: 1000.0  # 单笔最小订单金额
+  price_deviation_limit: 0.05  # 最大价格偏差（5%）
   min_order_interval_sec: 0  # 平台默认不节流；实盘可设为 1 或更高
 
 # 平台任务队列配置

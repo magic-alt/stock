@@ -32,6 +32,7 @@ from datetime import datetime, date
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set
 
+from src.core.config import RiskConfig
 from src.core.interfaces import (
     Side, OrderTypeEnum, OrderStatusEnum,
     OrderInfo, PositionInfo, AccountInfo
@@ -62,68 +63,6 @@ class RiskLevel(str, Enum):
     WARNING = "warning"
     CRITICAL = "critical"
     EMERGENCY = "emergency"
-
-
-# ---------------------------------------------------------------------------
-# Risk Configuration
-# ---------------------------------------------------------------------------
-
-@dataclass
-class RiskConfig:
-    """
-    Risk management configuration.
-    
-    账户级参数:
-    - max_leverage: 最大杠杆倍数
-    - max_drawdown_pct: 最大回撤百分比
-    - daily_loss_limit_pct: 单日最大亏损
-    - margin_call_level: 保证金警戒线
-    - force_liquidation_level: 强制平仓线
-    
-    仓位级参数:
-    - max_position_pct: 单一标的最大仓位比例
-    - max_positions: 最大持仓数量
-    - max_sector_exposure: 行业最大敞口
-    
-    订单级参数:
-    - max_order_value: 单笔最大金额
-    - max_order_pct: 单笔最大占比
-    - price_deviation_limit: 价格偏离限制
-    
-    止损止盈:
-    - default_stop_loss_pct: 默认止损百分比
-    - default_take_profit_pct: 默认止盈百分比
-    - trailing_stop_pct: 移动止损百分比
-    - enable_auto_stop: 是否启用自动止损
-    """
-    # Account level
-    max_leverage: float = 1.0
-    max_drawdown_pct: float = 0.20
-    daily_loss_limit_pct: float = 0.05
-    margin_call_level: float = 0.50
-    force_liquidation_level: float = 0.30
-    
-    # Position level
-    max_position_pct: float = 0.30
-    max_positions: int = 10
-    max_sector_exposure: float = 0.50
-    min_position_value: float = 1000.0
-    
-    # Order level
-    max_order_value: float = 100_000.0
-    max_order_pct: float = 0.10
-    price_deviation_limit: float = 0.05
-    min_order_interval_sec: int = 1
-    
-    # Stop loss / Take profit
-    default_stop_loss_pct: float = 0.05
-    default_take_profit_pct: float = 0.15
-    trailing_stop_pct: float = 0.05
-    enable_auto_stop: bool = True
-    
-    # Misc
-    enabled: bool = True
-    strict_mode: bool = True  # Reject on first failure
 
 
 # ---------------------------------------------------------------------------
