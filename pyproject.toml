@@ -174,7 +174,7 @@ check_untyped_defs = true
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --strict-markers"
 markers = [
     "integration: integration tests",
     "slow: slow tests",

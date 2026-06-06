@@ -24,6 +24,7 @@ from src.core.events import Event
 from src.core.contracts.dto import (
     OrderStatusEnum,
     is_active_order_status,
+    normalize_order_status,  # noqa: F401  (re-exported for trading_gateway etc.)
 )
 
 
