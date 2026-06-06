@@ -1211,24 +1211,24 @@ class BacktestEngine:
 
     @staticmethod
     def _print_metrics_legend():
-        """Print metrics interpretation guide."""
-        print("\nMetrics legend (rule of thumb):")
-        print("  - Sharpe: <0 差; 0~0.5 弱; 0.5~1 尚可; 1~1.5 良好; >1.5 很好")
-        print("  - MDD: <0.10 低; 0.10~0.20 中; >0.20 高  （数值为比例，如 0.23=23%）")
-        print("  - ProfitFactor: <1 亏损; 1~1.3 边缘; >1.5 稳健; >2 强")
-        print("  - WinRate 需结合盈亏比一起看，单看胜率没有意义")
-        print("  - PayoffRatio(平均盈亏比): >1 佳; >1.5 很好")
-        print("  - Expectancy(单笔期望): >0 代表长期正期望")
-        print("  - Calmar: 年化收益/MDD，>0.5 尚可; >1 佳")
-        print("  - ExposureRatio: 持仓/暴露时间比例（0~1），越高越主动")
-        print("  - TradeFreq: 交易频率 = trades/样本天数（越高越频繁）")
+        """Log metrics interpretation guide."""
+        logger.info("Metrics legend (rule of thumb):")
+        logger.info("  - Sharpe: <0 差; 0~0.5 弱; 0.5~1 尚可; 1~1.5 良好; >1.5 很好")
+        logger.info("  - MDD: <0.10 低; 0.10~0.20 中; >0.20 高  （数值为比例，如 0.23=23%）")
+        logger.info("  - ProfitFactor: <1 亏损; 1~1.3 边缘; >1.5 稳健; >2 强")
+        logger.info("  - WinRate 需结合盈亏比一起看，单看胜率没有意义")
+        logger.info("  - PayoffRatio(平均盈亏比): >1 佳; >1.5 很好")
+        logger.info("  - Expectancy(单笔期望): >0 代表长期正期望")
+        logger.info("  - Calmar: 年化收益/MDD，>0.5 尚可; >1 佳")
+        logger.info("  - ExposureRatio: 持仓/暴露时间比例（0~1），越高越主动")
+        logger.info("  - TradeFreq: 交易频率 = trades/样本天数（越高越频繁）")
 
     @staticmethod
     def _print_top_configs(top_overall: pd.DataFrame):
-        """Print top configurations."""
+        """Log top configurations."""
         if top_overall.empty:
             return
-        print("\nTop configurations (ordered by Sharpe, return, drawdown):")
+        logger.info("Top configurations (ordered by Sharpe, return, drawdown):")
         for idx, row in top_overall.iterrows():
             info = [f"strategy={row['strategy']}"]
             for key in ["topn", "gap", "reversal", "vol_surge", "vwap_window", "period", "fast", "slow", "signal", "devfactor", "upper", "lower"]:
@@ -1250,15 +1250,15 @@ class BacktestEngine:
                     except Exception:
                         extras.append(f"{k}={row[k]}")
             metrics = f"sharpe={sharpe_str}, cum_return={row['cum_return']:.3f}, mdd={row['mdd']:.3f}" + (", " + ", ".join(extras) if extras else "")
-            print(f"  - {'; '.join(info)} | {metrics}")
+            logger.info(f"  - {'; '.join(info)} | {metrics}")
 
     @staticmethod
     def _print_best_per_strategy(ordered: pd.DataFrame):
-        """Print best configuration per strategy."""
+        """Log best configuration per strategy."""
         best_by_strategy = ordered.groupby('strategy', sort=False).head(1)
         if best_by_strategy.empty:
             return
-        print("\nBest per strategy:")
+        logger.info("Best per strategy:")
         for _, row in best_by_strategy.iterrows():
             sharpe_val = row['sharpe']
             sharpe_str = f"{sharpe_val:.3f}" if pd.notna(sharpe_val) else "nan"
@@ -1273,7 +1273,7 @@ class BacktestEngine:
             if isinstance(error_msg, str) and error_msg:
                 short_err = error_msg if len(error_msg) <= 80 else error_msg[:77] + "..."
                 msg += f", error={short_err}"
-            print(msg)
+            logger.info(msg)
 
     def _rerun_top_n(
         self,
