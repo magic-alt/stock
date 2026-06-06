@@ -88,14 +88,14 @@ class RiskConfig(BaseModel):
     force_liquidation_level: float = Field(0.30, description="Force liquidation threshold", ge=0, le=1.0)
 
     # -- position level --
-    max_position_pct: float = Field(0.30, description="Max single-position % of equity", gt=0, le=1.0)
+    max_position_pct: float = Field(0.30, description="Max single-position % of equity", gt=0)
     max_positions: int = Field(10, description="Maximum active positions", gt=0)
     max_sector_exposure: float = Field(0.50, description="Max sector exposure %", ge=0, le=1.0)
     min_position_value: float = Field(1000.0, description="Min position notional value", ge=0)
 
     # -- order level --
     max_order_value: float = Field(100_000.0, description="Max order notional value", gt=0)
-    max_order_pct: float = Field(0.10, description="Max order as % of portfolio", gt=0, le=1.0)
+    max_order_pct: float = Field(0.10, description="Max order as % of portfolio", gt=0)
     price_deviation_limit: float = Field(0.05, description="Max price deviation %", gt=0, le=1.0)
     min_order_interval_sec: int = Field(1, description="Min interval between orders (seconds)", ge=0)
 

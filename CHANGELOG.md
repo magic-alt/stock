@@ -2,19 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-05-21
+## [Unreleased] - 2026-06-07
 
 ### Added
+- Core correctness audit: consolidate order status, event, and risk configuration single sources of truth; add package-wide future annotations to keep type evaluation consistent.
 - V6 Phase 8 (open platform — legacy shim layer): introduce `src/_legacy/` as the single mechanism for handling deprecated import paths. Adds `emit_deprecation()` (one-shot `DeprecationWarning` + structured `quant_platform.legacy` log record), `install_module_alias()` (registers a legacy dotted name in `sys.modules` as an alias of its canonical V6 module), an empty `LEGACY_ALIASES` catalogue that PR reviewers can grep, and `reset_deprecation_cache()` for tests. Entries are added per PR as legacy paths are formally retired.
 - V6 Phase 7 fill-out (`quant_platform_*` package contents): the `quant_platform_adapters_cn` facade now re-exports the six canonical adapter subpackages (`broker`, `data`, `messaging`, `ml`, `realtime`, `storage`) from `src.adapters`, and `ADAPTER_GROUPS` is updated to list all six. The `quant_platform_ml` facade now re-exports the full `src.mlops` public surface (`ModelRegistry`, `ModelMetadata`, `InferenceService`, `BatchInferenceRunner`, `SignalSchema`, trainer adapters, training-config helpers, etc.), exposes `src.adapters.ml` as a `quant_platform_ml.adapters` namespace, and ships dedicated `quant_platform_ml.training`, `quant_platform_ml.registry`, and `quant_platform_ml.inference` submodules for ergonomic imports. All re-exports preserve object identity with the canonical `src.*` implementations.
 - Docs/Tooling: add `scripts/capture_frontend_previews.py` — a Playwright + Chromium driver that opens the live Docker frontend (`docker compose up -d api frontend`), runs a real `600519.SH` backtest in the Backtest Workbench, and writes `docs/assets/web-console-dashboard.png` and `docs/assets/web-console-backtest.png` straight from the running Vue console. Trailing blank padding is auto-cropped via Pillow.
 
 ### Changed
+- Core quality: migrate configuration models to Pydantic v2 APIs, deduplicate gateway factory paths, remove adapter double-hop re-exports, consolidate pytest settings into `pyproject.toml`, and replace backtest engine `print()` output with structured logging.
 - Docs: the README "Platform at a Glance" previews now come from **real sources only** — the two Web Console screenshots are captured from the live Vue frontend running under `docker compose`, and the backtest chart is the actual matplotlib output of `python unified_backtest_framework.py run --strategy macd --symbols 600519.SH --plot` (taken from `report/<run-id>/backtest_result.png`). No synthesized/mock images.
 - Docs: rewrote the "Platform at a Glance" intro and image captions to name the real capture commands; redrew `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
 
 ### Fixed
+- Core risk config: keep `max_position_pct` and `max_order_pct` positive while allowing operational thresholds above 100% for explicit leveraged/stress-test configurations.
+- Data lineage: remove duplicate `record_lineage()` calls in `YFinanceProvider`.
 - Docs: repair the README "CI Status" badge URL — switched from the legacy `workflows/CI/badge.svg` shortcut (which never matched the workflow name `CI/CD Pipeline`) to the canonical `actions/workflows/ci.yml/badge.svg?branch=main` form and pointed the click target at the workflow page.
 
 ### Removed
@@ -5291,6 +5295,5 @@ Successfully modularized the monolithic `unified_backtest_framework.py` (2138 li
 - 📝 Documentation
 - 🧪 Testing
 - 📊 Metrics
-
 
 
