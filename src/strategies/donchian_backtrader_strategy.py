@@ -6,9 +6,11 @@ V3.0.0 优化:
 - 增加 ATR 波动扩张确认
 - 只在波动放大时入场，过滤低波动假突破
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class DonchianStrategy(bt.Strategy):
     """
@@ -95,7 +97,6 @@ class DonchianStrategy(bt.Strategy):
                 self.log(f"SELL CREATE (Donchian breakdown), {close:.2f} < {low_val:.2f}")
                 self.order = self.close()
 
-
 def _coerce_donchian(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce Donchian parameters to correct types."""
     out = params.copy()
@@ -108,7 +109,6 @@ def _coerce_donchian(params: Dict[str, Any]) -> Dict[str, Any]:
     if "vol_lookback" in out:
         out["vol_lookback"] = int(out["vol_lookback"])
     return out
-
 
 # 策略配置
 STRATEGY_CONFIG = {

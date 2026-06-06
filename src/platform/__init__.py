@@ -1,6 +1,9 @@
 """
 Platform services: API, job queue, data lake, distributed runners.
 """
+
+from __future__ import annotations
+
 from .api_server import create_api_server, run_api_server
 from .backtest_task import run_backtest_job
 from .data_lake import DataLake

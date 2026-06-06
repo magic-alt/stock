@@ -15,3 +15,5 @@ Adapter authors are encouraged to copy ``test_port_protocols.py`` and run
 ``isinstance(MyAdapter, FooPort)`` against their own classes — that single
 assertion is sufficient to prove they speak the SDK surface.
 """
+
+from __future__ import annotations

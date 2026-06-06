@@ -10,6 +10,9 @@ Covers:
 - ConfigManager path-based load / save / reload round-trip
 - ConfigManager environment-variable override
 """
+
+from __future__ import annotations
+
 import pytest
 import yaml
 from pydantic import ValidationError
@@ -22,7 +25,6 @@ from src.core.config import (
     BacktestConfig,
     ConfigManager,
 )
-
 
 # ---------------------------------------------------------------------------
 # TestGlobalConfig
@@ -173,7 +175,6 @@ class TestGlobalConfig:
         result = config.validate_all()
         assert result is not None
         assert isinstance(result, list)
-
 
 # ---------------------------------------------------------------------------
 # TestConfigManager

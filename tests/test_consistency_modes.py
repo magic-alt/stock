@@ -1,8 +1,10 @@
+
+from __future__ import annotations
+
 from src.core.interfaces import AccountInfo, PositionInfo, Side, OrderStatusEnum
 from src.core.risk_manager_v2 import RiskConfig, RiskManagerV2
 from src.core.trading_gateway import _map_live_order_status, _map_vnpy_order_status
 from src.simulation.order import OrderStatus as SimOrderStatus
-
 
 def test_order_status_mapping_consistency():
     live_statuses = [
@@ -37,7 +39,6 @@ def test_order_status_mapping_consistency():
     core_status_values = {s.value for s in OrderStatusEnum}
     # Simulation order state machine should remain compatible with core enums.
     assert sim_status_values.issubset(core_status_values)
-
 
 def test_risk_rules_consistent_across_modes():
     config = RiskConfig(max_order_value=50_000.0, max_position_pct=0.5, strict_mode=True, min_order_interval_sec=0)

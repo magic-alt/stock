@@ -2,10 +2,11 @@
 技术指标计算模块
 """
 
+from __future__ import annotations
+
 import pandas as pd
 import numpy as np
 from typing import Dict
-
 
 class TechnicalIndicators:
     """技术指标计算器"""

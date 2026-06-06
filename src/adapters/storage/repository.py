@@ -1,5 +1,7 @@
 """Canonical repository adapter exports."""
 
+from __future__ import annotations
+
 from src.core.repository import (
     DuckDBRepository,
     MemoryRepository,

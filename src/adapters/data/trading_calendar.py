@@ -1,5 +1,7 @@
 """Canonical trading calendar adapter exports."""
 
+from __future__ import annotations
+
 from src.data_sources.trading_calendar import (
     TradingCalendar,
     align_frame_to_calendar,

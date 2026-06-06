@@ -1,6 +1,9 @@
 """
 Tests for DR failover, drill runner, and snapshot store extensions.
 """
+
+from __future__ import annotations
+
 import tempfile
 import time
 
@@ -13,7 +16,6 @@ from src.core.ha import (
     FailoverManager,
     SnapshotStore,
 )
-
 
 def _make_component(name, state=None):
     """Create a simple component with snapshot/restore/health_check hooks."""
@@ -30,11 +32,9 @@ def _make_component(name, state=None):
 
     return health_check, snapshot, restore, data
 
-
 # ---------------------------------------------------------------------------
 # SnapshotStore extensions
 # ---------------------------------------------------------------------------
-
 
 class TestSnapshotStoreExtensions:
     def test_validate_snapshot_integrity(self):
@@ -85,11 +85,9 @@ class TestSnapshotStoreExtensions:
             store.save("comp", {"v": 1})
             assert store.load_version("comp", 99) is None
 
-
 # ---------------------------------------------------------------------------
 # FailoverManager tests
 # ---------------------------------------------------------------------------
-
 
 class TestFailoverManager:
     def test_trigger_failover_success(self):
@@ -165,11 +163,9 @@ class TestFailoverManager:
             with pytest.raises(RuntimeError, match="health check failed"):
                 fm.trigger_failover()
 
-
 # ---------------------------------------------------------------------------
 # DrillRunner tests
 # ---------------------------------------------------------------------------
-
 
 class TestDrillRunner:
     def test_drill_success(self):
@@ -246,11 +242,9 @@ class TestDrillRunner:
             assert len(reports) == 1
             assert reports[0].snapshot_ok is False
 
-
 # ---------------------------------------------------------------------------
 # Full DR cycle integration
 # ---------------------------------------------------------------------------
-
 
 class TestDRIntegration:
     def test_full_dr_cycle(self):

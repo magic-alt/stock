@@ -6,8 +6,10 @@ V3.0.0 优化:
 - 增加 SMA(200) 长期趋势过滤
 - 只在牛市环境 (Close > SMA200) 做多
 """
-import backtrader as bt
 
+from __future__ import annotations
+
+import backtrader as bt
 
 class KAMAIndicator(bt.Indicator):
     """
@@ -41,7 +43,6 @@ class KAMAIndicator(bt.Indicator):
         else:
             prev_kama = self.lines.kama[-1]
             self.lines.kama[0] = prev_kama + self.sc[0] * (self.data.close[0] - prev_kama)
-
 
 class KAMAStrategy(bt.Strategy):
     """
@@ -107,7 +108,6 @@ class KAMAStrategy(bt.Strategy):
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.order = None
-
 
 def _coerce_kama(d: dict) -> dict:
     """Coerce parameters to correct types"""

@@ -7,9 +7,11 @@ Covers:
 - E-3: Repository pattern (repository.py)
 - E-4: Strategy hot-loader (strategy_loader.py)
 """
+
+from __future__ import annotations
+
 import json
 import pytest
-
 
 # ===========================================================================
 # E-1: Plugin system tests
@@ -35,7 +37,6 @@ class TestPluginBase:
         assert "strategy" in PLUGIN_TYPES
         assert "datasource" in PLUGIN_TYPES
         assert "gateway" in PLUGIN_TYPES
-
 
 class TestPluginManager:
     """Test plugin manager."""
@@ -187,7 +188,6 @@ class SamplePlugin(PluginBase):
         infos = pm.discover(["/nonexistent/path"])
         assert infos == []
 
-
 # ===========================================================================
 # E-2: Message bus tests
 # ===========================================================================
@@ -222,7 +222,6 @@ class TestMessage:
         m = Message.from_dict({"topic": "t", "payload": 1, "ts": 123, "source": "s"})
         assert m.topic == "t"
         assert m.timestamp == 123
-
 
 class TestInProcessBackend:
     """Test in-process message bus."""
@@ -286,7 +285,6 @@ class TestInProcessBackend:
         backend.close()
         assert backend.publish("x", 1) == 0
 
-
 class TestMessageBusFacade:
     """Test MessageBus facade."""
 
@@ -319,7 +317,6 @@ class TestMessageBusFacade:
         bus.subscribe("t", handler)
         assert bus.unsubscribe("t", handler) is True
         bus.close()
-
 
 # ===========================================================================
 # E-3: Repository pattern tests
@@ -381,7 +378,6 @@ class TestMemoryRepository:
         repo.clear()
         assert repo.count() == 0
 
-
 class TestSQLiteRepository:
     """Test SQLite repository."""
 
@@ -412,7 +408,6 @@ class TestSQLiteRepository:
         repo.save({"id": "1"})
         repo.save({"id": "2"})
         assert repo.count() == 2
-
 
 @pytest.mark.skipif(
     __import__("importlib").util.find_spec("duckdb") is None,
@@ -450,7 +445,6 @@ class TestDuckDBRepository:
         assert repo.get("1")["val"] == "v2"
         assert repo.count() == 1
 
-
 class TestCreateRepository:
     """Test repository factory."""
 
@@ -475,7 +469,6 @@ class TestCreateRepository:
         from src.core.repository import create_repository
         with pytest.raises(ValueError, match="Unknown repository backend"):
             create_repository("cassandra")
-
 
 # ===========================================================================
 # E-4: Strategy hot-loader tests
@@ -513,7 +506,6 @@ class TestCodeSafety:
         report = check_code_safety("from os.path import join")
         assert report.safe is False
         assert "os" in report.restricted_imports
-
 
 class TestStrategyHotLoader:
     """Test strategy hot-loader."""

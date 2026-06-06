@@ -1,10 +1,12 @@
+
+from __future__ import annotations
+
 import os
 import sqlite3
 import tempfile
 import gc
 
 from src.data_sources.db_manager import SQLiteDataManager
-
 
 def test_lineage_recording():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:

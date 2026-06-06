@@ -2,6 +2,8 @@
 Tests for modular API router and middleware.
 """
 
+from __future__ import annotations
+
 from src.platform.api.router import APIRouter, RequestContext, ResponseContext
 from src.platform.api.middleware import (
     RBACMiddleware,
@@ -12,11 +14,9 @@ from src.platform.api.middleware import (
 from src.core.auth import Authorizer, Role, Subject
 from src.core.audit import AuditLogger
 
-
 # ---------------------------------------------------------------------------
 # APIRouter tests
 # ---------------------------------------------------------------------------
-
 
 class TestAPIRouter:
     def test_register_and_dispatch_get(self):
@@ -70,11 +70,9 @@ class TestAPIRouter:
         resp = router.dispatch(request)
         assert resp.status_code == 405
 
-
 # ---------------------------------------------------------------------------
 # RBACMiddleware tests
 # ---------------------------------------------------------------------------
-
 
 class TestRBACMiddleware:
     def _make_handler(self):
@@ -135,11 +133,9 @@ class TestRBACMiddleware:
         assert resp.status_code == 200
         assert captured["subject"].subject_id == "t1"
 
-
 # ---------------------------------------------------------------------------
 # RateLimiter tests
 # ---------------------------------------------------------------------------
-
 
 class TestRateLimiter:
     def test_allows_requests_within_limit(self):
@@ -173,11 +169,9 @@ class TestRateLimiter:
         resp = wrapped(RequestContext(method="GET", path="/"))
         assert resp.status_code == 200
 
-
 # ---------------------------------------------------------------------------
 # RequestValidator tests
 # ---------------------------------------------------------------------------
-
 
 class TestRequestValidator:
     def test_valid_json_body_passes(self):
@@ -207,11 +201,9 @@ class TestRequestValidator:
         resp = wrapped(req)
         assert resp.status_code == 400
 
-
 # ---------------------------------------------------------------------------
 # AuditMiddleware tests
 # ---------------------------------------------------------------------------
-
 
 class TestAuditMiddleware:
     def test_write_operations_logged(self, tmp_path):

@@ -8,9 +8,11 @@ Covers:
 - F-4: MkDocs configuration
 - GitHub Actions CI workflow validation
 """
+
+from __future__ import annotations
+
 import pytest
 from pathlib import Path
-
 
 # ===========================================================================
 # F-1: Exception system completeness tests
@@ -129,7 +131,6 @@ class TestExceptionHierarchy:
         err = QuantBaseError("connection failed", cause=cause)
         assert err.__cause__ is cause
 
-
 class TestPerformanceModule:
     """Test performance module utilities."""
 
@@ -161,7 +162,6 @@ class TestPerformanceModule:
             batch_size=3,
         )
         assert results == [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
-
 
 # ===========================================================================
 # F-4: MkDocs configuration tests
@@ -223,7 +223,6 @@ class TestMkDocsConfig:
         schemes = [p.get("scheme") for p in palette]
         assert "slate" in schemes  # dark mode
         assert "default" in schemes  # light mode
-
 
 # ===========================================================================
 # GitHub Actions CI workflow tests

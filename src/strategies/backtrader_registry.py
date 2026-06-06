@@ -2,6 +2,9 @@
 Backtrader策略注册中心
 统一管理所有Backtrader策略的注册和访问
 """
+
+from __future__ import annotations
+
 from typing import Dict, Type, Callable
 import backtrader as bt
 
@@ -69,7 +72,6 @@ from .qlib_registered_strategy import (
     _coerce_qlib_registry,
 )
 
-
 class StrategyModule:
     """策略模块配置容器"""
     def __init__(
@@ -92,15 +94,12 @@ class StrategyModule:
         self.coercer = coercer
         self.multi_symbol = multi_symbol
 
-
 # 注册所有策略
 BACKTRADER_STRATEGY_REGISTRY: Dict[str, StrategyModule] = {}
-
 
 def register_strategy(module: StrategyModule):
     """注册策略到注册表"""
     BACKTRADER_STRATEGY_REGISTRY[module.name] = module
-
 
 # 指标策略
 register_strategy(StrategyModule(
@@ -573,7 +572,6 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
-
 # =============================================================================
 # V3.0.0 优化策略（增加动态风控、趋势过滤、多指标确认）
 # =============================================================================
@@ -788,7 +786,6 @@ register_strategy(StrategyModule(
     multi_symbol=False,
 ))
 
-
 # ============================================================================
 # V3.1.0: 策略别名映射系统 (Strategy Alias Mapping)
 # ============================================================================
@@ -884,7 +881,6 @@ STRATEGY_CANONICAL_NAMES: Dict[str, str] = {
     'intraday_opt': 'intraday_optimized',
 }
 
-
 def resolve_strategy_name(name: str) -> str:
     """
     解析策略名称，支持别名
@@ -901,7 +897,6 @@ def resolve_strategy_name(name: str) -> str:
     # 直接返回原名（假设是实际注册名）
     return name
 
-
 def get_canonical_name(name: str) -> str:
     """
     获取策略的标准化名称
@@ -916,11 +911,9 @@ def get_canonical_name(name: str) -> str:
         return STRATEGY_CANONICAL_NAMES[name]
     return name
 
-
 def list_strategy_aliases() -> Dict[str, str]:
     """列出所有策略别名映射"""
     return STRATEGY_ALIASES.copy()
-
 
 def list_backtrader_strategies(include_aliases: bool = False) -> Dict[str, str]:
     """
@@ -941,7 +934,6 @@ def list_backtrader_strategies(include_aliases: bool = False) -> Dict[str, str]:
     
     return result
 
-
 def get_backtrader_strategy(name: str) -> StrategyModule:
     """
     获取指定名称的策略模块
@@ -955,7 +947,6 @@ def get_backtrader_strategy(name: str) -> StrategyModule:
         available = ', '.join(sorted(BACKTRADER_STRATEGY_REGISTRY.keys()))
         raise ValueError(f"Strategy '{name}' not found. Available: {available}")
     return BACKTRADER_STRATEGY_REGISTRY[resolved_name]
-
 
 def create_backtrader_strategy(name: str, **params) -> Type[bt.Strategy]:
     """创建策略实例（返回策略类，由Backtrader实例化）"""
@@ -973,7 +964,6 @@ def create_backtrader_strategy(name: str, **params) -> Type[bt.Strategy]:
         params = tuple((k, v) for k, v in coerced_params.items())
     
     return ConfiguredStrategy
-
 
 __all__ = [
     'StrategyModule',

@@ -7,9 +7,11 @@ V3.1.0 优化:
 - 增加 ATR 止损，防止趋势市大幅亏损
 - 修复 sell() 为 close() 防止意外做空
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class KeltnerStrategy(bt.Strategy):
     """
@@ -152,7 +154,6 @@ class KeltnerStrategy(bt.Strategy):
                     self.log(f"CLOSE POSITION (reached KC upper), {close:.2f} >= {upper:.2f}")
                     self.order = self.close()
 
-
 def _coerce_keltner(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce Keltner parameters to correct types."""
     out = params.copy()
@@ -169,7 +170,6 @@ def _coerce_keltner(params: Dict[str, Any]) -> Dict[str, Any]:
     if "exit_mode" in out:
         out["exit_mode"] = str(out["exit_mode"])
     return out
-
 
 # 策略配置
 STRATEGY_CONFIG = {

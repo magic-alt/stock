@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
 """
 多因子策略集合 - Backtrader版本
 包含：多因子选股、指数增强、行业轮动
 """
 import backtrader as bt
 import numpy as np
-
 
 class MultiFactorSelectionStrategy(bt.Strategy):
     """
@@ -101,7 +103,6 @@ class MultiFactorSelectionStrategy(bt.Strategy):
         lots = max(1, size // 100)
         return lots * 100
 
-
 class IndexEnhancementStrategy(bt.Strategy):
     """
     指数增强策略
@@ -143,7 +144,6 @@ class IndexEnhancementStrategy(bt.Strategy):
         # 强制100股整数倍（A股规则）
         lots = max(1, size // 100)
         return lots * 100
-
 
 class IndustryRotationStrategy(bt.Strategy):
     """
@@ -187,7 +187,6 @@ class IndustryRotationStrategy(bt.Strategy):
         lots = max(1, size // 100)
         return lots * 100
 
-
 # 参数转换函数
 def _coerce_multifactor(d: dict) -> dict:
     return {
@@ -202,7 +201,6 @@ def _coerce_multifactor(d: dict) -> dict:
         'atr_mult': float(d.get('atr_mult', 2.0)),
     }
 
-
 def _coerce_index_enhancement(d: dict) -> dict:
     return {
         'ma_period': int(d.get('ma_period', 100)),
@@ -210,7 +208,6 @@ def _coerce_index_enhancement(d: dict) -> dict:
         'atr_period': int(d.get('atr_period', 14)),
         'atr_mult': float(d.get('atr_mult', 2.0)),
     }
-
 
 def _coerce_industry_rotation(d: dict) -> dict:
     return {

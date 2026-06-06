@@ -3,6 +3,8 @@
 包含所有用于 unified_backtest_framework 的 Backtrader 策略
 """
 
+from __future__ import annotations
+
 # 策略基类（用于扩展）
 from .base import BaseStrategy
 

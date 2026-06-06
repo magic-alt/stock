@@ -4,6 +4,8 @@ The canonical implementation lives in ``src.data_sources.jetbot_facts``.
 This module provides a stable import path under ``src.adapters.data``.
 """
 
+from __future__ import annotations
+
 from src.data_sources.jetbot_facts import (
     CORE_METRICS,
     SUPPORTED_SCHEMA_VERSIONS,

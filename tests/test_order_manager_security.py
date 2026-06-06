@@ -1,9 +1,11 @@
+
+from __future__ import annotations
+
 import pytest
 
 from src.core.order_manager import OrderManager
 from src.core.auth import Authorizer, Role, Subject
 from src.core.interfaces import Side, OrderTypeEnum
-
 
 def test_order_manager_account_group_and_strategy_isolation():
     authorizer = Authorizer()

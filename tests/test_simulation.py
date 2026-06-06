@@ -3,6 +3,9 @@ Unit Tests for Simulation Module
 
 Tests order management, order book, slippage models, and matching engine.
 """
+
+from __future__ import annotations
+
 import pytest
 import pandas as pd
 
@@ -11,7 +14,6 @@ from src.simulation.order_book import OrderBook
 from src.simulation.slippage import FixedSlippage, PercentSlippage, VolumeShareSlippage, SquareRootImpactSlippage
 from src.simulation.execution_models import VolumeBasedFill, FixedDelay
 from src.simulation.matching_engine import MatchingEngine
-
 
 # ===== Order Tests =====
 
@@ -33,7 +35,6 @@ def test_order_creation():
     assert order.remaining_qty == 100
     assert order.status == OrderStatus.PENDING
 
-
 def test_order_properties():
     """测试订单属性"""
     order = Order(
@@ -49,7 +50,6 @@ def test_order_properties():
     assert not order.is_limit
     assert order.is_active
 
-
 # ===== OrderBook Tests =====
 
 def test_order_book_creation():
@@ -58,7 +58,6 @@ def test_order_book_creation():
     assert book.symbol == "600519.SH"
     assert len(book.bids) == 0
     assert len(book.asks) == 0
-
 
 def test_order_book_limit_orders():
     """测试限价单添加和排序"""
@@ -94,7 +93,6 @@ def test_order_book_limit_orders():
     assert book.asks[1].order_id == "S1"
     assert book.asks[2].order_id == "S3"
 
-
 def test_order_book_stop_orders():
     """测试止损单触发"""
     book = OrderBook("600519.SH")
@@ -125,7 +123,6 @@ def test_order_book_stop_orders():
     assert triggered[0].order_id == "SS1"
     assert len(book.stop_orders) == 0  # 所有止损单已清空
 
-
 # ===== Slippage Tests =====
 
 def test_fixed_slippage():
@@ -143,7 +140,6 @@ def test_fixed_slippage():
     fill_price = slippage.calculate_slippage(sell_order, 1850.0)
     assert fill_price == 1849.99
 
-
 def test_percent_slippage():
     """测试比例滑点"""
     slippage = PercentSlippage(slippage_percent=0.001)  # 0.1%
@@ -153,7 +149,6 @@ def test_percent_slippage():
     # 买入滑点：0.1% = 1.85
     fill_price = slippage.calculate_slippage(buy_order, 1850.0)
     assert abs(fill_price - 1851.85) < 0.01
-
 
 def test_volume_share_slippage():
     """测试市场冲击滑点"""
@@ -166,7 +161,6 @@ def test_volume_share_slippage():
     fill_price = slippage.calculate_slippage(buy_order, 1850.0, avg_volume=5000)
     assert abs(fill_price - 1887.0) < 1.0  # 1850 * 1.02
 
-
 def test_square_root_impact_slippage():
     """测试平方根冲击模型"""
     slippage = SquareRootImpactSlippage(impact_coef=0.1)
@@ -174,7 +168,6 @@ def test_square_root_impact_slippage():
     fill_price = slippage.calculate_slippage(buy_order, 100.0, avg_volume=10000)
     # sqrt(0.1) * 0.1 = 0.0316 -> 103.16
     assert abs(fill_price - 103.16) < 0.5
-
 
 # ===== MatchingEngine Tests =====
 
@@ -192,7 +185,6 @@ def test_matching_engine_market_order():
     
     # 验证订单状态（注意：市价单应该已经成交）
     assert order.status in [OrderStatus.FILLED, OrderStatus.REJECTED]
-
 
 def test_matching_engine_limit_order():
     """测试限价单价格匹配成交"""
@@ -213,7 +205,6 @@ def test_matching_engine_limit_order():
     assert order.status == OrderStatus.FILLED
     assert order.filled_qty == 100
 
-
 def test_matching_engine_stop_order():
     """测试止损单触发"""
     engine = MatchingEngine()
@@ -232,7 +223,6 @@ def test_matching_engine_stop_order():
     engine.on_bar("600519.SH", bar2)
     assert order.status == OrderStatus.FILLED
 
-
 def test_matching_engine_delay_and_fill_prob():
     """测试延迟激活与成交概率"""
     engine = MatchingEngine(fill_model=VolumeBasedFill(participation_rate=0.1),
@@ -250,7 +240,6 @@ def test_matching_engine_delay_and_fill_prob():
     engine.on_bar("600519.SH", bar2)
     assert order.status == OrderStatus.FILLED
 
-
 def test_matching_engine_cancel():
     """测试撤单"""
     engine = MatchingEngine()
@@ -266,7 +255,6 @@ def test_matching_engine_cancel():
     assert success
     assert order.status == OrderStatus.CANCELLED
     assert order.order_id not in engine.active_orders
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

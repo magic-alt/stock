@@ -13,6 +13,8 @@ V3.0.0: Added unified interfaces and strategy base class.
 V3.0.0-beta: Added logging, context, paper_runner_v3.
 """
 
+from __future__ import annotations
+
 from .events import Event, EventEngine, EventType, Handler
 from .gateway import (
     HistoryGateway,
@@ -126,7 +128,6 @@ from .monitoring import (
 from .audit import AuditLogger
 from .auth import Authorizer, Subject, Role, Permission, ResourceScope
 from .ha import SnapshotStore, ComponentRegistry, HealthCheckResult
-
 
 def __getattr__(name):
     """Lazily resolve heavy optional exports to avoid import cycles."""

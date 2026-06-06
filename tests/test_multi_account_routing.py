@@ -1,11 +1,13 @@
 """
 Tests for multi-account routing and AccountManager.
 """
+
+from __future__ import annotations
+
 import pytest
 
 from src.core.auth import Authorizer, Permission, ResourceScope, Role, Subject
 from src.core.account_manager import AccountManager
-
 
 class TestAccountManager:
     def test_create_account(self):
@@ -81,7 +83,6 @@ class TestAccountManager:
         with pytest.raises(ValueError, match="active"):
             mgr.fund_transfer(a1.account_id, a2.account_id, 100.0)
 
-
 class TestMultiAccountRBAC:
     def test_account_isolation(self):
         auth = Authorizer(enforce_account=True)
@@ -114,7 +115,6 @@ class TestMultiAccountRBAC:
 
         viewer = Subject(subject_id="v1", role=Role.VIEWER, account_group="G1")
         assert not auth.has_permission(Permission.FUND_TRANSFER, viewer)
-
 
 class TestMultiAccountRouting:
     def test_order_routed_to_correct_account(self):

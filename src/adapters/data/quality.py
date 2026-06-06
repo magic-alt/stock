@@ -1,5 +1,7 @@
 """Canonical data quality adapter exports."""
 
+from __future__ import annotations
+
 from src.data_sources.quality import (
     QualitySummary,
     run_quality_checks,

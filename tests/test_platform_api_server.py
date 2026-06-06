@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 import json
 import os
 import threading
@@ -8,7 +11,6 @@ import urllib.request
 import pytest
 
 from src.platform.api_server import create_api_server
-
 
 @pytest.fixture()
 def api_runtime(tmp_path):
@@ -34,7 +36,6 @@ def api_runtime(tmp_path):
         server.server_close()
         server.job_queue.shutdown()  # type: ignore[attr-defined]
         thread.join(timeout=3)
-
 
 def _http_request(base_url, method, path, payload=None, token=None, headers=None):
     data = None
@@ -63,7 +64,6 @@ def _http_request(base_url, method, path, payload=None, token=None, headers=None
         return status, json.loads(body)
     return status, body
 
-
 def test_api_v1_requires_bearer_token(api_runtime):
     base_url = api_runtime["base_url"]
 
@@ -75,7 +75,6 @@ def test_api_v1_requires_bearer_token(api_runtime):
     assert status == 200
     assert payload["code"] == 0
     assert "jobs" in payload["data"]
-
 
 def test_api_v1_submit_and_get_workflow_job(api_runtime):
     base_url = api_runtime["base_url"]
@@ -97,7 +96,6 @@ def test_api_v1_submit_and_get_workflow_job(api_runtime):
     assert status == 200
     assert job_payload["code"] == 0
     assert job_payload["data"]["job"]["job_id"] == job_id
-
 
 def test_api_v1_idempotency_key_reuses_job(api_runtime):
     base_url = api_runtime["base_url"]
@@ -124,7 +122,6 @@ def test_api_v1_idempotency_key_reuses_job(api_runtime):
     assert status == 202
     assert payload_1["data"]["job_id"] == payload_2["data"]["job_id"]
 
-
 def test_api_v1_health_and_cancel_404(api_runtime):
     base_url = api_runtime["base_url"]
 
@@ -150,7 +147,6 @@ def test_api_v1_health_and_cancel_404(api_runtime):
     assert status == 200
     assert payload["code"] == 0
     assert "uptime_seconds" in payload["data"]
-
 
 def test_api_v1_writes_audit_records(api_runtime):
     base_url = api_runtime["base_url"]
@@ -179,7 +175,6 @@ def test_api_v1_writes_audit_records(api_runtime):
 
     assert "job.submit" in content
     assert "tester" in content
-
 
 def test_api_v1_gateway_snapshot_and_monitor_summary(api_runtime):
     base_url = api_runtime["base_url"]

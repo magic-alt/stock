@@ -2,6 +2,9 @@
 测试核心模块 (src/core/*)
 覆盖: objects, events, gateway, config, paper_gateway_v3
 """
+
+from __future__ import annotations
+
 import pytest
 import tempfile
 import shutil
@@ -15,7 +18,6 @@ from src.core.objects import (
 from src.core.events import EventEngine, EventType
 from src.core.config import ConfigManager, GlobalConfig
 from src.core.paper_gateway_v3 import PaperGateway
-
 
 class TestCoreObjects:
     """测试核心数据对象"""
@@ -160,7 +162,6 @@ class TestCoreObjects:
         assert code == "600519"
         assert exchange == Exchange.SSE
 
-
 class TestEventEngine:
     """测试事件引擎"""
     
@@ -203,7 +204,6 @@ class TestEventEngine:
         
         # 验证注销成功
         assert handler not in self.engine._handlers.get(EventType.ORDER, [])
-
 
 class TestConfig:
     """测试配置管理"""
@@ -268,7 +268,6 @@ class TestPaperGateway:
         # 验证PaperGateway有cancel_order方法
         assert hasattr(self.gateway, 'cancel_order')
         assert callable(self.gateway.cancel_order)
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

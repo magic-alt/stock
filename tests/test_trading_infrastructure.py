@@ -8,13 +8,14 @@
 - 实时数据流 (RealtimeDataManager)
 """
 
+from __future__ import annotations
+
 import pytest
 from datetime import datetime, date, timedelta
 
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
 
 # ===========================================================================
 # TradingGateway Tests
@@ -241,7 +242,6 @@ class TestTradingGatewayModule:
         positions = gateway.get_positions()
         assert "600519.SH" in positions
 
-
 # ===========================================================================
 # OrderManager Tests
 # ===========================================================================
@@ -447,7 +447,6 @@ class TestOrderManagerModule:
         result = manager.cancel_order("invalid_id")
         assert result is False
 
-
 # ===========================================================================
 # RiskManagerV2 Tests
 # ===========================================================================
@@ -645,7 +644,6 @@ class TestRiskManagerV2Module:
         assert stats.daily_return == pytest.approx(0.05, rel=1e-3)
         assert stats.win_rate == pytest.approx(0.7, rel=1e-3)
 
-
 # ===========================================================================
 # RealtimeDataManager Tests
 # ===========================================================================
@@ -756,7 +754,6 @@ class TestRealtimeDataModule:
         
         provider.subscribe(["600519.SH"])
         provider.disconnect()
-
 
 # ===========================================================================
 # Integration Tests
@@ -873,7 +870,6 @@ class TestIntegration:
             success = order_manager.submit_order(order.order_id)
             assert success is True
 
-
 # ===========================================================================
 # Error Handling Tests
 # ===========================================================================
@@ -934,7 +930,6 @@ class TestErrorHandling:
         
         tick = manager.get_latest_tick("NOT_SUBSCRIBED")
         assert tick is None
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

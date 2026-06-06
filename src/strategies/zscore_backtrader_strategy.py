@@ -8,9 +8,11 @@ V3.1.0 优化:
 - 增加 RSI 确认，过滤假信号
 - 增加 ATR 动态仓位管理
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class ZScoreStrategy(bt.Strategy):
     """
@@ -150,7 +152,6 @@ class ZScoreStrategy(bt.Strategy):
                 self.log(f"CLOSE (z={z_score:.2f} > {self.params.z_exit:.2f}), {close:.2f}")
                 self.order = self.close()
 
-
 def _coerce_zscore(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce Z-Score parameters to correct types."""
     out = params.copy()
@@ -173,7 +174,6 @@ def _coerce_zscore(params: Dict[str, Any]) -> Dict[str, Any]:
     if "rsi_oversold" in out:
         out["rsi_oversold"] = float(out["rsi_oversold"])
     return out
-
 
 # 策略配置
 STRATEGY_CONFIG = {

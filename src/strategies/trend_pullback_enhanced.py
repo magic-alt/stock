@@ -14,9 +14,11 @@ V3.0.0 新增策略 - 增强型综合策略
 - 结合长期趋势(EMA200)与短期动能(MACD)
 - 严格的 ATR 止损与移动止损
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class TrendPullbackEnhanced(bt.Strategy):
     """
@@ -241,7 +243,6 @@ class TrendPullbackEnhanced(bt.Strategy):
                 )
                 self.order = self.buy(size=size)
 
-
 def _coerce_trend_pullback(params: Dict[str, Any]) -> Dict[str, Any]:
     """参数类型强制转换"""
     out = params.copy()
@@ -258,7 +259,6 @@ def _coerce_trend_pullback(params: Dict[str, Any]) -> Dict[str, Any]:
         if k in out:
             out[k] = float(out[k])
     return out
-
 
 # 策略配置字典 (直接适配系统)
 STRATEGY_CONFIG = {

@@ -1,5 +1,7 @@
 """Realtime market data adapter exports."""
 
+from __future__ import annotations
+
 from src.adapters.realtime.feed import (
     AKShareDataProvider,
     BarBuilder,

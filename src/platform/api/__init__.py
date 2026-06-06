@@ -8,6 +8,9 @@ Provides FastAPI-style patterns on top of the existing HTTP server:
 - RequestValidator: JSON schema validation for request bodies
 - AuditMiddleware: Automatic audit logging for write operations
 """
+
+from __future__ import annotations
+
 from .router import APIRouter, Route, RequestContext, ResponseContext
 from .middleware import (
     RBACMiddleware,

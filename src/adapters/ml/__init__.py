@@ -1,5 +1,7 @@
 """ML adapter exports."""
 
+from __future__ import annotations
+
 from src.adapters.ml.data import (
     align_to_trading_calendar,
     build_feature_frame,

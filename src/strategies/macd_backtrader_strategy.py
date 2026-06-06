@@ -2,9 +2,11 @@
 MACD策略 (Backtrader版本)
 当MACD线上穿信号线时买入，下穿时卖出
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 class MACDStrategy(bt.Strategy):
     """
@@ -74,7 +76,6 @@ class MACDStrategy(bt.Strategy):
                 self.log(f"SELL CREATE (MACD cross down), {self.data.close[0]:.2f}")
                 self.order = self.sell()
 
-
 class MACDZeroCrossStrategy(bt.Strategy):
     """
     MACD Zero Line crossover strategy
@@ -124,7 +125,6 @@ class MACDZeroCrossStrategy(bt.Strategy):
             if self.crossover < 0:  # MACD crosses below zero
                 self.log(f"SELL CREATE (MACD < 0), {self.data.close[0]:.2f}")
                 self.order = self.sell()
-
 
 class MACDHistogramStrategy(bt.Strategy):
     """
@@ -182,7 +182,6 @@ class MACDHistogramStrategy(bt.Strategy):
                 self.log(f"SELL CREATE (Hist turn negative), {self.data.close[0]:.2f}")
                 self.order = self.sell()
 
-
 def _coerce_macd(params: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce MACD parameters to correct types."""
     out = params.copy()
@@ -228,7 +227,6 @@ def _coerce_macd(params: Dict[str, Any]) -> Dict[str, Any]:
     if 'trend_logic' in out:
         out['trend_logic'] = str(out['trend_logic']).lower()
     return out
-
 
 class MACD_RegimePullback(bt.Strategy):
     """
@@ -438,7 +436,6 @@ class MACD_RegimePullback(bt.Strategy):
         self.highest = None
         self.tp1_done = False
 
-
 class MACD_EnhancedStrategy(bt.Strategy):
     """
     MACD 增强版策略：
@@ -550,7 +547,6 @@ class MACD_EnhancedStrategy(bt.Strategy):
                 self.order = self.close()  # 修复：使用close()而非sell()
                 self.last_exit_bar = i
                 self.log(f"SELL @ {close:.2f}")
-
 
 # 供 CLI/注册表使用（结构对齐 Bollinger 模块）
 STRATEGY_CONFIG = {

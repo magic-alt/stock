@@ -18,9 +18,11 @@ V3.0.0-beta.4 专家级策略优化
 - 市场状态过滤 (Regime Filtering): 趋势过滤、ADX 强度过滤
 - 信号确认 (Signal Confirmation): RSI 共振、动能确认、斜率验证
 """
+
+from __future__ import annotations
+
 import backtrader as bt
 from typing import Dict, Any
-
 
 # =============================================================================
 # 1. Z-Score 均值回归增强策略
@@ -110,7 +112,6 @@ class ZScoreEnhancedStrategy(bt.Strategy):
                 self.log(f"SELL CREATE (Mean Reversion Z={z_score:.2f})")
                 self.order = self.close()
 
-
 # =============================================================================
 # 2. RSI 趋势顺势策略
 # =============================================================================
@@ -177,7 +178,6 @@ class RSITrendStrategy(bt.Strategy):
             elif close < self.sma_trend[0]:
                 self.log("SELL CREATE (Trend Broken)")
                 self.order = self.close()
-
 
 # =============================================================================
 # 3. Keltner 自适应通道策略
@@ -255,7 +255,6 @@ class KeltnerAdaptiveStrategy(bt.Strategy):
                 self.log(f"BUY (Breakout) {close:.2f} > {upper:.2f}, Size={size}")
                 self.order = self.buy(size=size)
 
-
 # =============================================================================
 # 4. 三均线 ADX 过滤策略
 # =============================================================================
@@ -318,7 +317,6 @@ class TripleMA_ADX_Strategy(bt.Strategy):
             if self.ma_fast[0] < self.ma_mid[0]:
                 self.log("SELL (Alignment Broken)")
                 self.order = self.close()
-
 
 # =============================================================================
 # 5. MACD 脉冲策略
@@ -391,7 +389,6 @@ class MACDImpulseStrategy(bt.Strategy):
                 self.log("SELL (MACD Death Cross)")
                 self.order = self.close()
 
-
 # =============================================================================
 # 6. SMA 趋势跟随策略
 # =============================================================================
@@ -452,7 +449,6 @@ class SMATrendFollowingStrategy(bt.Strategy):
             if self.data.close[0] < self.sma_slow[0]:
                 self.log("SELL (Below Slow MA)")
                 self.order = self.close()
-
 
 # =============================================================================
 # 7. 多因子稳健策略
@@ -523,7 +519,6 @@ class MultiFactorRobustStrategy(bt.Strategy):
                 self.log("SELL (Momentum Negative)")
                 self.order = self.close()
 
-
 # =============================================================================
 # 参数转换函数
 # =============================================================================
@@ -537,7 +532,6 @@ def _coerce_zscore_enhanced(params: Dict[str, Any]) -> Dict[str, Any]:
     if "atr_stop_mult" in out: out["atr_stop_mult"] = float(out["atr_stop_mult"])
     return out
 
-
 def _coerce_rsi_trend(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
     if "rsi_period" in out: out["rsi_period"] = int(out["rsi_period"])
@@ -545,7 +539,6 @@ def _coerce_rsi_trend(params: Dict[str, Any]) -> Dict[str, Any]:
     if "lower_band" in out: out["lower_band"] = float(out["lower_band"])
     if "upper_band" in out: out["upper_band"] = float(out["upper_band"])
     return out
-
 
 def _coerce_keltner_adaptive(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
@@ -556,13 +549,11 @@ def _coerce_keltner_adaptive(params: Dict[str, Any]) -> Dict[str, Any]:
     if "trail_mult" in out: out["trail_mult"] = float(out["trail_mult"])
     return out
 
-
 def _coerce_triple_ma_adx(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
     for k in ["fast", "mid", "slow", "adx_period", "adx_threshold"]:
         if k in out: out[k] = int(out[k])
     return out
-
 
 def _coerce_macd_impulse(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
@@ -571,20 +562,17 @@ def _coerce_macd_impulse(params: Dict[str, Any]) -> Dict[str, Any]:
     if "zero_filter" in out: out["zero_filter"] = float(out["zero_filter"])
     return out
 
-
 def _coerce_sma_trend(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
     if "fast_period" in out: out["fast_period"] = int(out["fast_period"])
     if "slow_period" in out: out["slow_period"] = int(out["slow_period"])
     return out
 
-
 def _coerce_multifactor_robust(params: Dict[str, Any]) -> Dict[str, Any]:
     out = params.copy()
     for k in ["ma_trend", "mom_period", "vol_period"]:
         if k in out: out[k] = int(out[k])
     return out
-
 
 # =============================================================================
 # 策略配置字典
@@ -698,7 +686,6 @@ ENHANCED_STRATEGY_CONFIGS = {
         'multi_symbol': False,
     },
 }
-
 
 __all__ = [
     # 策略类

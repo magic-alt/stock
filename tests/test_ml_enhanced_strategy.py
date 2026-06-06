@@ -1,10 +1,11 @@
+
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 import types
 
-
 import src.strategies.ml_enhanced_strategy as mes
-
 
 def _dummy_df(rows: int = 80) -> pd.DataFrame:
     idx = pd.date_range("2023-01-01", periods=rows, freq="D")
@@ -19,7 +20,6 @@ def _dummy_df(rows: int = 80) -> pd.DataFrame:
         },
         index=idx,
     )
-
 
 def test_ml_enhanced_feature_engineering_columns():
     df = _dummy_df()
@@ -36,7 +36,6 @@ def test_ml_enhanced_feature_engineering_columns():
     }
     assert expected.issubset(set(feats.columns))
     assert feats.isna().sum().sum() == 0
-
 
 def test_ml_enhanced_generate_signals_dummy_model(monkeypatch):
     df = _dummy_df(rows=60)
@@ -65,7 +64,6 @@ def test_ml_enhanced_generate_signals_dummy_model(monkeypatch):
     assert res["Probability"].iloc[15] == 0.7
     assert res["Signal"].iloc[15] == 1
 
-
 def test_ml_enhanced_generate_signals_no_sklearn(monkeypatch):
     df = _dummy_df(rows=40)
     strat = mes.MLEnhancedStrategy(min_train=10)
@@ -73,7 +71,6 @@ def test_ml_enhanced_generate_signals_no_sklearn(monkeypatch):
     res = strat.generate_signals(df)
     assert res["Signal"].eq(0).all()
     assert res["Probability"].eq(0.5).all()
-
 
 def test_ml_ensemble_strategy_averages_probabilities():
     df = _dummy_df(rows=40)
@@ -98,7 +95,6 @@ def test_ml_ensemble_strategy_averages_probabilities():
     assert res["Probability"].iloc[-1] == 0.8
     assert res["Signal"].iloc[-1] == 1
 
-
 def test_ml_ensemble_strategy_empty_models_returns_zero_signal():
     df = _dummy_df(rows=40)
     ensemble = mes.MLEnsembleStrategy(prob_threshold=0.6, min_train=10)
@@ -106,7 +102,6 @@ def test_ml_ensemble_strategy_empty_models_returns_zero_signal():
     res = ensemble.generate_signals(df)
     assert res["Signal"].eq(0).all()
     assert res["Probability"].eq(0.5).all()
-
 
 def test_ml_enhanced_get_model_branches(monkeypatch):
     strat = mes.MLEnhancedStrategy(min_train=10)
@@ -127,7 +122,6 @@ def test_ml_enhanced_get_model_branches(monkeypatch):
     monkeypatch.setattr(mes, "RandomForestClassifier", lambda **kwargs: DummyModel())
     strat.model_type = "rf"
     assert isinstance(strat._get_model(), DummyModel)
-
 
 def test_ml_enhanced_generate_signals_chinese_columns(monkeypatch):
     idx = pd.date_range("2023-01-01", periods=60, freq="D")
@@ -164,7 +158,6 @@ def test_ml_enhanced_generate_signals_chinese_columns(monkeypatch):
     res = strat.generate_signals(df)
     assert res["Signal"].iloc[15] == -1
 
-
 def test_ml_enhanced_get_feature_importance():
     strat = mes.MLEnhancedStrategy(min_train=10)
 
@@ -175,7 +168,6 @@ def test_ml_enhanced_get_feature_importance():
     importance = strat.get_feature_importance()
     assert importance == {0: 0.2, 1: 0.8}
 
-
 def test_ml_enhanced_coerce_casts_types():
     out = mes._coerce_ml_enhanced(
         {"label_horizon": "2", "min_train": "50", "prob_threshold": "0.65", "retrain_interval": "10"}
@@ -184,7 +176,6 @@ def test_ml_enhanced_coerce_casts_types():
     assert out["min_train"] == 50
     assert out["prob_threshold"] == 0.65
     assert out["retrain_interval"] == 10
-
 
 def test_ml_enhanced_training_failure_warning(monkeypatch):
     df = _dummy_df(rows=60)

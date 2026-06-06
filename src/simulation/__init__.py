@@ -3,6 +3,9 @@ Simulation Module
 
 Provides order matching engine and slippage models for paper trading simulation.
 """
+
+from __future__ import annotations
+
 from .order import Order, Trade, OrderStatus, OrderType, OrderDirection
 from .order_book import OrderBook
 from .slippage import (

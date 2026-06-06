@@ -4,6 +4,9 @@
 
 V3.1.0 更新: 使用 core/strategy_base.py 替代废弃的 strategy/template.py
 """
+
+from __future__ import annotations
+
 import pytest
 from datetime import datetime
 
@@ -12,7 +15,6 @@ from src.core.strategy_base import BaseStrategy, BacktraderStrategyAdapter
 from src.core.interfaces import (
     BarData, PositionInfo, AccountInfo, StrategyContext
 )
-
 
 class TestStrategyComponents:
     """测试策略组件"""
@@ -40,7 +42,6 @@ class TestStrategyComponents:
     def test_bar_data_exists(self):
         """测试BarData类存在"""
         assert BarData is not None
-
 
 class TestPositionInfo:
     """测试PositionInfo类"""
@@ -78,7 +79,6 @@ class TestPositionInfo:
         assert position.is_short == False
         assert position.is_flat == True
 
-
 class TestAccountInfo:
     """测试AccountInfo类"""
     
@@ -91,7 +91,6 @@ class TestAccountInfo:
         
         assert account.cash == 100000.0
         assert account.total_value == 100000.0
-
 
 class TestBarData:
     """测试BarData类"""
@@ -114,7 +113,6 @@ class TestBarData:
         assert bar.low == 95.0
         assert bar.close == 105.0
         assert bar.volume == 1000000.0
-
 
 class TestBaseStrategy:
     """测试BaseStrategy基类"""
@@ -148,7 +146,6 @@ class TestBaseStrategy:
         
         strategy = TestStrategy(period=30)
         assert strategy.params["period"] == 30
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

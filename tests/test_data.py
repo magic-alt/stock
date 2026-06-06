@@ -2,6 +2,9 @@
 测试数据模块 (src/data_sources/*)
 覆盖: providers, db_manager, data_portal
 """
+
+from __future__ import annotations
+
 import pytest
 import tempfile
 import shutil
@@ -13,7 +16,6 @@ from src.data_sources.providers import (
 )
 from src.data_sources.db_manager import SQLiteDataManager
 from src.data_sources.data_portal import DataPortal
-
 
 class TestDataProviders:
     """测试数据提供商"""
@@ -259,7 +261,6 @@ class TestDatabaseManager:
         assert entries[0].metadata["adj_type"] == "noadj"
         assert Path(entries[0].path).exists()
 
-
 class TestDataPortal:
     """测试数据门户"""
     
@@ -319,7 +320,6 @@ class TestDataPortal:
         # 数据门户应该能够处理异常数据
         # 实际验证逻辑取决于具体实现
         assert data is not None
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 from src.data_sources.level2.models import Level2Snapshot, OrderBookLevel, TradeTick
 from src.data_sources.level2.providers import (
     HundsunLevel2Provider,

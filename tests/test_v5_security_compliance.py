@@ -8,15 +8,15 @@ Covers:
 - C-4: pyproject.toml validation
 """
 
+from __future__ import annotations
+
 import time
 import pytest
 from pathlib import Path
 
-
 # ===========================================================================
 # C-1: FastAPI api_v2 tests
 # ===========================================================================
-
 
 class TestFastAPIApp:
     """Test FastAPI application creation and endpoints."""
@@ -125,7 +125,6 @@ class TestFastAPIApp:
         from src.platform.api_v2 import app
 
         assert app is not None
-
 
 class TestFastAPIEndpoints:
     """Test API endpoints using TestClient."""
@@ -535,11 +534,9 @@ class TestFastAPIEndpoints:
         assert health.status_code == 200
         assert health.json()["status"] == "healthy"
 
-
 # ===========================================================================
 # C-2: Security module tests
 # ===========================================================================
-
 
 class TestSecurityTokens:
     """Test token generation and hashing."""
@@ -576,7 +573,6 @@ class TestSecurityTokens:
         h1 = hash_token("token-a")
         h2 = hash_token("token-b")
         assert h1 != h2
-
 
 class TestSecurityManager:
     """Test SecurityManager encryption and token lifecycle."""
@@ -694,7 +690,6 @@ class TestSecurityManager:
         assert "***" in masked["password"]
         assert "***" in masked["api_key"]
 
-
 class TestTLSConfig:
     """Test TLS configuration."""
 
@@ -722,11 +717,9 @@ class TestTLSConfig:
         cfg = TLSConfig(enabled=True, certfile=str(cert), keyfile=str(key))
         assert cfg.is_valid() is True
 
-
 # ===========================================================================
 # C-2: Vault tests
 # ===========================================================================
-
 
 class TestMemoryVault:
     """Test in-memory vault."""
@@ -783,7 +776,6 @@ class TestMemoryVault:
         with pytest.raises(KeyError):
             vault.get_or_raise("missing")
 
-
 class TestEnvVault:
     """Test environment variable vault."""
 
@@ -816,7 +808,6 @@ class TestEnvVault:
         keys = vault.list_keys()
         assert "a" in keys
         assert "b" in keys
-
 
 class TestLocalFileVault:
     """Test encrypted local file vault."""
@@ -871,7 +862,6 @@ class TestLocalFileVault:
         vault.put("b", "2")
         assert set(vault.list_keys()) == {"a", "b"}
 
-
 class TestCompositeVault:
     """Test composite vault chain."""
 
@@ -914,7 +904,6 @@ class TestCompositeVault:
         composite = CompositeVault([primary, secondary])
         assert set(composite.list_keys()) == {"a", "b"}
 
-
 class TestCreateVault:
     """Test vault factory."""
 
@@ -948,11 +937,9 @@ class TestCreateVault:
         with pytest.raises(ValueError, match="Unknown vault backend"):
             create_vault("nosuch")
 
-
 # ===========================================================================
 # C-3: Input sanitizer tests
 # ===========================================================================
-
 
 class TestSymbolValidation:
     """Test symbol format validation."""
@@ -999,7 +986,6 @@ class TestSymbolValidation:
         assert valid == ["600519.SH", "000333.SZ"]
         assert len(invalid) == 2
 
-
 class TestNumericValidation:
     """Test numeric range validation."""
 
@@ -1034,7 +1020,6 @@ class TestNumericValidation:
         with pytest.raises(ValueError):
             InputSanitizer.validate_positive(-1)
 
-
 class TestDateValidation:
     """Test date format validation."""
 
@@ -1061,7 +1046,6 @@ class TestDateValidation:
         with pytest.raises(ValueError, match="year"):
             InputSanitizer.validate_date("1800-01-01")
 
-
 class TestStringSanitization:
     """Test HTML sanitization."""
 
@@ -1078,7 +1062,6 @@ class TestStringSanitization:
         long_str = "a" * 20000
         result = InputSanitizer.sanitize_string(long_str, max_length=100)
         assert len(result) == 100
-
 
 class TestSecurityChecks:
     """Test SQL injection, XSS, and path traversal detection."""
@@ -1118,7 +1101,6 @@ class TestSecurityChecks:
         assert InputSanitizer.is_safe_input("<script>x</script>") is False
         assert InputSanitizer.is_safe_input("../../etc/passwd") is False
 
-
 class TestStrategyCodeValidation:
     """Test strategy code safety validation."""
 
@@ -1151,11 +1133,9 @@ class TestStrategyCodeValidation:
         warnings = InputSanitizer.validate_strategy_code(code)
         assert len(warnings) >= 3
 
-
 # ===========================================================================
 # C-4: pyproject.toml validation
 # ===========================================================================
-
 
 class TestPyprojectToml:
     """Validate pyproject.toml structure."""

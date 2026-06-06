@@ -2,6 +2,9 @@
 测试回测模块 (src/backtest/*)
 覆盖: engine, plotting, analysis, strategy_modules
 """
+
+from __future__ import annotations
+
 import pytest
 import tempfile
 import shutil
@@ -15,7 +18,6 @@ from src.backtest.plotting import (
     generate_backtest_report, plot_backtest_with_indicators
 )
 from src.backtest.strategy_modules import STRATEGY_REGISTRY
-
 
 class TestBacktestEngine:
     """测试回测引擎"""
@@ -74,7 +76,6 @@ class TestBacktestEngine:
         assert engine is not None
         assert hasattr(engine, 'gw')
 
-
 class TestAnalysis:
     """测试分析模块"""
     
@@ -120,7 +121,6 @@ class TestAnalysis:
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-
 class TestPlotting:
     """测试绘图模块"""
     
@@ -142,7 +142,6 @@ class TestPlotting:
         # 简化测试，只验证函数可导入
         assert callable(plot_backtest_with_indicators)
 
-
 class TestStrategyModules:
     """测试策略模块"""
     
@@ -157,7 +156,6 @@ class TestStrategyModules:
         for name, module in STRATEGY_REGISTRY.items():
             assert isinstance(name, str)
             assert module is not None
-
 
 class TestBacktestIntegration:
     """回测模块集成测试"""
@@ -213,7 +211,6 @@ class TestBacktestIntegration:
         
         except Exception as e:
             pytest.skip(f"Full pipeline test failed: {e}")
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

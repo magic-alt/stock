@@ -1,5 +1,7 @@
 """Canonical message bus adapter exports."""
 
+from __future__ import annotations
+
 from src.core.message_bus import InProcessBackend, Message, MessageBus, ZMQBackend
 
 __all__ = ["InProcessBackend", "Message", "MessageBus", "ZMQBackend"]

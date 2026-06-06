@@ -2,8 +2,10 @@
 SMA Cross Strategy (Backtrader version)
 Simple Moving Average crossover with ATR-based position sizing
 """
-import backtrader as bt
 
+from __future__ import annotations
+
+import backtrader as bt
 
 class SMACrossStrategy(bt.Strategy):
     """
@@ -56,7 +58,6 @@ class SMACrossStrategy(bt.Strategy):
             self.order = None
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             self.order = None
-
 
 def _coerce_sma_cross(d: dict) -> dict:
     """Coerce parameters to correct types"""

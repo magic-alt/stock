@@ -1,5 +1,7 @@
 """Storage adapter exports."""
 
+from __future__ import annotations
+
 from src.adapters.storage.data_lake import DataLake, DataLakeEntry
 from src.adapters.storage.duckdb import DuckDBConfig, DuckDBTimeSeriesStore
 from src.adapters.storage.parquet_lake import (

@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+
+from __future__ import annotations
+
 """
 集合竞价策略 - Backtrader版本
 开盘涨幅 + 成交量放大过滤
@@ -9,7 +12,6 @@ V3.0.0 优化:
 - 增加 ATR 止损线
 """
 import backtrader as bt
-
 
 class AuctionOpenSelectionStrategy(bt.Strategy):
     """
@@ -91,7 +93,6 @@ class AuctionOpenSelectionStrategy(bt.Strategy):
         # 强制100股整数倍（A股规则）
         lots = max(1, size_risk // 100)
         return lots * 100
-
 
 def _coerce_auction(d: dict) -> dict:
     return {

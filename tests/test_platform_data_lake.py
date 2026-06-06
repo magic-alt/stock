@@ -1,5 +1,7 @@
-from src.platform.data_lake import DataLake
 
+from __future__ import annotations
+
+from src.platform.data_lake import DataLake
 
 def test_data_lake_register(tmp_path):
     data_path = tmp_path / "sample.txt"

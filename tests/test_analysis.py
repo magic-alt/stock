@@ -1,6 +1,9 @@
 """
 测试分析模块
 """
+
+from __future__ import annotations
+
 import os
 import shutil
 import tempfile
@@ -11,7 +14,6 @@ import pandas as pd
 import pytest
 
 from src.backtest.analysis import pareto_front, save_heatmap
-
 
 class TestParetoFront(unittest.TestCase):
     """测试帕累托前沿计算"""
@@ -77,7 +79,6 @@ class TestParetoFront(unittest.TestCase):
         self.assertIsInstance(result, pd.DataFrame)
         # 验证没有抛出异常
 
-
 class TestSaveHeatmap(unittest.TestCase):
     """测试热力图保存功能"""
     
@@ -126,7 +127,6 @@ class TestSaveHeatmap(unittest.TestCase):
         # 验证文件已创建
         self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'heat_ema.png')))
 
-
 class TestAnalysisHelpers(unittest.TestCase):
     """测试辅助函数"""
     
@@ -156,7 +156,6 @@ class TestAnalysisHelpers(unittest.TestCase):
         # 验证结果
         self.assertLessEqual(max_dd, 0)
         self.assertIsInstance(max_dd, (float, np.floating))
-
 
 @pytest.mark.integration
 class TestAnalysisIntegration(unittest.TestCase):
@@ -202,7 +201,6 @@ class TestAnalysisIntegration(unittest.TestCase):
         save_heatmap(module, df, self.test_dir)
         
         self.assertTrue(os.path.exists(os.path.join(self.test_dir, 'heat_macd.png')))
-
 
 if __name__ == '__main__':
     unittest.main()

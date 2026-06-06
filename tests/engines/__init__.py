@@ -7,3 +7,5 @@ exported in each subpackage's ``__all__`` resolve, and that each
 subpackage's re-exports are the *same* objects as the V5 originals
 (identity check, not a copy).
 """
+
+from __future__ import annotations
