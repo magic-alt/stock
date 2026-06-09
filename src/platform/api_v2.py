@@ -192,7 +192,7 @@ if HAS_FASTAPI:
         env_value = os.environ.get("PLATFORM_ALLOWED_ORIGINS", "").strip()
         if env_value:
             return [item.strip() for item in env_value.split(",") if item.strip()]
-        return ["http://localhost:3000"]
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     def _resolve_frontend_dist() -> Optional[Path]:
         raw_path = os.environ.get("PLATFORM_FRONTEND_DIST", "").strip()

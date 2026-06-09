@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
 
 ### Fixed
+- API: include `http://127.0.0.1:3000` in default FastAPI CORS origins so macOS/Vite local Dashboard verification works from the advertised loopback URL.
 - Core risk config: keep `max_position_pct` and `max_order_pct` positive while allowing operational thresholds above 100% for explicit leveraged/stress-test configurations.
 - Data lineage: remove duplicate `record_lineage()` calls in `YFinanceProvider`.
 - Docs: repair the README "CI Status" badge URL — switched from the legacy `workflows/CI/badge.svg` shortcut (which never matched the workflow name `CI/CD Pipeline`) to the canonical `actions/workflows/ci.yml/badge.svg?branch=main` form and pointed the click target at the workflow page.

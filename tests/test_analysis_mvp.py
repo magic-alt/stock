@@ -52,6 +52,17 @@ def test_analysis_capabilities_include_sample_symbols():
     assert capabilities["default_source"] == "sample"
 
 
+def test_api_v2_default_cors_allows_localhost_and_loopback():
+    pytest.importorskip("fastapi")
+    from src.platform.api_v2 import create_app
+
+    app = create_app(enable_cors=True)
+    cors = next(m for m in app.user_middleware if m.cls.__name__ == "CORSMiddleware")
+
+    assert "http://localhost:3000" in cors.kwargs["allow_origins"]
+    assert "http://127.0.0.1:3000" in cors.kwargs["allow_origins"]
+
+
 @pytest.fixture
 def client(monkeypatch, tmp_path: Path):
     pytest.importorskip("fastapi")
