@@ -238,6 +238,12 @@ docker compose config
 
 Local CI mirror:
 
+```bash
+python scripts/local_ci.py --jobs test --skip-install
+```
+
+Windows PowerShell remains supported:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/local_ci.ps1 -Jobs test -SkipInstall
 ```

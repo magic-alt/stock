@@ -70,20 +70,24 @@ python scripts/audit_integrity_check.py --path ./logs/platform_api_audit.log --j
 python scripts/benchmark_platform.py --jobs 200 --workers 8 --sleep-ms 10 --out report/bench/platform.json
 ```
 
-### `local_ci.ps1`
-本地一键 CI 自测脚本，按 GitHub Actions job 分段输出（test / code-quality / security-scan / build-docs / performance / integration-test）。
+### `local_ci.py` / `local_ci.ps1`
+本地一键 CI 自测脚本，按 GitHub Actions job 分段输出（test / code-quality / security-scan / build-docs / performance / integration-test）。macOS/Linux 使用 Python 入口；Windows 可继续使用 PowerShell 入口。
+
+```bash
+python scripts/local_ci.py --jobs test --skip-install
+```
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1
 ```
 
 可选参数：
-- `-Jobs test,code-quality`：只运行指定 job。
-- `-SkipInstall`：跳过依赖安装步骤（默认会按 job 安装）。
-- `-IncludeRelease`：将 `release` job 一并纳入执行。
-- `-Jobs runtime-smoke`：执行阶段1运行态冒烟（XtQuant/XTP/UFT stub smoke + gateway mock SDK + realtime_data failover/HTTP provider 测试）。
-- `-Jobs gateway-integration`：执行真实 SDK 联调冒烟（XtQuant/XTP/UFT，环境不齐全时会 `skip`）。
-- `-Jobs preflight-gate`：执行上线决策闸门（`start_production.py --preflight-decision-only`）。
+- Python: `--jobs test,code-quality` / PowerShell: `-Jobs test,code-quality`：只运行指定 job。
+- Python: `--skip-install` / PowerShell: `-SkipInstall`：跳过依赖安装步骤（默认会按 job 安装）。
+- Python: `--include-release` / PowerShell: `-IncludeRelease`：将 `release` job 一并纳入执行。
+- `runtime-smoke`：执行阶段1运行态冒烟（XtQuant/XTP/UFT stub smoke + gateway mock SDK + realtime_data failover/HTTP provider 测试）。
+- `gateway-integration`：执行真实 SDK 联调冒烟（XtQuant/XTP/UFT，环境不齐全时会 `skip`）。
+- `preflight-gate`：执行上线决策闸门（`start_production.py --preflight-decision-only`）。
 
 在上线前先做「决策-only」预检，先给一版可直接执行的标准清单。  
 本清单与另一份文档的对应段落保持一致，变更时同步更新两处，避免版本漂移。
@@ -94,6 +98,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\local_ci.ps1 -Jobs test,code-quality,security-scan -SkipInstall
+```
+
+macOS/Linux 等价命令：
+
+```bash
+python scripts/local_ci.py --jobs test,code-quality,security-scan --skip-install
 ```
 
 2. 运行阶段1运行态冒烟（XtQuant/XTP/UFT + mock SDK + realtime_data）

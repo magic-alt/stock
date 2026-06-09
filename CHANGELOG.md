@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-06-09
 
 ### Added
+- Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.
 - Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with bundled sample-data fallback, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
 - Web: add a Dashboard beginner analysis panel so first-time users can run a complete sample stock analysis before configuring live data providers.
 - Demo: extend `examples/one_click_demo.py` to generate `analysis_demo.json` and `analysis_report.md` alongside the existing paper-trading and ECharts artifacts.
@@ -5300,4 +5301,3 @@ Successfully modularized the monolithic `unified_backtest_framework.py` (2138 li
 - 📝 Documentation
 - 🧪 Testing
 - 📊 Metrics
-
