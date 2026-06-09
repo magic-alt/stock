@@ -25,9 +25,11 @@
             </el-form-item>
             <el-form-item label="Source">
               <el-select v-model="analysisForm.source" class="source-select">
-                <el-option label="Auto" value="auto" />
-                <el-option label="Eastmoney" value="eastmoney" />
+                <el-option label="Auto (AKShare + Sina + Tencent)" value="auto" />
                 <el-option label="AKShare" value="akshare" />
+                <el-option label="Sina Finance" value="sina" />
+                <el-option label="Tencent Finance" value="tencent" />
+                <el-option label="Eastmoney" value="eastmoney" />
                 <el-option label="YFinance" value="yfinance" />
                 <el-option label="TuShare" value="tushare" />
               </el-select>

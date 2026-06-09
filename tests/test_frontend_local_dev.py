@@ -34,4 +34,7 @@ def test_frontend_uses_real_market_data_sources_by_default():
     assert "source: 'auto'" in dashboard
     assert "source: 'auto'" in data_view
     assert "source: 'auto'" in backtest
+    assert 'value="akshare"' in dashboard
+    assert 'value="sina"' in dashboard
+    assert 'value="tencent"' in dashboard
     assert 'value="eastmoney"' in dashboard

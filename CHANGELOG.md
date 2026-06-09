@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.
 - Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with real-provider OHLCV loading, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
-- Data: add an `eastmoney` web OHLCV provider and make `auto` analysis/data/backtest flows try it first for A-share inputs.
+- Data: add Sina and Tencent web OHLCV providers; make `auto` analysis/data flows validate AKShare, Sina Finance, and Tencent Finance in parallel before Eastmoney fallback for A-share inputs.
 - Web: add a Dashboard beginner analysis panel so first-time users can run real-data stock analysis from a stock code.
 - Core correctness audit: consolidate order status, event, and risk configuration single sources of truth; add package-wide future annotations to keep type evaluation consistent.
 - V6 Phase 8 (open platform — legacy shim layer): introduce `src/_legacy/` as the single mechanism for handling deprecated import paths. Adds `emit_deprecation()` (one-shot `DeprecationWarning` + structured `quant_platform.legacy` log record), `install_module_alias()` (registers a legacy dotted name in `sys.modules` as an alias of its canonical V6 module), an empty `LEGACY_ALIASES` catalogue that PR reviewers can grep, and `reset_deprecation_cache()` for tests. Entries are added per PR as legacy paths are formally retired.

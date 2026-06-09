@@ -24,7 +24,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`. The Dashboard analysis panel defaults to `source=auto`, which fetches real OHLCV data from web/provider sources starting with Eastmoney. AI summaries are optional and only run when enabled plus `OPENAI_API_KEY` is configured.
+Open `http://localhost:3000`. The Dashboard analysis panel defaults to `source=auto`, which fetches real OHLCV data from web/provider sources validating AKShare, Sina Finance, and Tencent Finance in parallel before Eastmoney fallback. AI summaries are optional and only run when enabled plus `OPENAI_API_KEY` is configured.
 
 ## Run a backtest
 

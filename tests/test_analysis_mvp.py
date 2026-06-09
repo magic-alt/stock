@@ -10,10 +10,10 @@ import pytest
 from src.platform.analysis_service import AnalysisRequestPayload, StockAnalysisService
 
 
-def _ohlcv_frame(rows: int = 80) -> pd.DataFrame:
+def _ohlcv_frame(rows: int = 80, close_offset: float = 0.0) -> pd.DataFrame:
     index = pd.bdate_range("2024-01-02", periods=rows)
     close = pd.Series(
-        [10 + idx * 0.03 + math.sin(idx / 4) * 0.6 for idx in range(rows)],
+        [10 + idx * 0.03 + math.sin(idx / 4) * 0.6 + close_offset for idx in range(rows)],
         index=index,
         dtype=float,
     )
@@ -64,29 +64,29 @@ def test_stock_analysis_service_runs_with_real_provider_data(monkeypatch):
 def test_stock_analysis_auto_tries_real_provider_order(monkeypatch):
     calls = []
 
-    class BrokenProvider:
-        def load_stock_daily(self, symbols, start, end):
-            calls.append("akshare")
-            raise RuntimeError("network unavailable")
-
     def fake_get_provider(source):
         calls.append(source)
-        if source == "eastmoney":
-            return FakeProvider()
-        return BrokenProvider()
+        offsets = {"akshare": 0.0, "sina": 0.01, "tencent": -0.01}
+        return FakeProvider(_ohlcv_frame(close_offset=offsets[source]))
 
     monkeypatch.setattr("src.data_sources.providers.get_provider", fake_get_provider)
 
-    result = StockAnalysisService().analyze(AnalysisRequestPayload(symbol="600519.SH", source="auto"))
+    result = StockAnalysisService().analyze(AnalysisRequestPayload(symbol="600036SH", source="auto"))
 
-    assert result["data_quality"]["source"] == "eastmoney"
-    assert calls == ["eastmoney"]
+    assert result["symbol"] == "600036.SH"
+    assert result["data_quality"]["source"] == "akshare"
+    assert result["data_quality"]["validation_status"] == "verified"
+    assert set(result["data_quality"]["validated_sources"]) == {"akshare", "sina", "tencent"}
+    assert set(calls) == {"akshare", "sina", "tencent"}
 
 
 def test_analysis_capabilities_expose_real_sources_only():
     capabilities = StockAnalysisService().capabilities()
 
     assert "sample" not in capabilities["sources"]
+    assert "akshare" in capabilities["sources"]
+    assert "sina" in capabilities["sources"]
+    assert "tencent" in capabilities["sources"]
     assert "eastmoney" in capabilities["sources"]
     assert capabilities["default_source"] == "auto"
 
@@ -116,30 +116,32 @@ def client(monkeypatch, tmp_path: Path):
 
 def test_analysis_run_endpoint(client, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider(_ohlcv_frame(close_offset=0.0)))
 
     resp = client.post(
         "/api/v2/analysis/run",
-        json={"symbol": "60036", "source": "auto", "days": 60, "use_ai": True},
+        json={"symbol": "600036SH", "source": "auto", "days": 60, "use_ai": True},
     )
 
     assert resp.status_code == 200
     body = resp.json()
     analysis = body["data"]["analysis"]
     assert analysis["symbol"] == "600036.SH"
-    assert analysis["data_quality"]["source"] == "eastmoney"
+    assert analysis["data_quality"]["source"] == "akshare"
+    assert analysis["data_quality"]["validation_status"] == "verified"
     assert analysis["ai_summary"]["status"] == "missing_api_key"
 
 
 def test_chart_data_endpoint_normalizes_short_a_share_symbol(client, monkeypatch):
     monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
 
-    resp = client.get("/api/v2/chart-data?symbol=60036&days=20&source=auto")
+    resp = client.get("/api/v2/chart-data?symbol=600036SH&days=20&source=auto")
 
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["symbol"] == "600036.SH"
-    assert data["source"] == "eastmoney"
+    assert data["source"] == "akshare"
+    assert data["data_quality"]["validation_status"] == "verified"
     assert len(data["dates"]) == 20
     assert len(data["ohlc"]) == 20
 

@@ -6,9 +6,10 @@ import json
 import os
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -18,8 +19,10 @@ from src.data_sources.providers import normalize_a_share_symbol
 
 logger = get_logger("platform.analysis")
 
-SUPPORTED_ANALYSIS_SOURCES = ("auto", "eastmoney", "akshare", "yfinance", "tushare")
-AUTO_ANALYSIS_SOURCES = ("eastmoney", "akshare", "yfinance", "tushare")
+AUTO_PRIMARY_SOURCES = ("akshare", "sina", "tencent")
+AUTO_FALLBACK_SOURCES = ("eastmoney", "yfinance", "tushare")
+AUTO_ANALYSIS_SOURCES = AUTO_PRIMARY_SOURCES + AUTO_FALLBACK_SOURCES
+SUPPORTED_ANALYSIS_SOURCES = ("auto",) + AUTO_ANALYSIS_SOURCES
 
 
 @dataclass(frozen=True)
@@ -112,12 +115,73 @@ class StockAnalysisService:
     ) -> tuple[pd.DataFrame, Dict[str, Any]]:
         warnings: List[str] = []
         attempted: List[str] = []
+        end = datetime.now().strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=int(days * 1.8))).strftime("%Y-%m-%d")
 
-        providers = list(AUTO_ANALYSIS_SOURCES) if source == "auto" else [source]
-        for provider_name in providers:
+        if source == "auto":
+            primary_frames, primary_warnings = self._load_parallel_sources(
+                symbol=symbol,
+                start=start,
+                end=end,
+                providers=AUTO_PRIMARY_SOURCES,
+            )
+            warnings.extend(primary_warnings)
+            attempted.extend(AUTO_PRIMARY_SOURCES)
+            selected = self._select_verified_frame(primary_frames, AUTO_PRIMARY_SOURCES)
+            warnings.extend(selected["warnings"])
+            frame = selected["frame"]
+            if frame is not None and not frame.empty:
+                return frame, {
+                    "source": selected["source"],
+                    "rows": int(len(frame)),
+                    "warnings": warnings,
+                    "attempted_sources": attempted,
+                    "validated_sources": selected["validated_sources"],
+                    "validation_status": selected["status"],
+                }
+
+            for provider_name in AUTO_FALLBACK_SOURCES:
+                attempted.append(provider_name)
+                try:
+                    frame = self._load_provider_history(
+                        symbol=symbol,
+                        start=start,
+                        end=end,
+                        provider_name=provider_name,
+                    )
+                    if not frame.empty:
+                        normalized = self._normalize_frame(frame)
+                        return normalized, {
+                            "source": provider_name,
+                            "rows": int(len(normalized)),
+                            "warnings": warnings,
+                            "attempted_sources": attempted,
+                            "validated_sources": [provider_name],
+                            "validation_status": "fallback_unverified",
+                        }
+                except Exception as exc:
+                    message = f"{provider_name} failed: {exc}"
+                    warnings.append(message)
+                    logger.warning("analysis_provider_failed", symbol=symbol, provider=provider_name, error=str(exc))
+
+            return pd.DataFrame(), {
+                "source": source,
+                "rows": 0,
+                "warnings": warnings,
+                "attempted_sources": attempted,
+                "validated_sources": [],
+                "validation_status": "no_data",
+            }
+
+        for provider_name in [source]:
             attempted.append(provider_name)
             try:
-                frame = self._load_provider_history(symbol, days=days, provider_name=provider_name)
+                frame = self._load_provider_history(
+                    symbol=symbol,
+                    start=start,
+                    end=end,
+                    provider_name=provider_name,
+                )
                 if not frame.empty:
                     normalized = self._normalize_frame(frame)
                     return normalized, {
@@ -125,19 +189,142 @@ class StockAnalysisService:
                         "rows": int(len(normalized)),
                         "warnings": warnings,
                         "attempted_sources": attempted,
+                        "validated_sources": [provider_name],
+                        "validation_status": "explicit_source",
                     }
             except Exception as exc:
                 message = f"{provider_name} failed: {exc}"
                 warnings.append(message)
                 logger.warning("analysis_provider_failed", symbol=symbol, provider=provider_name, error=str(exc))
 
-        return pd.DataFrame(), {"source": source, "rows": 0, "warnings": warnings, "attempted_sources": attempted}
+        return pd.DataFrame(), {
+            "source": source,
+            "rows": 0,
+            "warnings": warnings,
+            "attempted_sources": attempted,
+            "validated_sources": [],
+            "validation_status": "no_data",
+        }
 
-    def _load_provider_history(self, symbol: str, *, days: int, provider_name: str) -> pd.DataFrame:
+    def _load_parallel_sources(
+        self,
+        *,
+        symbol: str,
+        start: str,
+        end: str,
+        providers: Sequence[str],
+    ) -> tuple[Dict[str, pd.DataFrame], List[str]]:
+        frames: Dict[str, pd.DataFrame] = {}
+        warnings: List[str] = []
+        with ThreadPoolExecutor(max_workers=len(providers)) as executor:
+            futures = {
+                executor.submit(
+                    self._load_provider_history,
+                    symbol=symbol,
+                    start=start,
+                    end=end,
+                    provider_name=provider_name,
+                ): provider_name
+                for provider_name in providers
+            }
+            for future in as_completed(futures):
+                provider_name = futures[future]
+                try:
+                    frame = future.result()
+                    if frame is not None and not frame.empty:
+                        frames[provider_name] = self._normalize_frame(frame)
+                    else:
+                        warnings.append(f"{provider_name} returned no OHLCV data")
+                except Exception as exc:
+                    warnings.append(f"{provider_name} failed: {exc}")
+                    logger.warning("analysis_provider_failed", symbol=symbol, provider=provider_name, error=str(exc))
+        return frames, warnings
+
+    def _select_verified_frame(
+        self,
+        frames: Dict[str, pd.DataFrame],
+        provider_order: Sequence[str],
+    ) -> Dict[str, Any]:
+        if not frames:
+            return {
+                "source": None,
+                "frame": None,
+                "validated_sources": [],
+                "status": "no_primary_data",
+                "warnings": ["primary sources returned no usable OHLCV data"],
+            }
+
+        available = [provider for provider in provider_order if provider in frames and not frames[provider].empty]
+        if len(available) == 1:
+            source = available[0]
+            return {
+                "source": source,
+                "frame": frames[source],
+                "validated_sources": [source],
+                "status": "single_source",
+                "warnings": [f"only {source} returned primary OHLCV data; cross-source verification unavailable"],
+            }
+
+        common_index: Optional[pd.Index] = None
+        for provider in available:
+            index = pd.DatetimeIndex(frames[provider].index)
+            common_index = index if common_index is None else common_index.intersection(index)
+
+        close_by_source: Dict[str, float] = {}
+        if common_index is not None and len(common_index) > 0:
+            check_date = common_index.max()
+            for provider in available:
+                close_by_source[provider] = float(frames[provider].loc[check_date, "close"])
+            date_label = str(check_date.date())
+        else:
+            for provider in available:
+                close_by_source[provider] = float(frames[provider]["close"].iloc[-1])
+            date_label = "latest non-common date"
+
+        closes = np.asarray(list(close_by_source.values()), dtype=float)
+        median_close = float(np.median(closes))
+        tolerance = max(0.02, abs(median_close) * 0.015)
+        validated = [
+            provider
+            for provider, close in close_by_source.items()
+            if abs(close - median_close) <= tolerance
+        ]
+        rejected = [
+            f"{provider} close={close_by_source[provider]:.4f}"
+            for provider in available
+            if provider not in validated
+        ]
+
+        if len(validated) >= 2:
+            source = next(provider for provider in provider_order if provider in validated)
+            warnings: List[str] = [
+                f"primary OHLCV verified on {date_label}: {', '.join(validated)}",
+            ]
+            if rejected:
+                warnings.append(f"primary OHLCV outliers ignored: {', '.join(rejected)}")
+            return {
+                "source": source,
+                "frame": frames[source],
+                "validated_sources": validated,
+                "status": "verified",
+                "warnings": warnings,
+            }
+
+        return {
+            "source": None,
+            "frame": None,
+            "validated_sources": validated,
+            "status": "primary_disagreement",
+            "warnings": [
+                "primary OHLCV sources disagree beyond tolerance; falling back to secondary providers",
+                f"primary closes on {date_label}: "
+                + ", ".join(f"{provider}={close:.4f}" for provider, close in close_by_source.items()),
+            ],
+        }
+
+    def _load_provider_history(self, symbol: str, *, start: str, end: str, provider_name: str) -> pd.DataFrame:
         from src.data_sources.providers import get_provider
 
-        end = datetime.now().strftime("%Y-%m-%d")
-        start = (datetime.now() - timedelta(days=int(days * 1.8))).strftime("%Y-%m-%d")
         provider = get_provider(provider_name)
         data_map = provider.load_stock_daily([symbol], start, end)
         return data_map.get(symbol, pd.DataFrame())

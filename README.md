@@ -39,7 +39,7 @@ pip install -r requirements.txt
 python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
 
-The demo uses the built-in paper gateway and writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs. Stock analysis in the web console fetches real market data through the `auto` provider path, starting with Eastmoney web OHLCV.
+The demo uses the built-in paper gateway and writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs. Stock analysis in the web console fetches real market data through the `auto` provider path, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback.
 
 With Docker Compose:
 
@@ -117,7 +117,7 @@ npm ci
 npm run dev
 ```
 
-Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, starting with Eastmoney web OHLCV) and also supports explicit providers such as `akshare`, `yfinance`, and `tushare`. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
+Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
 
 Main views:
 
@@ -212,7 +212,7 @@ Deep architecture references:
 | Web console | Dashboard, Backtest, Trading, Strategies, Data, Monitor, Settings | `frontend/` |
 | API | versioned FastAPI v2 endpoints | `/api/v2/docs` |
 | Paper trading | deterministic paper gateway workflow | `examples/one_click_demo.py` |
-| Market data | real OHLCV providers, defaulting to Eastmoney web fetch via `auto` | `src/data_sources/providers.py` |
+| Market data | real OHLCV providers, validating AKShare, Sina Finance, and Tencent Finance in parallel via `auto`; Eastmoney is a later fallback | `src/data_sources/providers.py` |
 | Live gateways | XtQuant/QMT, XTP, Hundsun UFT, EastMoney adapters | [docs/GATEWAY_SDK_SETUP.md](docs/GATEWAY_SDK_SETUP.md) |
 | Operations | Docker, Compose, Kubernetes manifests, health checks | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
 

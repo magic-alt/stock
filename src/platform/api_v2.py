@@ -85,7 +85,10 @@ if HAS_FASTAPI:
     class AnalysisRequest(BaseModel):
         symbol: str = Field("600519.SH", min_length=1, description="Stock symbol to analyze")
         days: int = Field(120, ge=10, le=500, description="Number of recent daily bars to inspect")
-        source: str = Field("auto", description="Data source: auto, eastmoney, akshare, yfinance, tushare")
+        source: str = Field(
+            "auto",
+            description="Data source: auto, akshare, sina, tencent, eastmoney, yfinance, tushare",
+        )
         strategy: str = Field("macd", description="Lightweight preview strategy: macd or sma")
         include_backtest: bool = Field(True, description="Include a lightweight backtest preview")
         use_ai: bool = Field(False, description="Optionally request an OpenAI-compatible summary")
@@ -333,40 +336,32 @@ if HAS_FASTAPI:
 
         @app.get("/api/v2/chart-data", tags=["Data"])
         async def chart_data(symbol: str, days: int = 120, source: str = "auto"):
-            from src.data_sources.providers import get_provider, normalize_a_share_symbol
-            from src.platform.analysis_service import AUTO_ANALYSIS_SOURCES, StockAnalysisService
+            from src.data_sources.providers import normalize_a_share_symbol
+            from src.platform.analysis_service import StockAnalysisService
 
             normalized_symbol = normalize_a_share_symbol(symbol)
             if not normalized_symbol.strip():
                 raise HTTPException(status_code=400, detail="symbol is required")
             days = max(10, min(days, 500))
             try:
-                from datetime import datetime, timedelta
-
-                warnings: List[str] = []
-                end = datetime.now().strftime("%Y-%m-%d")
-                start = (datetime.now() - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
-                df = None
                 provider_source = source.strip().lower() or "auto"
-                providers = list(AUTO_ANALYSIS_SOURCES) if provider_source == "auto" else [provider_source]
-                for provider_name in providers:
-                    try:
-                        provider = get_provider(provider_name)
-                        data_map = provider.load_stock_daily([normalized_symbol], start, end)
-                        candidate = data_map.get(normalized_symbol)
-                        if candidate is not None and not candidate.empty:
-                            df = StockAnalysisService()._normalize_frame(candidate).tail(days)
-                            source = provider_name
-                            break
-                    except Exception as exc:
-                        warnings.append(f"{provider_name} failed: {exc}")
+                service = StockAnalysisService()
+                df, data_quality = service._load_history(
+                    symbol=normalized_symbol,
+                    days=days,
+                    source=provider_source,
+                )
 
                 if df is None or df.empty:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"no real OHLCV data found for {normalized_symbol}; attempted: {', '.join(providers)}",
+                        detail=(
+                            f"no real OHLCV data found for {normalized_symbol}; attempted: "
+                            f"{', '.join(data_quality.get('attempted_sources', []))}"
+                        ),
                     )
 
+                df = df.tail(days)
                 dates = [str(d.date()) if hasattr(d, "date") else str(d) for d in df.index]
                 ohlc = [
                     [float(row["open"]), float(row["close"]), float(row["low"]), float(row["high"])]
@@ -376,11 +371,12 @@ if HAS_FASTAPI:
                 return ApiEnvelope(
                     data={
                         "symbol": normalized_symbol,
-                        "source": source,
+                        "source": data_quality.get("source", provider_source),
                         "dates": dates,
                         "ohlc": ohlc,
                         "volumes": volumes,
-                        "warnings": warnings,
+                        "warnings": data_quality.get("warnings", []),
+                        "data_quality": data_quality,
                     }
                 )
             except HTTPException:
@@ -504,7 +500,7 @@ if HAS_FASTAPI:
             try:
                 from src.data_sources.providers import get_provider
 
-                provider_name = "eastmoney" if req.source == "auto" else req.source
+                provider_name = "akshare" if req.source == "auto" else req.source
                 provider = get_provider(provider_name)
                 data_map = provider.load_stock_daily([symbol], req.start, req.end, adj=req.adj)
                 payload = build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
@@ -537,7 +533,7 @@ if HAS_FASTAPI:
                 from src.data_sources.providers import normalize_a_share_symbol
 
                 normalized_symbols = [normalize_a_share_symbol(item) for item in req.symbols]
-                engine_source = "eastmoney" if req.source == "auto" else req.source
+                engine_source = "akshare" if req.source == "auto" else req.source
                 engine_benchmark_source = req.benchmark_source or engine_source
                 if engine_benchmark_source == "auto":
                     engine_benchmark_source = engine_source
