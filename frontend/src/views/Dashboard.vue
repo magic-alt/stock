@@ -213,7 +213,7 @@ const analysisForm = ref({
 })
 
 onMounted(async () => {
-  await tradingStore.refreshAll()
+  await tradingStore.ensurePaperGatewayConnected()
   try {
     const resp = await client.get('/api/v2/strategies')
     const data = unwrapApiData<{ count: number }>(resp.data)

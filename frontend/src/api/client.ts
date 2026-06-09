@@ -15,8 +15,19 @@ interface VersionedApiEnvelope<T> {
   request_id?: string
 }
 
+export function resolveApiBaseURL(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL?.trim()
+  if (configured) {
+    return configured
+  }
+  if (import.meta.env.DEV) {
+    return 'http://127.0.0.1:8001'
+  }
+  return ''
+}
+
 const client: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '',
+  baseURL: resolveApiBaseURL(),
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })

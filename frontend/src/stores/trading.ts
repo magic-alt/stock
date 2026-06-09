@@ -21,6 +21,35 @@ const DEFAULT_STATUS: GatewayStatus = {
   last_error: null,
 }
 
+const DEFAULT_PAPER_CONNECT_PAYLOAD: GatewayConnectPayload = {
+  mode: 'paper',
+  broker: 'paper',
+  host: '127.0.0.1',
+  port: 11111,
+  account: 'paper',
+  password: '',
+  api_key: '',
+  secret: '',
+  initial_cash: 1_000_000,
+  commission_rate: 0.0003,
+  slippage: 0.0001,
+  enable_risk_check: true,
+  terminal_type: 'QMT',
+  terminal_path: '',
+  trade_server: '',
+  quote_server: '',
+  client_id: 1,
+  td_front: '',
+  md_front: '',
+  sdk_path: '',
+  sdk_log_path: '',
+  gateway_provider: 'self',
+  qmt_provider: 'self',
+  vnpy_gateway: '',
+  vnpy_setting: {},
+  broker_options: {},
+}
+
 function normalizeStatus(value: unknown): GatewayStatus {
   if (!value || typeof value !== 'object') {
     return { ...DEFAULT_STATUS }
@@ -61,6 +90,7 @@ export const useTradingStore = defineStore('trading', () => {
   const orders = ref<OrderInfo[]>([])
   const trades = ref<TradeInfo[]>([])
   const refreshTimer = ref<ReturnType<typeof setInterval> | null>(null)
+  let gatewayInitPromise: Promise<boolean> | null = null
 
   function applySnapshot(snapshot: Partial<GatewaySnapshot> | null | undefined) {
     const statusValue = snapshot?.status ? normalizeStatus(snapshot.status) : { ...DEFAULT_STATUS }
@@ -115,6 +145,32 @@ export const useTradingStore = defineStore('trading', () => {
     } finally {
       loading.value = false
     }
+  }
+
+  async function ensurePaperGatewayConnected() {
+    if (connected.value) {
+      return true
+    }
+    if (gatewayInitPromise) {
+      return gatewayInitPromise
+    }
+    gatewayInitPromise = (async () => {
+      await fetchStatus()
+      if (connected.value) {
+        await refreshAll()
+        return true
+      }
+      try {
+        await connectGateway({ ...DEFAULT_PAPER_CONNECT_PAYLOAD })
+        return connected.value
+      } catch (err) {
+        error.value = (err as Error).message
+        return false
+      }
+    })().finally(() => {
+      gatewayInitPromise = null
+    })
+    return gatewayInitPromise
   }
 
   async function disconnectGateway() {
@@ -173,6 +229,7 @@ export const useTradingStore = defineStore('trading', () => {
     connected,
     disconnectGateway,
     error,
+    ensurePaperGatewayConnected,
     fetchStatus,
     loading,
     orders,

@@ -1,0 +1,25 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_frontend_dev_defaults_use_loopback_api_port():
+    client_source = (ROOT / "frontend/src/api/client.ts").read_text(encoding="utf-8")
+    vite_config = (ROOT / "frontend/vite.config.ts").read_text(encoding="utf-8")
+
+    assert "http://127.0.0.1:8001" in client_source
+    assert "http://127.0.0.1:8001" in vite_config
+    assert "VITE_API_BASE_URL" in client_source
+    assert "VITE_API_BASE_URL" in vite_config
+
+
+def test_frontend_auto_connects_paper_gateway_and_uses_explicit_menu_routing():
+    app_source = (ROOT / "frontend/src/App.vue").read_text(encoding="utf-8")
+    trading_store = (ROOT / "frontend/src/stores/trading.ts").read_text(encoding="utf-8")
+
+    assert '@select="handleMenuSelect"' in app_source
+    assert "void router.push(path)" in app_source
+    assert "ensurePaperGatewayConnected" in app_source
+    assert "DEFAULT_PAPER_CONNECT_PAYLOAD" in trading_store
+    assert "broker: 'paper'" in trading_store

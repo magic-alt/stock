@@ -8,10 +8,10 @@
         </div>
         <el-menu
           :default-active="route.path"
-          router
           background-color="#1a1a2e"
           text-color="#a0aec0"
           active-text-color="#3b82f6"
+          @select="handleMenuSelect"
         >
           <el-menu-item index="/">
             <el-icon><Monitor /></el-icon>
@@ -67,7 +67,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useTradingStore } from '@/stores/trading'
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import {
@@ -76,6 +76,7 @@ import {
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
+const router = useRouter()
 const tradingStore = useTradingStore()
 
 const gatewayConnected = computed(() => tradingStore.connected)
@@ -93,8 +94,14 @@ const pageNames: Record<string, string> = {
 const currentPageName = computed(() => pageNames[route.path] || route.path)
 
 onMounted(() => {
-  void tradingStore.fetchStatus()
+  void tradingStore.ensurePaperGatewayConnected()
 })
+
+function handleMenuSelect(path: string) {
+  if (path && path !== route.path) {
+    void router.push(path)
+  }
+}
 </script>
 
 <style>

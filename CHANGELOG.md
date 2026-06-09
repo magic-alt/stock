@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
 
 ### Fixed
+- Frontend: make macOS local Vite runs default to `http://127.0.0.1:8001`, auto-connect the paper gateway on startup, and route sidebar menu selections explicitly so Trading, Strategies, Data, Monitor, and Settings are reachable during manual verification.
 - API: include `http://127.0.0.1:3000` in default FastAPI CORS origins so macOS/Vite local Dashboard verification works from the advertised loopback URL.
 - Core risk config: keep `max_position_pct` and `max_order_pct` positive while allowing operational thresholds above 100% for explicit leveraged/stress-test configurations.
 - Data lineage: remove duplicate `record_lineage()` calls in `YFinanceProvider`.

@@ -409,7 +409,7 @@ const priceForm = reactive({
 })
 
 onMounted(() => {
-  void tradingStore.refreshAll()
+  void tradingStore.ensurePaperGatewayConnected()
   tradingStore.startAutoRefresh(4000)
 })
 
