@@ -67,7 +67,7 @@ if HAS_FASTAPI:
         cash: float = Field(100000, gt=0, description="Initial cash")
         commission: float = Field(0.001, ge=0, le=0.1, description="Commission rate")
         slippage: float = Field(0.001, ge=0, le=0.1, description="Slippage rate")
-        source: str = Field("akshare", description="Market data provider")
+        source: str = Field("auto", description="Market data provider")
         benchmark_source: Optional[str] = Field(None, description="Benchmark data provider")
         benchmark: Optional[str] = Field(None, description="Benchmark symbol")
         adj: Optional[str] = Field(None, description="Adjustment mode passed to the data provider")
@@ -85,7 +85,7 @@ if HAS_FASTAPI:
     class AnalysisRequest(BaseModel):
         symbol: str = Field("600519.SH", min_length=1, description="Stock symbol to analyze")
         days: int = Field(120, ge=10, le=500, description="Number of recent daily bars to inspect")
-        source: str = Field("sample", description="Data source: sample, auto, akshare, yfinance, tushare")
+        source: str = Field("auto", description="Data source: auto, eastmoney, akshare, yfinance, tushare")
         strategy: str = Field("macd", description="Lightweight preview strategy: macd or sma")
         include_backtest: bool = Field(True, description="Include a lightweight backtest preview")
         use_ai: bool = Field(False, description="Optionally request an OpenAI-compatible summary")
@@ -332,28 +332,59 @@ if HAS_FASTAPI:
             return ApiEnvelope(data=request.app.state.api_metrics.snapshot(request.app.state.job_queue))
 
         @app.get("/api/v2/chart-data", tags=["Data"])
-        async def chart_data(symbol: str, days: int = 120, source: str = "akshare"):
-            if not symbol.strip():
+        async def chart_data(symbol: str, days: int = 120, source: str = "auto"):
+            from src.data_sources.providers import get_provider, normalize_a_share_symbol
+            from src.platform.analysis_service import AUTO_ANALYSIS_SOURCES, StockAnalysisService
+
+            normalized_symbol = normalize_a_share_symbol(symbol)
+            if not normalized_symbol.strip():
                 raise HTTPException(status_code=400, detail="symbol is required")
             days = max(10, min(days, 500))
             try:
                 from datetime import datetime, timedelta
-                from src.data_sources.providers import get_provider
 
+                warnings: List[str] = []
                 end = datetime.now().strftime("%Y-%m-%d")
                 start = (datetime.now() - timedelta(days=int(days * 1.5))).strftime("%Y-%m-%d")
-                provider = get_provider(source)
-                data_map = provider.load_stock_daily([symbol], start, end)
-                if symbol not in data_map or data_map[symbol].empty:
-                    return ApiEnvelope(data={"dates": [], "ohlc": [], "volumes": []})
-                df = data_map[symbol].tail(days)
+                df = None
+                provider_source = source.strip().lower() or "auto"
+                providers = list(AUTO_ANALYSIS_SOURCES) if provider_source == "auto" else [provider_source]
+                for provider_name in providers:
+                    try:
+                        provider = get_provider(provider_name)
+                        data_map = provider.load_stock_daily([normalized_symbol], start, end)
+                        candidate = data_map.get(normalized_symbol)
+                        if candidate is not None and not candidate.empty:
+                            df = StockAnalysisService()._normalize_frame(candidate).tail(days)
+                            source = provider_name
+                            break
+                    except Exception as exc:
+                        warnings.append(f"{provider_name} failed: {exc}")
+
+                if df is None or df.empty:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"no real OHLCV data found for {normalized_symbol}; attempted: {', '.join(providers)}",
+                    )
+
                 dates = [str(d.date()) if hasattr(d, "date") else str(d) for d in df.index]
                 ohlc = [
                     [float(row["open"]), float(row["close"]), float(row["low"]), float(row["high"])]
                     for _, row in df.iterrows()
                 ]
                 volumes = [float(row.get("volume", 0)) for _, row in df.iterrows()]
-                return ApiEnvelope(data={"dates": dates, "ohlc": ohlc, "volumes": volumes})
+                return ApiEnvelope(
+                    data={
+                        "symbol": normalized_symbol,
+                        "source": source,
+                        "dates": dates,
+                        "ohlc": ohlc,
+                        "volumes": volumes,
+                        "warnings": warnings,
+                    }
+                )
+            except HTTPException:
+                raise
             except Exception as e:
                 logger.error("chart_data_failed", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
@@ -466,50 +497,85 @@ if HAS_FASTAPI:
             return ApiEnvelope(data={"valid": valid, "errors": errors})
 
         def _build_fallback_technical_chart(req: BacktestRequest) -> Dict[str, Any]:
+            from src.data_sources.providers import normalize_a_share_symbol
+            from src.platform.backtest_charts import build_technical_chart_payload_from_frame
+
+            symbol = normalize_a_share_symbol(req.symbols[0])
             try:
                 from src.data_sources.providers import get_provider
-                from src.platform.backtest_charts import build_technical_chart_payload_from_frame
 
-                symbol = req.symbols[0]
-                provider = get_provider(req.source)
+                provider_name = "eastmoney" if req.source == "auto" else req.source
+                provider = get_provider(provider_name)
                 data_map = provider.load_stock_daily([symbol], req.start, req.end, adj=req.adj)
-                return build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
+                payload = build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
+                if payload.get("technical_chart"):
+                    return payload
             except Exception as exc:
                 logger.warning("backtest_chart_fallback_failed", error=str(exc))
-                return {"technical_chart": None}
+            return {"technical_chart": None}
+
+        def _is_market_data_error(exc: Exception) -> bool:
+            message = str(exc).lower()
+            markers = (
+                "no data",
+                "not available",
+                "remote end closed",
+                "connection",
+                "could not resolve",
+                "name or service",
+                "nodename nor servname",
+                "failed to establish",
+                "market data",
+            )
+            return any(marker in message for marker in markers)
 
         async def _run_backtest_impl(req: BacktestRequest):
             try:
                 from src.backtest.engine import BacktestEngine
                 from src.platform.backtest_charts import build_nav_chart_payload, build_technical_chart_payload
 
+                from src.data_sources.providers import normalize_a_share_symbol
+
+                normalized_symbols = [normalize_a_share_symbol(item) for item in req.symbols]
+                engine_source = "eastmoney" if req.source == "auto" else req.source
+                engine_benchmark_source = req.benchmark_source or engine_source
+                if engine_benchmark_source == "auto":
+                    engine_benchmark_source = engine_source
+                engine_req = req.model_copy(
+                    update={
+                        "symbols": normalized_symbols,
+                        "source": engine_source,
+                        "benchmark_source": engine_benchmark_source,
+                    }
+                )
                 engine_name = req.engine or "backtrader"
                 capture_cerebro = engine_name.lower() in ("backtrader", "bt")
                 engine = BacktestEngine(
-                    source=req.source,
-                    benchmark_source=req.benchmark_source or req.source,
-                    calendar_mode=req.calendar_mode or "off",
+                    source=engine_req.source,
+                    benchmark_source=engine_req.benchmark_source or engine_req.source,
+                    calendar_mode=engine_req.calendar_mode or "off",
                 )
                 result = engine.run_strategy(
-                    strategy=req.strategy,
-                    symbols=req.symbols,
-                    start=req.start,
-                    end=req.end,
-                    params=req.params,
-                    cash=req.cash,
-                    commission=req.commission,
-                    slippage=req.slippage,
-                    benchmark=req.benchmark,
-                    adj=req.adj,
-                    calendar_mode=req.calendar_mode,
+                    strategy=engine_req.strategy,
+                    symbols=engine_req.symbols,
+                    start=engine_req.start,
+                    end=engine_req.end,
+                    params=engine_req.params,
+                    cash=engine_req.cash,
+                    commission=engine_req.commission,
+                    slippage=engine_req.slippage,
+                    benchmark=engine_req.benchmark,
+                    adj=engine_req.adj,
+                    calendar_mode=engine_req.calendar_mode,
                     enable_plot=capture_cerebro,
                     engine=engine_name,
                 )
-
+                if result.get("error") and _is_market_data_error(Exception(str(result.get("error")))):
+                    raise HTTPException(status_code=404, detail=str(result.get("error")))
                 chart_payload = build_nav_chart_payload(result.get("nav"))
                 technical_payload = build_technical_chart_payload(result.get("_cerebro"))
                 if not technical_payload.get("technical_chart"):
-                    technical_payload = _build_fallback_technical_chart(req)
+                    technical_payload = _build_fallback_technical_chart(engine_req)
                 chart_payload.update(technical_payload)
                 clean = {
                     k: _jsonable(v)
@@ -520,7 +586,11 @@ if HAS_FASTAPI:
                 return ApiEnvelope(data={"metrics": clean})
             except KeyError as e:
                 raise HTTPException(status_code=404, detail=str(e))
+            except HTTPException:
+                raise
             except Exception as e:
+                if _is_market_data_error(e):
+                    raise HTTPException(status_code=404, detail=f"real market data unavailable: {e}")
                 logger.error("backtest_failed", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
 

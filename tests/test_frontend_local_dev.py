@@ -23,3 +23,15 @@ def test_frontend_auto_connects_paper_gateway_and_uses_explicit_menu_routing():
     assert "ensurePaperGatewayConnected" in app_source
     assert "DEFAULT_PAPER_CONNECT_PAYLOAD" in trading_store
     assert "broker: 'paper'" in trading_store
+
+
+def test_frontend_uses_real_market_data_sources_by_default():
+    dashboard = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
+    data_view = (ROOT / "frontend/src/views/DataView.vue").read_text(encoding="utf-8")
+    backtest = (ROOT / "frontend/src/views/Backtest.vue").read_text(encoding="utf-8")
+
+    assert 'value="sample"' not in dashboard
+    assert "source: 'auto'" in dashboard
+    assert "source: 'auto'" in data_view
+    assert "source: 'auto'" in backtest
+    assert 'value="eastmoney"' in dashboard

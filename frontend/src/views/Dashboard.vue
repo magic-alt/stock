@@ -15,7 +15,7 @@
           <template #header>
             <div class="card-header">
               <span>Beginner Analysis</span>
-              <el-tag size="small" effect="plain">{{ analysisResult?.data_quality.source || 'sample' }}</el-tag>
+              <el-tag size="small" effect="plain">{{ analysisResult?.data_quality.source || 'auto' }}</el-tag>
             </div>
           </template>
 
@@ -25,8 +25,8 @@
             </el-form-item>
             <el-form-item label="Source">
               <el-select v-model="analysisForm.source" class="source-select">
-                <el-option label="Sample" value="sample" />
                 <el-option label="Auto" value="auto" />
+                <el-option label="Eastmoney" value="eastmoney" />
                 <el-option label="AKShare" value="akshare" />
                 <el-option label="YFinance" value="yfinance" />
                 <el-option label="TuShare" value="tushare" />
@@ -119,7 +119,7 @@
             </div>
           </div>
 
-          <el-empty v-else-if="!analysisLoading" description="Run the bundled sample analysis to see the full workflow" />
+          <el-empty v-else-if="!analysisLoading" description="Enter a stock code to fetch real market data and run analysis" />
         </el-card>
       </el-col>
 
@@ -140,7 +140,7 @@
           </el-descriptions>
           <el-space direction="vertical" fill style="width: 100%">
             <el-button type="primary" style="width: 100%" :loading="analysisLoading" @click="runAnalysis">
-              Run Sample Analysis
+              Run Real Data Analysis
             </el-button>
             <el-button type="primary" style="width: 100%" @click="$router.push('/backtest')">
               New Backtest
@@ -207,7 +207,7 @@ const analysisError = ref<string | null>(null)
 const analysisResult = ref<AnalysisResult | null>(null)
 const analysisForm = ref({
   symbol: '600519.SH',
-  source: 'sample',
+  source: 'auto',
   days: 120,
   use_ai: false,
 })

@@ -39,7 +39,7 @@ pip install -r requirements.txt
 python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
 
-The deterministic demo uses the built-in paper gateway and bundled sample data. It writes JSON, Markdown, ECharts-ready artifacts, and a rule-based `600519.SH` analysis report without broker SDKs, data-provider tokens, or network data fetches.
+The demo uses the built-in paper gateway and writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs. Stock analysis in the web console fetches real market data through the `auto` provider path, starting with Eastmoney web OHLCV.
 
 With Docker Compose:
 
@@ -117,7 +117,7 @@ npm ci
 npm run dev
 ```
 
-Open the Dashboard first. It includes a beginner analysis panel that runs on bundled sample data by default, then lets you switch to real providers (`auto`, `akshare`, `yfinance`, `tushare`) when your environment is ready. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
+Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, starting with Eastmoney web OHLCV) and also supports explicit providers such as `akshare`, `yfinance`, and `tushare`. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
 
 Main views:
 
@@ -211,8 +211,8 @@ Deep architecture references:
 | A-share rules | calendar alignment, T+1, limit handling, lot sizing | backtest engine and execution modeling |
 | Web console | Dashboard, Backtest, Trading, Strategies, Data, Monitor, Settings | `frontend/` |
 | API | versioned FastAPI v2 endpoints | `/api/v2/docs` |
-| Paper trading | deterministic paper gateway and demo workflow | `examples/one_click_demo.py` |
-| Sample data | bundled synthetic A-share-style OHLCV fixture | `sample_data/a_share_demo_ohlcv.csv` |
+| Paper trading | deterministic paper gateway workflow | `examples/one_click_demo.py` |
+| Market data | real OHLCV providers, defaulting to Eastmoney web fetch via `auto` | `src/data_sources/providers.py` |
 | Live gateways | XtQuant/QMT, XTP, Hundsun UFT, EastMoney adapters | [docs/GATEWAY_SDK_SETUP.md](docs/GATEWAY_SDK_SETUP.md) |
 | Operations | Docker, Compose, Kubernetes manifests, health checks | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
 
@@ -220,7 +220,7 @@ Deep architecture references:
 
 - Real broker SDKs require user-provided accounts, credentials, broker permissions, and local SDK binaries. Stub and mock paths are for development, CI, and integration planning.
 - AKShare/TuShare workflows may need network access; TuShare requires `TUSHARE_TOKEN` for token-gated data.
-- Demo outputs and sample workflows are for engineering validation and education, not investment advice.
+- Demo outputs and paper workflows are for engineering validation and education, not investment advice.
 - The open-source focus remains A-share research, backtesting, admission, paper trading, and gateway adapters; some long-term platform work is still evolving.
 
 ## Validation

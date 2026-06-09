@@ -1,32 +1,25 @@
-"""Beginner-friendly stock analysis workflow for the platform API.
-
-The service intentionally works without broker SDKs, provider tokens, or
-network access when ``source=sample`` is used. Real providers remain available
-through the existing data provider factory.
-"""
+"""Stock analysis workflow backed by real market-data providers."""
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
 
 from src.core.logger import get_logger
+from src.data_sources.providers import normalize_a_share_symbol
 
 logger = get_logger("platform.analysis")
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SAMPLE_DATA = PROJECT_ROOT / "sample_data" / "a_share_demo_ohlcv.csv"
-SUPPORTED_ANALYSIS_SOURCES = ("sample", "auto", "akshare", "yfinance", "tushare")
+SUPPORTED_ANALYSIS_SOURCES = ("auto", "eastmoney", "akshare", "yfinance", "tushare")
+AUTO_ANALYSIS_SOURCES = ("eastmoney", "akshare", "yfinance", "tushare")
 
 
 @dataclass(frozen=True)
@@ -35,11 +28,10 @@ class AnalysisRequestPayload:
 
     symbol: str
     days: int = 120
-    source: str = "sample"
+    source: str = "auto"
     strategy: str = "macd"
     include_backtest: bool = True
     use_ai: bool = False
-    sample_data_path: Optional[str] = None
 
 
 def run_stock_analysis_task(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -48,18 +40,18 @@ def run_stock_analysis_task(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 
 class StockAnalysisService:
-    """Build a deterministic stock analysis report from OHLCV history."""
+    """Build a stock analysis report from real OHLCV history."""
 
-    def __init__(self, sample_data_path: Optional[Path] = None) -> None:
-        self.sample_data_path = sample_data_path or DEFAULT_SAMPLE_DATA
+    def __init__(self) -> None:
+        pass
 
     def analyze(self, request: AnalysisRequestPayload) -> Dict[str, Any]:
-        symbol = request.symbol.strip().upper()
+        symbol = normalize_a_share_symbol(request.symbol)
         if not symbol:
             raise ValueError("symbol is required")
 
         days = max(10, min(int(request.days), 500))
-        source = request.source.strip().lower() or "sample"
+        source = request.source.strip().lower() or "auto"
         if source not in SUPPORTED_ANALYSIS_SOURCES:
             raise ValueError(f"unsupported analysis source: {source}")
 
@@ -67,7 +59,6 @@ class StockAnalysisService:
             symbol=symbol,
             days=days,
             source=source,
-            sample_data_path=Path(request.sample_data_path) if request.sample_data_path else self.sample_data_path,
         )
         if frame.empty:
             raise LookupError(f"no OHLCV data found for {symbol}")
@@ -118,21 +109,11 @@ class StockAnalysisService:
         symbol: str,
         days: int,
         source: str,
-        sample_data_path: Path,
     ) -> tuple[pd.DataFrame, Dict[str, Any]]:
         warnings: List[str] = []
         attempted: List[str] = []
 
-        if source == "sample":
-            frame = self._load_sample_history(symbol, sample_data_path)
-            return self._normalize_frame(frame), {
-                "source": "sample",
-                "rows": int(len(frame)),
-                "warnings": warnings,
-                "sample_data": str(sample_data_path),
-            }
-
-        providers = ["akshare", "yfinance"] if source == "auto" else [source]
+        providers = list(AUTO_ANALYSIS_SOURCES) if source == "auto" else [source]
         for provider_name in providers:
             attempted.append(provider_name)
             try:
@@ -150,39 +131,9 @@ class StockAnalysisService:
                 warnings.append(message)
                 logger.warning("analysis_provider_failed", symbol=symbol, provider=provider_name, error=str(exc))
 
-        if source == "auto":
-            sample = self._normalize_frame(self._load_sample_history(symbol, sample_data_path))
-            if not sample.empty:
-                warnings.append("real providers unavailable; fell back to bundled sample data")
-                return sample, {
-                    "source": "sample",
-                    "rows": int(len(sample)),
-                    "warnings": warnings,
-                    "attempted_sources": attempted,
-                    "sample_data": str(sample_data_path),
-                }
-
         return pd.DataFrame(), {"source": source, "rows": 0, "warnings": warnings, "attempted_sources": attempted}
 
-    def _load_sample_history(self, symbol: str, path: Path) -> pd.DataFrame:
-        if not path.is_file():
-            raise FileNotFoundError(f"sample data not found: {path}")
-        rows: List[Dict[str, Any]] = []
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                if str(row.get("symbol", "")).upper() == symbol:
-                    rows.append(row)
-        if not rows:
-            return pd.DataFrame()
-        frame = pd.DataFrame(rows)
-        frame["date"] = pd.to_datetime(frame["date"])
-        frame.set_index("date", inplace=True)
-        return frame
-
     def _load_provider_history(self, symbol: str, *, days: int, provider_name: str) -> pd.DataFrame:
-        from datetime import timedelta
-
         from src.data_sources.providers import get_provider
 
         end = datetime.now().strftime("%Y-%m-%d")
@@ -522,11 +473,9 @@ class StockAnalysisService:
         return "\n".join(lines) + "\n"
 
     def capabilities(self) -> Dict[str, Any]:
-        sample_symbols = sorted(self._sample_symbols(self.sample_data_path))
         return {
             "sources": list(SUPPORTED_ANALYSIS_SOURCES),
-            "default_source": "sample",
-            "sample_symbols": sample_symbols,
+            "default_source": "auto",
             "strategies": ["macd", "sma"],
             "ai": {
                 "optional": True,
@@ -534,17 +483,6 @@ class StockAnalysisService:
                 "env": ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"],
             },
         }
-
-    def _sample_symbols(self, path: Path) -> List[str]:
-        if not path.is_file():
-            return []
-        symbols = set()
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            for row in reader:
-                if row.get("symbol"):
-                    symbols.add(str(row["symbol"]).upper())
-        return sorted(symbols)
 
     @staticmethod
     def _round(value: Any, digits: int = 2) -> float:

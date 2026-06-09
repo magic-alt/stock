@@ -6,9 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.
-- Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with bundled sample-data fallback, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
-- Web: add a Dashboard beginner analysis panel so first-time users can run a complete sample stock analysis before configuring live data providers.
-- Demo: extend `examples/one_click_demo.py` to generate `analysis_demo.json` and `analysis_report.md` alongside the existing paper-trading and ECharts artifacts.
+- Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with real-provider OHLCV loading, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
+- Data: add an `eastmoney` web OHLCV provider and make `auto` analysis/data/backtest flows try it first for A-share inputs.
+- Web: add a Dashboard beginner analysis panel so first-time users can run real-data stock analysis from a stock code.
 - Core correctness audit: consolidate order status, event, and risk configuration single sources of truth; add package-wide future annotations to keep type evaluation consistent.
 - V6 Phase 8 (open platform — legacy shim layer): introduce `src/_legacy/` as the single mechanism for handling deprecated import paths. Adds `emit_deprecation()` (one-shot `DeprecationWarning` + structured `quant_platform.legacy` log record), `install_module_alias()` (registers a legacy dotted name in `sys.modules` as an alias of its canonical V6 module), an empty `LEGACY_ALIASES` catalogue that PR reviewers can grep, and `reset_deprecation_cache()` for tests. Entries are added per PR as legacy paths are formally retired.
 - V6 Phase 7 fill-out (`quant_platform_*` package contents): the `quant_platform_adapters_cn` facade now re-exports the six canonical adapter subpackages (`broker`, `data`, `messaging`, `ml`, `realtime`, `storage`) from `src.adapters`, and `ADAPTER_GROUPS` is updated to list all six. The `quant_platform_ml` facade now re-exports the full `src.mlops` public surface (`ModelRegistry`, `ModelMetadata`, `InferenceService`, `BatchInferenceRunner`, `SignalSchema`, trainer adapters, training-config helpers, etc.), exposes `src.adapters.ml` as a `quant_platform_ml.adapters` namespace, and ships dedicated `quant_platform_ml.training`, `quant_platform_ml.registry`, and `quant_platform_ml.inference` submodules for ergonomic imports. All re-exports preserve object identity with the canonical `src.*` implementations.
@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
 
 ### Fixed
+- Data/API: normalize short A-share inputs such as `60036` to `600036.SH` before fetching real web OHLCV.
 - Frontend: make macOS local Vite runs default to `http://127.0.0.1:8001`, auto-connect the paper gateway on startup, and route sidebar menu selections explicitly so Trading, Strategies, Data, Monitor, and Settings are reachable during manual verification.
 - API: include `http://127.0.0.1:3000` in default FastAPI CORS origins so macOS/Vite local Dashboard verification works from the advertised loopback URL.
 - Core risk config: keep `max_position_pct` and `max_order_pct` positive while allowing operational thresholds above 100% for explicit leveraged/stress-test configurations.
@@ -29,6 +30,7 @@ All notable changes to this project will be documented in this file.
 - Docs: repair the README "CI Status" badge URL — switched from the legacy `workflows/CI/badge.svg` shortcut (which never matched the workflow name `CI/CD Pipeline`) to the canonical `actions/workflows/ci.yml/badge.svg?branch=main` form and pointed the click target at the workflow page.
 
 ### Removed
+- Demo: remove bundled sample-data stock analysis artifacts from `examples/one_click_demo.py`; web analysis now uses real market-data providers.
 - Docs/Tooling: delete `scripts/render_readme_preview.py` — the synthetic matplotlib renderer is superseded by real captures from the live frontend and CLI plot.
 - Docs: drop obsolete preview assets `docs/assets/web-console-dashboard.svg`, `docs/assets/web-console-backtest.svg`, and `docs/assets/demo-workflow.gif` (superseded by the real PNG captures).
 

@@ -61,10 +61,10 @@
 
           <div class="form-grid two">
             <el-form-item label="Data Source">
-              <el-input v-model="form.source" placeholder="akshare" />
+              <el-input v-model="form.source" placeholder="auto" />
             </el-form-item>
             <el-form-item label="Benchmark Source">
-              <el-input v-model="form.benchmarkSource" placeholder="akshare" />
+              <el-input v-model="form.benchmarkSource" placeholder="auto" />
             </el-form-item>
           </div>
 
@@ -248,8 +248,8 @@ const form = ref({
   cash: 1_000_000,
   commission: 0.001,
   slippage: 0.001,
-  source: 'akshare',
-  benchmarkSource: 'akshare',
+  source: 'auto',
+  benchmarkSource: 'auto',
   benchmark: '',
   adj: '',
   calendarMode: 'off',
@@ -433,8 +433,8 @@ function buildPayload(): BacktestRunPayload | null {
     cash: form.value.cash,
     commission: form.value.commission,
     slippage: form.value.slippage,
-    source: form.value.source || 'akshare',
-    benchmark_source: form.value.benchmarkSource || form.value.source || 'akshare',
+    source: form.value.source || 'auto',
+    benchmark_source: form.value.benchmarkSource || form.value.source || 'auto',
     benchmark: form.value.benchmark || undefined,
     adj: form.value.adj || undefined,
     calendar_mode: form.value.calendarMode || undefined,

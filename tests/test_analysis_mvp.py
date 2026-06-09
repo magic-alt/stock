@@ -1,55 +1,94 @@
 from __future__ import annotations
 
 import time
+import math
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from src.platform.analysis_service import AnalysisRequestPayload, StockAnalysisService
 
 
-def test_stock_analysis_service_runs_with_sample_data(monkeypatch):
+def _ohlcv_frame(rows: int = 80) -> pd.DataFrame:
+    index = pd.bdate_range("2024-01-02", periods=rows)
+    close = pd.Series(
+        [10 + idx * 0.03 + math.sin(idx / 4) * 0.6 for idx in range(rows)],
+        index=index,
+        dtype=float,
+    )
+    return pd.DataFrame(
+        {
+            "open": close - 0.1,
+            "high": close + 0.3,
+            "low": close - 0.3,
+            "close": close,
+            "volume": 1_000_000 + close * 1000,
+        },
+        index=index,
+    )
+
+
+class FakeProvider:
+    def __init__(self, frame: pd.DataFrame | None = None):
+        self.frame = frame if frame is not None else _ohlcv_frame()
+
+    def load_stock_daily(self, symbols, start, end, **kwargs):
+        return {symbols[0]: self.frame}
+
+
+def test_stock_analysis_service_runs_with_real_provider_data(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
     service = StockAnalysisService()
 
     result = service.analyze(
         AnalysisRequestPayload(
-            symbol="600519.SH",
-            source="sample",
+            symbol="60036",
+            source="eastmoney",
             days=60,
             include_backtest=True,
             use_ai=True,
         )
     )
 
-    assert result["symbol"] == "600519.SH"
-    assert result["data_quality"]["source"] == "sample"
+    assert result["symbol"] == "600036.SH"
+    assert result["data_quality"]["source"] == "eastmoney"
     assert result["signal"]["rating"] in {"buy", "watch", "sell"}
     assert 0 <= result["signal"]["score"] <= 100
     assert result["backtest_preview"]["enabled"] is True
     assert result["ai_summary"]["status"] == "missing_api_key"
-    assert "Stock Analysis: 600519.SH" in result["markdown_report"]
+    assert "Stock Analysis: 600036.SH" in result["markdown_report"]
 
 
-def test_stock_analysis_auto_falls_back_to_sample(monkeypatch):
+def test_stock_analysis_auto_tries_real_provider_order(monkeypatch):
+    calls = []
+
     class BrokenProvider:
         def load_stock_daily(self, symbols, start, end):
+            calls.append("akshare")
             raise RuntimeError("network unavailable")
 
-    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: BrokenProvider())
+    def fake_get_provider(source):
+        calls.append(source)
+        if source == "eastmoney":
+            return FakeProvider()
+        return BrokenProvider()
+
+    monkeypatch.setattr("src.data_sources.providers.get_provider", fake_get_provider)
 
     result = StockAnalysisService().analyze(AnalysisRequestPayload(symbol="600519.SH", source="auto"))
 
-    assert result["data_quality"]["source"] == "sample"
-    assert any("fell back" in item for item in result["data_quality"]["warnings"])
+    assert result["data_quality"]["source"] == "eastmoney"
+    assert calls == ["eastmoney"]
 
 
-def test_analysis_capabilities_include_sample_symbols():
+def test_analysis_capabilities_expose_real_sources_only():
     capabilities = StockAnalysisService().capabilities()
 
-    assert "sample" in capabilities["sources"]
-    assert "600519.SH" in capabilities["sample_symbols"]
-    assert capabilities["default_source"] == "sample"
+    assert "sample" not in capabilities["sources"]
+    assert "eastmoney" in capabilities["sources"]
+    assert capabilities["default_source"] == "auto"
 
 
 def test_api_v2_default_cors_allows_localhost_and_loopback():
@@ -77,24 +116,67 @@ def client(monkeypatch, tmp_path: Path):
 
 def test_analysis_run_endpoint(client, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
 
     resp = client.post(
         "/api/v2/analysis/run",
-        json={"symbol": "600519.SH", "source": "sample", "days": 60, "use_ai": True},
+        json={"symbol": "60036", "source": "auto", "days": 60, "use_ai": True},
     )
 
     assert resp.status_code == 200
     body = resp.json()
     analysis = body["data"]["analysis"]
-    assert analysis["symbol"] == "600519.SH"
-    assert analysis["data_quality"]["source"] == "sample"
+    assert analysis["symbol"] == "600036.SH"
+    assert analysis["data_quality"]["source"] == "eastmoney"
     assert analysis["ai_summary"]["status"] == "missing_api_key"
 
 
-def test_analysis_job_endpoint(client):
+def test_chart_data_endpoint_normalizes_short_a_share_symbol(client, monkeypatch):
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
+
+    resp = client.get("/api/v2/chart-data?symbol=60036&days=20&source=auto")
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["symbol"] == "600036.SH"
+    assert data["source"] == "eastmoney"
+    assert len(data["dates"]) == 20
+    assert len(data["ohlc"]) == 20
+
+
+def test_backtest_endpoint_uses_real_provider_auto_source(client, monkeypatch):
+    monkeypatch.setattr(
+        "src.data_sources.providers.get_provider",
+        lambda source, **kwargs: FakeProvider(_ohlcv_frame(260)),
+    )
+
+    resp = client.post(
+        "/api/v2/backtest/run",
+        json={
+            "strategy": "macd",
+            "symbols": ["60036"],
+            "start": "2024-01-01",
+            "end": "2024-12-31",
+            "source": "auto",
+            "benchmark_source": "auto",
+            "engine": "backtrader",
+        },
+    )
+
+    assert resp.status_code == 200
+    metrics = resp.json()["data"]["metrics"]
+    assert metrics["strategy"] == "macd"
+    assert metrics["_engine"] == "backtrader"
+    assert metrics["technical_chart"]["symbol"] == "600036.SH"
+    assert "error" not in metrics
+
+
+def test_analysis_job_endpoint(client, monkeypatch):
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
+
     resp = client.post(
         "/api/v2/analysis/jobs",
-        json={"symbol": "600519.SH", "source": "sample", "days": 60},
+        json={"symbol": "600519.SH", "source": "auto", "days": 60},
     )
     assert resp.status_code == 200
     job_id = resp.json()["data"]["job_id"]
@@ -118,6 +200,6 @@ def test_analysis_job_endpoint(client):
 
 
 def test_analysis_run_endpoint_rejects_unknown_symbol(client):
-    resp = client.post("/api/v2/analysis/run", json={"symbol": "NOPE", "source": "sample"})
+    resp = client.post("/api/v2/analysis/run", json={"symbol": "600519.SH", "source": "sample"})
 
-    assert resp.status_code == 404
+    assert resp.status_code == 400
