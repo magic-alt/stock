@@ -82,6 +82,14 @@ if HAS_FASTAPI:
         register_data_lake: bool = Field(True, description="Register report artifacts in the data lake")
         data_lake_dir: Optional[str] = Field(None, description="Optional data lake directory")
 
+    class AnalysisRequest(BaseModel):
+        symbol: str = Field("600519.SH", min_length=1, description="Stock symbol to analyze")
+        days: int = Field(120, ge=10, le=500, description="Number of recent daily bars to inspect")
+        source: str = Field("sample", description="Data source: sample, auto, akshare, yfinance, tushare")
+        strategy: str = Field("macd", description="Lightweight preview strategy: macd or sma")
+        include_backtest: bool = Field(True, description="Include a lightweight backtest preview")
+        use_ai: bool = Field(False, description="Optionally request an OpenAI-compatible summary")
+
     class StrategyValidateRequest(BaseModel):
         code: str = Field(..., min_length=1, description="Python strategy code")
 
@@ -349,6 +357,64 @@ if HAS_FASTAPI:
             except Exception as e:
                 logger.error("chart_data_failed", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))
+
+        # ---- Beginner analysis endpoints ----
+
+        @app.get("/api/v2/analysis/capabilities", tags=["Analysis"])
+        async def analysis_capabilities():
+            from src.platform.analysis_service import StockAnalysisService
+
+            return ApiEnvelope(data=StockAnalysisService().capabilities())
+
+        @app.post("/api/v2/analysis/run", tags=["Analysis"])
+        async def run_analysis(req: AnalysisRequest):
+            from src.platform.analysis_service import AnalysisRequestPayload, StockAnalysisService
+
+            try:
+                payload = AnalysisRequestPayload(**_model_dump(req))
+                result = StockAnalysisService().analyze(payload)
+                return ApiEnvelope(data={"analysis": result})
+            except LookupError as exc:
+                raise HTTPException(status_code=404, detail=str(exc))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            except Exception as exc:
+                logger.error("analysis_failed", error=str(exc))
+                raise HTTPException(status_code=500, detail=str(exc))
+
+        @app.post("/api/v2/analysis/jobs", tags=["Analysis"])
+        async def submit_analysis_job(request: Request, req: AnalysisRequest):
+            from src.platform.analysis_service import run_stock_analysis_task
+
+            payload = _model_dump(req)
+            idempotency_key = request.headers.get("X-Idempotency-Key") or None
+            job_id = request.app.state.job_queue.submit(
+                "analysis",
+                run_stock_analysis_task,
+                payload,
+                idempotency_key=idempotency_key,
+            )
+            return ApiEnvelope(data={"job_id": job_id})
+
+        @app.get("/api/v2/analysis/jobs", tags=["Analysis"])
+        async def list_analysis_jobs(request: Request, limit: int = 20):
+            jobs = [
+                _jsonable(job)
+                for job in sorted(
+                    request.app.state.job_queue.store.list(),
+                    key=lambda item: item.created_at,
+                    reverse=True,
+                )
+                if job.task_type == "analysis"
+            ]
+            return ApiEnvelope(data={"jobs": jobs[: max(0, min(limit, 100))]})
+
+        @app.get("/api/v2/analysis/jobs/{job_id}", tags=["Analysis"])
+        async def get_analysis_job(request: Request, job_id: str):
+            record = request.app.state.job_queue.store.get(job_id)
+            if record is None or record.task_type != "analysis":
+                raise HTTPException(status_code=404, detail="job not found")
+            return ApiEnvelope(data={"job": _jsonable(record)})
 
         # ---- Strategy endpoints ----
 

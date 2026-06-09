@@ -2,15 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-06-07
+## [Unreleased] - 2026-06-09
 
 ### Added
+- Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with bundled sample-data fallback, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
+- Web: add a Dashboard beginner analysis panel so first-time users can run a complete sample stock analysis before configuring live data providers.
+- Demo: extend `examples/one_click_demo.py` to generate `analysis_demo.json` and `analysis_report.md` alongside the existing paper-trading and ECharts artifacts.
 - Core correctness audit: consolidate order status, event, and risk configuration single sources of truth; add package-wide future annotations to keep type evaluation consistent.
 - V6 Phase 8 (open platform — legacy shim layer): introduce `src/_legacy/` as the single mechanism for handling deprecated import paths. Adds `emit_deprecation()` (one-shot `DeprecationWarning` + structured `quant_platform.legacy` log record), `install_module_alias()` (registers a legacy dotted name in `sys.modules` as an alias of its canonical V6 module), an empty `LEGACY_ALIASES` catalogue that PR reviewers can grep, and `reset_deprecation_cache()` for tests. Entries are added per PR as legacy paths are formally retired.
 - V6 Phase 7 fill-out (`quant_platform_*` package contents): the `quant_platform_adapters_cn` facade now re-exports the six canonical adapter subpackages (`broker`, `data`, `messaging`, `ml`, `realtime`, `storage`) from `src.adapters`, and `ADAPTER_GROUPS` is updated to list all six. The `quant_platform_ml` facade now re-exports the full `src.mlops` public surface (`ModelRegistry`, `ModelMetadata`, `InferenceService`, `BatchInferenceRunner`, `SignalSchema`, trainer adapters, training-config helpers, etc.), exposes `src.adapters.ml` as a `quant_platform_ml.adapters` namespace, and ships dedicated `quant_platform_ml.training`, `quant_platform_ml.registry`, and `quant_platform_ml.inference` submodules for ergonomic imports. All re-exports preserve object identity with the canonical `src.*` implementations.
 - Docs/Tooling: add `scripts/capture_frontend_previews.py` — a Playwright + Chromium driver that opens the live Docker frontend (`docker compose up -d api frontend`), runs a real `600519.SH` backtest in the Backtest Workbench, and writes `docs/assets/web-console-dashboard.png` and `docs/assets/web-console-backtest.png` straight from the running Vue console. Trailing blank padding is auto-cropped via Pillow.
 
 ### Changed
+- Platform: make `scripts/run_platform_api.py` start FastAPI v2 by default on port 8000, with `--legacy-v1` retained for the older ThreadingHTTPServer compatibility surface.
 - Core quality: migrate configuration models to Pydantic v2 APIs, deduplicate gateway factory paths, remove adapter double-hop re-exports, consolidate pytest settings into `pyproject.toml`, and replace backtest engine `print()` output with structured logging.
 - Docs: the README "Platform at a Glance" previews now come from **real sources only** — the two Web Console screenshots are captured from the live Vue frontend running under `docker compose`, and the backtest chart is the actual matplotlib output of `python unified_backtest_framework.py run --strategy macd --symbols 600519.SH --plot` (taken from `report/<run-id>/backtest_result.png`). No synthesized/mock images.
 - Docs: rewrote the "Platform at a Glance" intro and image captions to name the real capture commands; redrew `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
@@ -42,6 +46,7 @@ All notable changes to this project will be documented in this file.
 - Core: re-export `ComponentState`, `InvalidStateTransition`, `Lifecycle`, `TransitionEvent`, `is_legal_transition`, `ComponentRecord`, `LIFECYCLE_TOPIC`, `PlatformKernel`, `get_kernel`, `reset_kernel` from `src.core` for downstream consumption. Existing imports from `src.core` are unchanged.
 
 ### Tests
+- Add beginner analysis service/API tests and extend the one-click demo regression to cover generated analysis artifacts.
 - Add V6 Phase 8 legacy shim tests (`tests/test_legacy_shim.py`) covering one-shot `DeprecationWarning` emission, structured log record fields, separate-key emission, `sys.modules` aliasing, the `LEGACY_ALIASES` catalogue surface, and the public `__all__`.
 - Add V6 Phase 7 facade fill-out tests (`tests/test_quant_platform_facades.py`) covering `quant_platform_adapters_cn` subpackage identity, `quant_platform_ml` re-export identity against `src.mlops`, the new `quant_platform_ml.{training,registry,inference}` submodules, and that `quant_platform_core`/`quant_platform_sdk`/`quant_platform_cli`/`quant_platform_web` still expose their existing surface.
 - Add Phase 7 packaging tests covering distribution manifests, layered dependencies, root package discovery, facade imports, and README discoverability.
@@ -5295,5 +5300,4 @@ Successfully modularized the monolithic `unified_backtest_framework.py` (2138 li
 - 📝 Documentation
 - 🧪 Testing
 - 📊 Metrics
-
 

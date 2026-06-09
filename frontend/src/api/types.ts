@@ -87,6 +87,75 @@ export interface BacktestRunPayload {
   engine?: string
 }
 
+export interface AnalysisPriceSummary {
+  latest: number
+  previous_close: number
+  change: number
+  change_pct: number
+  range_20d: {
+    low: number
+    high: number
+  }
+}
+
+export interface AnalysisSignal {
+  score: number
+  rating: 'buy' | 'watch' | 'sell'
+  reasons: string[]
+  risks: string[]
+  disclaimer: string
+}
+
+export interface AnalysisBacktestPreview {
+  enabled: boolean
+  strategy?: string
+  cum_return?: number
+  sharpe?: number
+  mdd?: number
+  trades?: number
+  reason?: string
+  note?: string
+}
+
+export interface AnalysisAiSummary {
+  enabled: boolean
+  status: string
+  text: string
+  model?: string
+  error?: string
+}
+
+export interface AnalysisResult {
+  symbol: string
+  as_of: string
+  data_quality: {
+    source: string
+    rows: number
+    warnings: string[]
+    [key: string]: unknown
+  }
+  price: AnalysisPriceSummary
+  indicators: Record<string, unknown>
+  signal: AnalysisSignal
+  chart_data: {
+    dates: string[]
+    ohlc: number[][]
+    volumes: number[]
+  }
+  backtest_preview: AnalysisBacktestPreview
+  ai_summary: AnalysisAiSummary
+  markdown_report: string
+}
+
+export interface AnalysisRunPayload {
+  symbol: string
+  days?: number
+  source?: string
+  strategy?: string
+  include_backtest?: boolean
+  use_ai?: boolean
+}
+
 export interface BacktestJobPayload extends BacktestRunPayload {
   plot?: boolean
   report_dir?: string

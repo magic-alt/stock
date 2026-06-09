@@ -18,9 +18,15 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+The Dashboard is the recommended first screen. Its Beginner Analysis panel runs
+against bundled sample data by default, returns a rule-based rating, reasons,
+risks, a lightweight backtest preview, and a copyable Markdown report. Real
+providers can be selected after local data dependencies are configured. AI
+summaries are optional and require `OPENAI_API_KEY`.
+
 ## Main views
 
-- Dashboard: platform status and recent backtests
+- Dashboard: beginner stock analysis, platform status, quick actions, and recent backtests
 - Backtest: strategy run form and result charts
 - Trading: paper/live gateway console
 - Strategies: strategy library and quick actions

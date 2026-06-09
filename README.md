@@ -39,7 +39,7 @@ pip install -r requirements.txt
 python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
 
-The deterministic demo uses the built-in paper gateway and bundled sample data. It writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs, data-provider tokens, or network data fetches.
+The deterministic demo uses the built-in paper gateway and bundled sample data. It writes JSON, Markdown, ECharts-ready artifacts, and a rule-based `600519.SH` analysis report without broker SDKs, data-provider tokens, or network data fetches.
 
 With Docker Compose:
 
@@ -117,11 +117,13 @@ npm ci
 npm run dev
 ```
 
+Open the Dashboard first. It includes a beginner analysis panel that runs on bundled sample data by default, then lets you switch to real providers (`auto`, `akshare`, `yfinance`, `tushare`) when your environment is ready. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
+
 Main views:
 
 | View | Purpose |
 |---|---|
-| Dashboard | platform status and recent results |
+| Dashboard | beginner analysis panel, platform status, quick actions, and recent results |
 | Backtest | strategy run form, jobs, charts, and metrics |
 | Trading | paper/live gateway connection, orders, fills, price injection |
 | Strategies | strategy library and quick backtest actions |

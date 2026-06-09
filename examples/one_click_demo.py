@@ -19,6 +19,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.platform.api_server import APIMetrics, GatewayService, MonitorService
+from src.platform.analysis_service import AnalysisRequestPayload, StockAnalysisService
 from src.platform.demo import run_paper_trading_demo, write_demo_report
 from src.platform.job_queue import JobQueue, JobStore
 
@@ -121,11 +122,27 @@ def run(output_dir: Path, sample_data: Path) -> Dict[str, str]:
     echarts_path = output_dir / "web_console_echarts.json"
     echarts_path.write_text(json.dumps(echarts_payload, ensure_ascii=False, indent=2), encoding="utf-8")
     markdown_path = write_markdown_summary(report, output_dir / "demo_report.md")
+    analysis = StockAnalysisService(sample_data_path=sample_data).analyze(
+        AnalysisRequestPayload(
+            symbol="600519.SH",
+            days=120,
+            source="sample",
+            strategy="macd",
+            include_backtest=True,
+            use_ai=False,
+        )
+    )
+    analysis_path = output_dir / "analysis_demo.json"
+    analysis_path.write_text(json.dumps(analysis, ensure_ascii=False, indent=2), encoding="utf-8")
+    analysis_markdown_path = output_dir / "analysis_report.md"
+    analysis_markdown_path.write_text(analysis["markdown_report"], encoding="utf-8")
 
     return {
         "report": str(report_path),
         "echarts": str(echarts_path.resolve()),
         "markdown": str(markdown_path.resolve()),
+        "analysis": str(analysis_path.resolve()),
+        "analysis_markdown": str(analysis_markdown_path.resolve()),
         "sample_data": str(sample_data.resolve()),
     }
 

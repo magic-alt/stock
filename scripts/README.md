@@ -12,10 +12,10 @@ python scripts/backtest_gui.py
 ```
 
 ### `run_platform_api.py`
-启动平台 API 服务（支持 v1 鉴权、JSON/SQLite 作业存储、可选审计日志）。
+启动平台 API 服务。默认启动 FastAPI v2（`/api/v2/docs`），支持 JSON/SQLite 作业存储；如需旧版 ThreadingHTTPServer v1 兼容入口，显式加 `--legacy-v1`。
 
 ```bash
-python scripts/run_platform_api.py --host 127.0.0.1 --port 8080 \
+python scripts/run_platform_api.py --host 127.0.0.1 --port 8000 \
   --jobs ./cache/platform/jobs.db \
   --api-token your_token \
   --audit-log ./logs/platform_api_audit.log
