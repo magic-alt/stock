@@ -105,7 +105,7 @@
             </el-descriptions>
 
             <el-alert
-              v-for="warning in analysisResult.data_quality.warnings"
+              v-for="warning in visibleAnalysisWarnings"
               :key="warning"
               :title="warning"
               type="warning"
@@ -155,6 +155,39 @@
             </el-button>
           </el-space>
         </el-card>
+
+        <el-card shadow="never" class="dark-card analysis-history-card">
+          <template #header>
+            <div class="card-header">
+              <span>Analysis Records</span>
+              <el-tag size="small" effect="plain">{{ analysisHistory.length }}</el-tag>
+            </div>
+          </template>
+          <div v-if="analysisHistory.length > 0" class="analysis-history">
+            <button
+              v-for="record in analysisHistory"
+              :key="record.symbol"
+              type="button"
+              class="history-item"
+              :class="{ active: analysisResult?.symbol === record.symbol }"
+              @click="selectAnalysisRecord(record)"
+            >
+              <div>
+                <div class="history-symbol">{{ record.symbol }}</div>
+                <div class="history-meta">{{ record.as_of }} · {{ record.source }}</div>
+              </div>
+              <div class="history-metrics">
+                <span :class="record.change_pct >= 0 ? 'text-green' : 'text-red'">
+                  {{ formatPct(record.change_pct) }}
+                </span>
+                <el-tag :type="record.rating === 'buy' ? 'success' : record.rating === 'sell' ? 'danger' : 'warning'" size="small">
+                  {{ record.rating.toUpperCase() }}
+                </el-tag>
+              </div>
+            </button>
+          </div>
+          <el-empty v-else description="No analysis records yet" />
+        </el-card>
       </el-col>
     </el-row>
 
@@ -201,12 +234,28 @@ import { useBacktestStore } from '@/stores/backtest'
 import client, { unwrapApiData } from '@/api/client'
 import type { AnalysisResult } from '@/api/types'
 
+const ANALYSIS_HISTORY_KEY = 'stock.dashboard.analysisHistory'
+const MAX_ANALYSIS_HISTORY = 12
+
+interface AnalysisHistoryRecord {
+  symbol: string
+  as_of: string
+  source: string
+  latest: number
+  change_pct: number
+  rating: string
+  score: number
+  saved_at: string
+  result: AnalysisResult
+}
+
 const tradingStore = useTradingStore()
 const backtestStore = useBacktestStore()
 const strategyCount = ref(0)
 const analysisLoading = ref(false)
 const analysisError = ref<string | null>(null)
 const analysisResult = ref<AnalysisResult | null>(null)
+const analysisHistory = ref<AnalysisHistoryRecord[]>([])
 const analysisForm = ref({
   symbol: '600519.SH',
   source: 'auto',
@@ -215,6 +264,10 @@ const analysisForm = ref({
 })
 
 onMounted(async () => {
+  loadAnalysisHistory()
+  if (analysisHistory.value.length > 0) {
+    selectAnalysisRecord(analysisHistory.value[0])
+  }
   await tradingStore.ensurePaperGatewayConnected()
   try {
     const resp = await client.get('/api/v2/strategies')
@@ -252,6 +305,16 @@ const analysisColor = computed(() => {
   return 'text-yellow'
 })
 
+const visibleAnalysisWarnings = computed(() => {
+  const hiddenPatterns = [
+    /^primary OHLCV verified on /i,
+    /^selected .+ because it has broader or newer OHLCV coverage than .+/i,
+  ]
+  return (analysisResult.value?.data_quality.warnings || []).filter(
+    (warning) => !hiddenPatterns.some((pattern) => pattern.test(warning)),
+  )
+})
+
 async function runAnalysis() {
   if (!analysisForm.value.symbol.trim()) {
     analysisError.value = 'Symbol is required'
@@ -270,6 +333,7 @@ async function runAnalysis() {
     })
     const data = unwrapApiData<{ analysis: AnalysisResult }>(resp.data)
     analysisResult.value = data.analysis
+    saveAnalysisRecord(data.analysis)
   } catch (e) {
     analysisError.value = (e as Error).message
   } finally {
@@ -285,6 +349,43 @@ async function copyReport() {
   } catch {
     ElMessage.error('Copy failed')
   }
+}
+
+function loadAnalysisHistory() {
+  try {
+    const raw = window.localStorage.getItem(ANALYSIS_HISTORY_KEY)
+    if (!raw) return
+    const records = JSON.parse(raw) as AnalysisHistoryRecord[]
+    analysisHistory.value = records.filter((record) => record?.symbol && record?.result).slice(0, MAX_ANALYSIS_HISTORY)
+  } catch {
+    analysisHistory.value = []
+  }
+}
+
+function saveAnalysisRecord(result: AnalysisResult) {
+  const record: AnalysisHistoryRecord = {
+    symbol: result.symbol,
+    as_of: result.as_of,
+    source: result.data_quality.source,
+    latest: result.price.latest,
+    change_pct: result.price.change_pct,
+    rating: result.signal.rating,
+    score: result.signal.score,
+    saved_at: new Date().toISOString(),
+    result,
+  }
+  analysisHistory.value = [
+    record,
+    ...analysisHistory.value.filter((item) => item.symbol !== result.symbol),
+  ].slice(0, MAX_ANALYSIS_HISTORY)
+  window.localStorage.setItem(ANALYSIS_HISTORY_KEY, JSON.stringify(analysisHistory.value))
+}
+
+function selectAnalysisRecord(record: AnalysisHistoryRecord) {
+  analysisResult.value = record.result
+  analysisForm.value.symbol = record.symbol
+  analysisForm.value.source = record.source
+  analysisError.value = null
 }
 
 function formatPct(v: number | undefined): string {
@@ -317,6 +418,10 @@ function formatNum(v: number | undefined): string {
 
 .analysis-card {
   min-height: 440px;
+}
+
+.analysis-history-card {
+  margin-top: 16px;
 }
 
 .card-header,
@@ -378,6 +483,52 @@ function formatNum(v: number | undefined): string {
 .report-actions {
   justify-content: flex-start;
   flex-wrap: wrap;
+}
+
+.analysis-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-item {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.25);
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.history-item:hover,
+.history-item.active {
+  border-color: var(--primary);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.history-symbol {
+  font-weight: 700;
+}
+
+.history-meta {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.history-metrics {
+  min-width: 86px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  font-size: 12px;
 }
 
 @media (max-width: 768px) {
