@@ -61,6 +61,24 @@ def test_stock_analysis_service_runs_with_real_provider_data(monkeypatch):
     assert "Stock Analysis: 600036.SH" in result["markdown_report"]
 
 
+def test_stock_analysis_signal_messages_include_selected_symbol(monkeypatch):
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider())
+
+    result = StockAnalysisService().analyze(
+        AnalysisRequestPayload(
+            symbol="600519.SH",
+            source="eastmoney",
+            days=60,
+            include_backtest=False,
+        )
+    )
+
+    messages = result["signal"]["reasons"] + result["signal"]["risks"]
+    assert messages
+    assert all("600519.SH" in message for message in messages)
+    assert any(any(char.isdigit() for char in message) for message in messages)
+
+
 def test_stock_analysis_auto_tries_real_provider_order(monkeypatch):
     calls = []
 

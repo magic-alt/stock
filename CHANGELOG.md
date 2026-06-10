@@ -24,6 +24,7 @@ All notable changes to this project will be documented in this file.
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
 
 ### Fixed
+- Web: add a persistent Dashboard analysis-records panel for the latest result per symbol, show stock prices with two decimals using A-share red-up/green-down coloring, hide low-level OHLCV provider verification notices, and make analysis reasons/risks include the selected symbol's latest indicator values.
 - Web/Data: make `auto` choose the verified source with the broadest/newest OHLCV coverage, so Dashboard analysis updates `600519.SH` to the latest Sina/Tencent-verified bar and Backtest uses the same verified data path instead of failing on short AKShare cache ranges.
 - Data/API: normalize short A-share inputs such as `60036` to `600036.SH` before fetching real web OHLCV.
 - Frontend: make macOS local Vite runs default to `http://127.0.0.1:8001`, auto-connect the paper gateway on startup, and route sidebar menu selections explicitly so Trading, Strategies, Data, Monitor, and Settings are reachable during manual verification.
