@@ -4,19 +4,16 @@ The web console is a Vue3 + Vite + Element Plus application backed by the FastAP
 
 ## Local development
 
-Start the API server, then run the frontend dev server:
+Start the WebUI with one command:
 
 ```bash
-python scripts/run_platform_api.py
+python webui.py
 ```
 
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-Open `http://localhost:3000`.
+The script builds or reuses `frontend/dist`, starts FastAPI on
+`127.0.0.1:8001`, serves the frontend from that same backend, and opens the
+browser. Use `--no-open` to keep the browser closed. Use `--dev` when you want
+the Vite development server with hot reload.
 
 The Dashboard is the recommended first screen. Its Beginner Analysis panel runs
 against real market data by default, returns a rule-based rating, reasons,

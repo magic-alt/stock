@@ -108,14 +108,13 @@ See [docs/STRATEGY_ADMISSION_WORKFLOW.md](docs/STRATEGY_ADMISSION_WORKFLOW.md) f
 The web console is a Vue3 + Vite + Element Plus application backed by FastAPI v2.
 
 ```bash
-# API server
-python scripts/run_platform_api.py
-
-# Frontend dev server
-cd frontend
-npm ci
-npm run dev
+python webui.py
 ```
+
+This builds or reuses `frontend/dist`, starts the FastAPI WebUI on
+`127.0.0.1:8001`, serves the frontend from that same backend, and opens the
+browser. Use `python webui.py --no-open` if you only want to start the server.
+For frontend hot reload, run `python webui.py --dev`.
 
 Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
 

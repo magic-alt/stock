@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.
+- Tooling: add daily-stock-analysis-style `python webui.py` startup plus `scripts/run_web_console.py`, serving the built frontend from FastAPI by default with `--dev` available for Vite hot reload.
 - Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with real-provider OHLCV loading, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
 - Data: add Sina and Tencent web OHLCV providers; make `auto` analysis/data flows validate AKShare, Sina Finance, and Tencent Finance in parallel before Eastmoney fallback for A-share inputs.
 - Web: add a Dashboard beginner analysis panel so first-time users can run real-data stock analysis from a stock code.
