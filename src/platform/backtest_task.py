@@ -74,14 +74,25 @@ def _build_fallback_technical_chart(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not symbols:
             return {"technical_chart": None}
         symbol = symbols[0]
-        provider = get_provider(payload.get("source", "akshare"))
-        data_map = provider.load_stock_daily(
-            [symbol],
-            payload.get("start"),
-            payload.get("end"),
-            adj=payload.get("adj"),
-            cache_dir=payload.get("cache_dir", "./cache"),
-        )
+        source = str(payload.get("source", "akshare")).lower()
+        if source == "auto":
+            from src.platform.verified_history_gateway import VerifiedHistoryGateway
+
+            gateway = VerifiedHistoryGateway(
+                source="auto",
+                benchmark_source=payload.get("benchmark_source") or "auto",
+                cache_dir=payload.get("cache_dir", "./cache"),
+            )
+            data_map = gateway.load_bars([symbol], payload.get("start"), payload.get("end"), adj=payload.get("adj"))
+        else:
+            provider = get_provider(source)
+            data_map = provider.load_stock_daily(
+                [symbol],
+                payload.get("start"),
+                payload.get("end"),
+                adj=payload.get("adj"),
+                cache_dir=payload.get("cache_dir", "./cache"),
+            )
         return build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
     except Exception:
         return {"technical_chart": None}
@@ -91,11 +102,27 @@ def run_backtest_job(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Run a single backtest task and optionally generate a report."""
     engine_name = str(payload.get("engine", "backtrader"))
     capture_cerebro = engine_name.lower() in ("backtrader", "bt")
+    source = str(payload.get("source", "akshare")).lower()
+    benchmark_source = payload.get("benchmark_source") or source
+    history_gateway = None
+    engine_source = source
+    engine_benchmark_source = benchmark_source
+    if source == "auto":
+        from src.platform.verified_history_gateway import VerifiedHistoryGateway
+
+        history_gateway = VerifiedHistoryGateway(
+            source="auto",
+            benchmark_source=benchmark_source,
+            cache_dir=payload.get("cache_dir", "./cache"),
+        )
+        engine_source = "sina"
+        engine_benchmark_source = "sina" if benchmark_source == "auto" else benchmark_source
     engine = BacktestEngine(
-        source=payload.get("source", "akshare"),
-        benchmark_source=payload.get("benchmark_source") or payload.get("source", "akshare"),
+        source=engine_source,
+        benchmark_source=engine_benchmark_source,
         cache_dir=payload.get("cache_dir", "./cache"),
         calendar_mode=payload.get("calendar_mode", "fill"),
+        history_gateway=history_gateway,
     )
     metrics = engine.run_strategy(
         payload.get("strategy", "turning_point"),

@@ -500,9 +500,14 @@ if HAS_FASTAPI:
             try:
                 from src.data_sources.providers import get_provider
 
-                provider_name = "akshare" if req.source == "auto" else req.source
-                provider = get_provider(provider_name)
-                data_map = provider.load_stock_daily([symbol], req.start, req.end, adj=req.adj)
+                if req.source == "auto":
+                    from src.platform.verified_history_gateway import VerifiedHistoryGateway
+
+                    gateway = VerifiedHistoryGateway(source="auto", benchmark_source=req.benchmark_source)
+                    data_map = gateway.load_bars([symbol], req.start, req.end, adj=req.adj)
+                else:
+                    provider = get_provider(req.source)
+                    data_map = provider.load_stock_daily([symbol], req.start, req.end, adj=req.adj)
                 payload = build_technical_chart_payload_from_frame(data_map.get(symbol), symbol=symbol)
                 if payload.get("technical_chart"):
                     return payload
@@ -533,7 +538,8 @@ if HAS_FASTAPI:
                 from src.data_sources.providers import normalize_a_share_symbol
 
                 normalized_symbols = [normalize_a_share_symbol(item) for item in req.symbols]
-                engine_source = "akshare" if req.source == "auto" else req.source
+                use_verified_auto = req.source == "auto"
+                engine_source = "sina" if use_verified_auto else req.source
                 engine_benchmark_source = req.benchmark_source or engine_source
                 if engine_benchmark_source == "auto":
                     engine_benchmark_source = engine_source
@@ -546,10 +552,19 @@ if HAS_FASTAPI:
                 )
                 engine_name = req.engine or "backtrader"
                 capture_cerebro = engine_name.lower() in ("backtrader", "bt")
+                history_gateway = None
+                if use_verified_auto:
+                    from src.platform.verified_history_gateway import VerifiedHistoryGateway
+
+                    history_gateway = VerifiedHistoryGateway(
+                        source="auto",
+                        benchmark_source=req.benchmark_source or "auto",
+                    )
                 engine = BacktestEngine(
                     source=engine_req.source,
                     benchmark_source=engine_req.benchmark_source or engine_req.source,
                     calendar_mode=engine_req.calendar_mode or "off",
+                    history_gateway=history_gateway,
                 )
                 result = engine.run_strategy(
                     strategy=engine_req.strategy,

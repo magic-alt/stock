@@ -80,6 +80,44 @@ def test_stock_analysis_auto_tries_real_provider_order(monkeypatch):
     assert set(calls) == {"akshare", "sina", "tencent"}
 
 
+def test_stock_analysis_auto_prefers_broader_verified_coverage(monkeypatch):
+    short_frame = _ohlcv_frame(rows=40, close_offset=0.0)
+    long_frame = _ohlcv_frame(rows=260, close_offset=0.0)
+
+    def fake_get_provider(source):
+        if source == "akshare":
+            return FakeProvider(short_frame)
+        return FakeProvider(long_frame)
+
+    monkeypatch.setattr("src.data_sources.providers.get_provider", fake_get_provider)
+
+    result = StockAnalysisService().analyze(AnalysisRequestPayload(symbol="600036.SH", source="auto", days=120))
+
+    assert result["data_quality"]["source"] == "sina"
+    assert result["data_quality"]["validation_status"] == "verified"
+    assert any("broader or newer" in item for item in result["data_quality"]["warnings"])
+
+
+def test_verified_history_gateway_loads_auto_range_from_complete_source(monkeypatch):
+    short_frame = _ohlcv_frame(rows=40, close_offset=0.0)
+    long_frame = _ohlcv_frame(rows=260, close_offset=0.0)
+
+    def fake_get_provider(source, **kwargs):
+        if source == "akshare":
+            return FakeProvider(short_frame)
+        return FakeProvider(long_frame)
+
+    monkeypatch.setattr("src.data_sources.providers.get_provider", fake_get_provider)
+
+    from src.platform.verified_history_gateway import VerifiedHistoryGateway
+
+    gateway = VerifiedHistoryGateway(source="auto")
+    data = gateway.load_bars(["600036.SH"], "2024-01-01", "2024-12-31")
+
+    assert len(data["600036.SH"]) == 260
+    assert gateway.data_quality["600036.SH"]["source"] == "sina"
+
+
 def test_analysis_capabilities_expose_real_sources_only():
     capabilities = StockAnalysisService().capabilities()
 

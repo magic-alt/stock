@@ -113,10 +113,21 @@ class StockAnalysisService:
         days: int,
         source: str,
     ) -> tuple[pd.DataFrame, Dict[str, Any]]:
-        warnings: List[str] = []
-        attempted: List[str] = []
         end = datetime.now().strftime("%Y-%m-%d")
         start = (datetime.now() - timedelta(days=int(days * 1.8))).strftime("%Y-%m-%d")
+        return self.load_history_range(symbol=symbol, start=start, end=end, source=source)
+
+    def load_history_range(
+        self,
+        *,
+        symbol: str,
+        start: str,
+        end: str,
+        source: str,
+    ) -> tuple[pd.DataFrame, Dict[str, Any]]:
+        """Load OHLCV history for an exact date range using analysis-grade provider validation."""
+        warnings: List[str] = []
+        attempted: List[str] = []
 
         if source == "auto":
             primary_frames, primary_warnings = self._load_parallel_sources(
@@ -296,10 +307,15 @@ class StockAnalysisService:
         ]
 
         if len(validated) >= 2:
-            source = next(provider for provider in provider_order if provider in validated)
+            source = self._select_best_covered_source(frames, validated, provider_order)
             warnings: List[str] = [
                 f"primary OHLCV verified on {date_label}: {', '.join(validated)}",
             ]
+            first_priority = next(provider for provider in provider_order if provider in validated)
+            if source != first_priority:
+                warnings.append(
+                    f"selected {source} because it has broader or newer OHLCV coverage than {first_priority}"
+                )
             if rejected:
                 warnings.append(f"primary OHLCV outliers ignored: {', '.join(rejected)}")
             return {
@@ -321,6 +337,21 @@ class StockAnalysisService:
                 + ", ".join(f"{provider}={close:.4f}" for provider, close in close_by_source.items()),
             ],
         }
+
+    def _select_best_covered_source(
+        self,
+        frames: Dict[str, pd.DataFrame],
+        validated: Sequence[str],
+        provider_order: Sequence[str],
+    ) -> str:
+        priority = {provider: idx for idx, provider in enumerate(provider_order)}
+
+        def rank(provider: str) -> tuple[int, pd.Timestamp, int]:
+            frame = frames[provider]
+            latest = pd.Timestamp(frame.index.max()) if not frame.empty else pd.Timestamp.min
+            return (len(frame), latest, -priority.get(provider, len(provider_order)))
+
+        return max(validated, key=rank)
 
     def _load_provider_history(self, symbol: str, *, start: str, end: str, provider_name: str) -> pd.DataFrame:
         from src.data_sources.providers import get_provider
