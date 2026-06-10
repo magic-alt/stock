@@ -116,7 +116,7 @@ This builds or reuses `frontend/dist`, starts the FastAPI WebUI on
 browser. Use `python webui.py --no-open` if you only want to start the server.
 For frontend hot reload, run `python webui.py --dev`.
 
-Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
+Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. The search box accepts normalized symbols, short A-share codes, or common stock names such as `贵州茅台`; analysis records are kept in browser storage and restored when the WebUI is reopened from the same browser origin. Optional AI summaries are only attempted when enabled in the UI and an OpenAI-compatible key is configured through `config.yaml` (`ai.api_key`, `ai.base_url`, `ai.model`) or environment variables (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`).
 
 Main views:
 

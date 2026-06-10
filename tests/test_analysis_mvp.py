@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 import math
 from pathlib import Path
@@ -145,6 +146,58 @@ def test_analysis_capabilities_expose_real_sources_only():
     assert "tencent" in capabilities["sources"]
     assert "eastmoney" in capabilities["sources"]
     assert capabilities["default_source"] == "auto"
+
+
+def test_analysis_ai_summary_uses_configured_openai_compatible_settings(monkeypatch):
+    from src.core.config import AIConfig, ConfigManager, GlobalConfig, set_config
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    set_config(
+        ConfigManager(
+            config=GlobalConfig(
+                ai=AIConfig(
+                    api_key="cfg-key",
+                    base_url="https://llm.example.test/v1",
+                    model="stock-model",
+                    timeout_seconds=3,
+                )
+            )
+        )
+    )
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"choices": [{"message": {"content": "configured summary"}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        assert request.full_url == "https://llm.example.test/v1/chat/completions"
+        assert request.get_header("Authorization") == "Bearer cfg-key"
+        assert timeout == 3
+        return FakeResponse()
+
+    try:
+        monkeypatch.setattr("src.platform.analysis_service.urllib.request.urlopen", fake_urlopen)
+        summary = StockAnalysisService()._build_ai_summary(
+            enabled=True,
+            symbol="600519.SH",
+            signal={"rating": "watch", "score": 55, "reasons": [], "risks": []},
+            indicators={"rsi": 50},
+            data_quality={"source": "auto"},
+        )
+    finally:
+        set_config(ConfigManager(config=GlobalConfig()))
+
+    assert summary["status"] == "ok"
+    assert summary["model"] == "stock-model"
+    assert summary["text"] == "configured summary"
 
 
 def test_api_v2_default_cors_allows_localhost_and_loopback():

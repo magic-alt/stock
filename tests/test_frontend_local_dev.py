@@ -52,3 +52,29 @@ def test_data_view_supports_local_duckdb_kline_and_update_controls():
     assert "type: 'candlestick'" in data_view
     assert "Update Local" in data_view
     assert "selectedDatasetKey" in data_view
+
+
+def test_dashboard_analysis_records_survive_page_reopen_without_overwrite():
+    dashboard = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
+
+    assert "stock.dashboard.analysisHistory" in dashboard
+    assert "loadAnalysisHistory()" in dashboard
+    assert "selectAnalysisRecord(analysisHistory.value[0])" in dashboard
+    assert "if (analysisHistory.value.length === 0)" in dashboard
+    assert "await runAnalysis()" in dashboard
+    assert "analysisResult?.data_quality.source || 'auto'" not in dashboard
+
+
+def test_dashboard_supports_stock_name_search_and_ai_summary():
+    dashboard = (ROOT / "frontend/src/views/Dashboard.vue").read_text(encoding="utf-8")
+    stock_search = (ROOT / "frontend/src/utils/stockSearch.ts").read_text(encoding="utf-8")
+
+    assert "el-autocomplete" in dashboard
+    assert "queryStockSuggestions" in dashboard
+    assert "resolveStockInput" in dashboard
+    assert "use_ai: analysisForm.value.use_ai" in dashboard
+    assert "AI Summary" in dashboard
+    assert "OPENAI_API_KEY" in dashboard
+    assert "贵州茅台" in stock_search
+    assert "600519.SH" in stock_search
+    assert "normalizeStockSymbolInput" in stock_search

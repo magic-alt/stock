@@ -23,6 +23,7 @@ from src.core.config import (
     RealtimeDataConfig,
     PortfolioConfig,
     BacktestConfig,
+    AIConfig,
     ConfigManager,
 )
 
@@ -38,6 +39,7 @@ class TestGlobalConfig:
         assert config.live_trading.broker == "xtp"
         assert config.realtime_data.provider == "simulation"
         assert config.portfolio.optimization_objective == "sharpe"
+        assert config.ai.model == "gpt-4o-mini"
 
     def test_invalid_commission_rejected(self):
         """BacktestConfig.commission > 0.1 (10%) must raise ValidationError."""
@@ -133,6 +135,24 @@ class TestGlobalConfig:
         # Exactly 1.0 is allowed
         cfg = PortfolioConfig(max_weight_per_strategy=1.0)
         assert cfg.max_weight_per_strategy == 1.0
+
+    def test_ai_config_accepts_openai_compatible_settings(self):
+        """AIConfig should accept OpenAI-compatible provider settings."""
+        cfg = AIConfig(
+            api_key="test-key",
+            base_url="https://llm.example.test/v1",
+            model="custom-stock-model",
+            timeout_seconds=15,
+        )
+        assert cfg.api_key == "test-key"
+        assert cfg.base_url == "https://llm.example.test/v1"
+        assert cfg.model == "custom-stock-model"
+        assert cfg.timeout_seconds == 15
+
+    def test_ai_config_rejects_non_positive_timeout(self):
+        """AIConfig timeout must be positive."""
+        with pytest.raises(ValidationError):
+            AIConfig(timeout_seconds=0)
 
     def test_validate_all_clean(self):
         """Default config should produce an empty (or warnings-only) list."""
@@ -298,3 +318,4 @@ class TestConfigManager:
         assert config.database.duckdb_path == "./cache/market_data.duckdb"
         assert config.monitoring.metrics_port == 9090
         assert config.performance.max_workers == 4
+        assert config.ai.model == "gpt-4o-mini"
