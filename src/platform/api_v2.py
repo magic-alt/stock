@@ -215,9 +215,48 @@ if HAS_FASTAPI:
             return frontend_dist.resolve()
         return None
 
+    def _resolve_market_data_duckdb_path() -> str:
+        from src.core.config import get_config
+
+        db_path = os.environ.get("MARKET_DATA_DUCKDB_PATH", "").strip()
+        if not db_path:
+            db_path = get_config().config.database.duckdb_path
+        return db_path
+
+    def _open_local_market_data_store(db_path: Optional[str] = None):
+        from src.data_sources.duckdb_store import DuckDBConfig, DuckDBTimeSeriesStore
+
+        resolved_path = db_path or _resolve_market_data_duckdb_path()
+        if resolved_path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(resolved_path)) or ".", exist_ok=True)
+        return DuckDBTimeSeriesStore(DuckDBConfig(db_path=resolved_path))
+
+    def _initialize_local_market_data_store(app: FastAPI) -> None:
+        app.state.local_market_data_initialized = False
+        app.state.local_market_data_error = ""
+        try:
+            store = _open_local_market_data_store(app.state.local_market_data_db_path)
+            try:
+                stats = store.stats()
+            finally:
+                store.close()
+            app.state.local_market_data_initialized = True
+            logger.info(
+                "local_market_data_store_initialized",
+                db_path=app.state.local_market_data_db_path,
+                rows=stats.get("total_rows", 0),
+            )
+        except ImportError as exc:
+            app.state.local_market_data_error = str(exc)
+            logger.warning("local_market_data_store_unavailable", error=str(exc))
+        except Exception as exc:
+            app.state.local_market_data_error = str(exc)
+            logger.warning("local_market_data_store_init_failed", error=str(exc))
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("fastapi_starting")
+        _initialize_local_market_data_store(app)
         yield
         try:
             app.state.job_queue.shutdown()
@@ -252,6 +291,9 @@ if HAS_FASTAPI:
         app.state.tracer = get_tracer()
         app.state.account_manager = AccountManager()
         app.state.capital_allocator = CapitalAllocator()
+        app.state.local_market_data_db_path = _resolve_market_data_duckdb_path()
+        app.state.local_market_data_initialized = False
+        app.state.local_market_data_error = ""
         app.state.runtime_contexts = {
             "backtest": BacktestRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
             "sandbox": SandboxRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
@@ -345,14 +387,7 @@ if HAS_FASTAPI:
             return ApiEnvelope(data=request.app.state.api_metrics.snapshot(request.app.state.job_queue))
 
         def _local_market_data_store():
-            from src.core.config import get_config
-            from src.data_sources.duckdb_store import DuckDBConfig, DuckDBTimeSeriesStore
-
-            db_path = os.environ.get("MARKET_DATA_DUCKDB_PATH", "").strip()
-            if not db_path:
-                db_path = get_config().config.database.duckdb_path
-            os.makedirs(os.path.dirname(os.path.abspath(db_path)) or ".", exist_ok=True)
-            return DuckDBTimeSeriesStore(DuckDBConfig(db_path=db_path))
+            return _open_local_market_data_store(app.state.local_market_data_db_path)
 
         def _chart_payload_from_frame(
             *,
@@ -392,7 +427,14 @@ if HAS_FASTAPI:
                     stats = store.stats()
                 finally:
                     store.close()
-                return ApiEnvelope(data={"datasets": datasets, "stats": stats})
+                return ApiEnvelope(
+                    data={
+                        "datasets": datasets,
+                        "stats": stats,
+                        "db_path": stats.get("db_path", app.state.local_market_data_db_path),
+                        "initialized": bool(app.state.local_market_data_initialized),
+                    }
+                )
             except ImportError as exc:
                 raise HTTPException(status_code=503, detail=str(exc))
             except Exception as exc:

@@ -52,6 +52,7 @@ def test_data_view_supports_local_duckdb_kline_and_update_controls():
     assert "type: 'candlestick'" in data_view
     assert "Update Local" in data_view
     assert "selectedDatasetKey" in data_view
+    assert "Local DuckDB is ready" in data_view
 
 
 def test_dashboard_analysis_records_survive_page_reopen_without_overwrite():
