@@ -30,5 +30,5 @@ def test_one_click_demo_generates_expected_artifacts(tmp_path: Path) -> None:
     assert report["summary"]["gateway_connected"] is True
 
     echarts = json.loads((tmp_path / "web_console_echarts.json").read_text(encoding="utf-8"))
-    assert "600519.SH" in echarts["series"]
-    assert "000001.SZ" in echarts["series"]
+    assert echarts["series"] == {}
+    assert "real market-data providers" in echarts["description"]

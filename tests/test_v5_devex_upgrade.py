@@ -9,6 +9,10 @@ Covers:
 - F-3: Scaffold generator
 """
 
+from pathlib import Path
+
+import pytest
+
 # Check for optional click dependency
 try:
     import click  # noqa: F401

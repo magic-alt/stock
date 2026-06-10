@@ -12,6 +12,7 @@ pytest-cache-files-*/
 test_output/
 frontend/dist/
 frontend/.vite/
+frontend/tsconfig.tsbuildinfo
 frontend/tmpclaude-*
 /site
 **/__pycache__/

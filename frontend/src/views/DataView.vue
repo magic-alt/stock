@@ -16,7 +16,7 @@
           <el-input-number v-model="form.days" :min="10" :max="500" :step="10" />
         </el-form-item>
         <el-form-item label="Source">
-          <el-input v-model="form.source" placeholder="akshare" />
+          <el-input v-model="form.source" placeholder="auto" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="loading" @click="loadData">Load</el-button>
@@ -63,7 +63,7 @@ const chartData = ref<ChartData>({ dates: [], ohlc: [], volumes: [] })
 const form = ref({
   symbol: '600519.SH',
   days: 120,
-  source: 'akshare',
+  source: 'auto',
 })
 
 const rows = computed<DataRow[]>(() =>
@@ -96,7 +96,7 @@ async function loadData() {
       params: {
         symbol: form.value.symbol.trim(),
         days: form.value.days,
-        source: form.value.source.trim() || 'akshare',
+        source: form.value.source.trim() || 'auto',
       },
     })
     chartData.value = unwrapApiData<ChartData>(resp.data)

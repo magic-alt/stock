@@ -270,7 +270,7 @@ print(f"Grid defaults: {module.grid_defaults}")
 from src.data_sources.providers import get_provider, PROVIDER_NAMES
 
 # Available providers
-print(PROVIDER_NAMES)  # ['akshare', 'yfinance', 'tushare']
+print(PROVIDER_NAMES)  # ['akshare', 'sina', 'tencent', 'eastmoney', 'yfinance', 'tushare', 'qlib']
 
 # Get provider
 provider = get_provider("akshare")

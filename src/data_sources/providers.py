@@ -16,8 +16,12 @@ V2.10.1 Update:
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Dict, Optional, Sequence, Tuple
 
 import pandas as pd
@@ -171,6 +175,61 @@ class DataProvider:
         return start_clean, end_clean
 
 
+def normalize_a_share_symbol(raw_symbol: str) -> str:
+    """Normalize common A-share inputs such as 60036 -> 600036.SH."""
+    symbol = raw_symbol.strip().upper()
+    if not symbol:
+        return symbol
+    for exchange in ("SH", "SZ", "BJ"):
+        if symbol.endswith(exchange) and "." not in symbol:
+            code = symbol[: -len(exchange)]
+            if code.isdigit():
+                return f"{code.zfill(6)}.{exchange}"
+        if symbol.startswith(exchange) and "." not in symbol:
+            code = symbol[len(exchange) :]
+            if code.isdigit():
+                return f"{code.zfill(6)}.{exchange}"
+    if "." in symbol:
+        code, exchange = symbol.split(".", 1)
+        if code.isdigit() and exchange in {"SH", "SZ", "BJ"}:
+            return f"{code.zfill(6)}.{exchange}"
+        return symbol
+    if symbol.isdigit():
+        if len(symbol) == 5 and symbol.startswith(("60", "68", "30")):
+            symbol = f"{symbol[:3]}0{symbol[3:]}"
+        else:
+            symbol = symbol.zfill(6)
+        if symbol.startswith(("5", "6", "9")):
+            exchange = "SH"
+        elif symbol.startswith(("4", "8")):
+            exchange = "BJ"
+        else:
+            exchange = "SZ"
+        return f"{symbol}.{exchange}"
+    return symbol
+
+
+def _eastmoney_secid(symbol: str) -> Optional[str]:
+    normalized = normalize_a_share_symbol(symbol)
+    code, dot, exchange = normalized.partition(".")
+    if not dot or not code.isdigit() or len(code) != 6:
+        return None
+    market = "1" if exchange == "SH" else "0"
+    return f"{market}.{code}"
+
+
+def _cn_web_symbol(symbol: str) -> Optional[str]:
+    normalized = normalize_a_share_symbol(symbol)
+    code, dot, exchange = normalized.partition(".")
+    if not dot or not code.isdigit() or len(code) != 6:
+        return None
+    if exchange == "SH":
+        return f"sh{code}"
+    if exchange == "SZ":
+        return f"sz{code}"
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Helper Functions
 # ---------------------------------------------------------------------------
@@ -275,6 +334,289 @@ def _data_checksum(df: pd.DataFrame) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # AKShare Provider
 # ---------------------------------------------------------------------------
+
+class EastmoneyProvider(DataProvider):
+    """Load A-share OHLCV data from Eastmoney web K-line endpoints."""
+
+    name = "eastmoney"
+    endpoint = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+
+    def load_stock_daily(
+        self,
+        symbols: Sequence[str],
+        start: str,
+        end: str,
+        *,
+        adj: Optional[str] = None,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> Dict[str, pd.DataFrame]:
+        start_clean, end_clean = self._validate_dates(start, end)
+        result: Dict[str, pd.DataFrame] = {}
+        for raw_symbol in symbols:
+            symbol = normalize_a_share_symbol(raw_symbol)
+            df = self._fetch_stock_from_source(symbol, start_clean, end_clean, adj=adj)
+            if df is not None and not df.empty:
+                result[symbol] = df
+                if symbol != raw_symbol:
+                    result[raw_symbol] = df
+        return result
+
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        secid = _eastmoney_secid(symbol)
+        if secid is None:
+            return None
+        fqt = {"": "0", "none": "0", "noadj": "0", "qfq": "1", "hfq": "2"}.get((adj or "qfq").lower(), "1")
+        params = {
+            "secid": secid,
+            "fields1": "f1,f2,f3,f4,f5,f6",
+            "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
+            "klt": "101",
+            "fqt": fqt,
+            "beg": start.replace("-", ""),
+            "end": end.replace("-", ""),
+        }
+        url = f"{self.endpoint}?{urllib.parse.urlencode(params)}"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+                ),
+                "Referer": "https://quote.eastmoney.com/",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise DataProviderUnavailable(f"eastmoney web fetch failed: {exc}") from exc
+
+        klines = ((payload or {}).get("data") or {}).get("klines") or []
+        rows = []
+        for item in klines:
+            parts = str(item).split(",")
+            if len(parts) < 6:
+                continue
+            rows.append(
+                {
+                    "date": parts[0],
+                    "open": parts[1],
+                    "close": parts[2],
+                    "high": parts[3],
+                    "low": parts[4],
+                    "volume": parts[5],
+                }
+            )
+        if not rows:
+            return None
+        frame = pd.DataFrame(rows)
+        frame = _standardize_stock_frame(frame)
+        return frame.loc[start:end]
+
+    def load_index_nav(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+        *,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> pd.Series:
+        symbol = normalize_a_share_symbol(index_code)
+        df = self._fetch_stock_from_source(symbol, *self._validate_dates(start, end), adj=None)
+        if df is None or df.empty:
+            return pd.Series(dtype=float)
+        return _nav_from_close(df["close"])
+
+
+class SinaProvider(DataProvider):
+    """Load A-share OHLCV data from Sina Finance K-line endpoints."""
+
+    name = "sina"
+    endpoint = "https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/CN_MarketData.getKLineData"
+
+    def load_stock_daily(
+        self,
+        symbols: Sequence[str],
+        start: str,
+        end: str,
+        *,
+        adj: Optional[str] = None,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> Dict[str, pd.DataFrame]:
+        start_clean, end_clean = self._validate_dates(start, end)
+        result: Dict[str, pd.DataFrame] = {}
+        for raw_symbol in symbols:
+            symbol = normalize_a_share_symbol(raw_symbol)
+            df = self._fetch_stock_from_source(symbol, start_clean, end_clean, adj=adj)
+            if df is not None and not df.empty:
+                result[symbol] = df
+                if symbol != raw_symbol:
+                    result[raw_symbol] = df
+        return result
+
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        provider_symbol = _cn_web_symbol(symbol)
+        if provider_symbol is None:
+            return None
+        start_dt = pd.to_datetime(start)
+        end_dt = pd.to_datetime(end)
+        datalen = max(120, min(2000, int((end_dt - start_dt).days * 2 + 60)))
+        params = {
+            "symbol": provider_symbol,
+            "scale": "240",
+            "ma": "no",
+            "datalen": str(datalen),
+        }
+        url = f"{self.endpoint}?{urllib.parse.urlencode(params)}"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://finance.sina.com.cn/",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise DataProviderUnavailable(f"sina web fetch failed: {exc}") from exc
+
+        rows = []
+        for item in payload or []:
+            rows.append(
+                {
+                    "date": item.get("day"),
+                    "open": item.get("open"),
+                    "high": item.get("high"),
+                    "low": item.get("low"),
+                    "close": item.get("close"),
+                    "volume": item.get("volume"),
+                }
+            )
+        if not rows:
+            return None
+        frame = _standardize_stock_frame(pd.DataFrame(rows))
+        return frame.loc[start:end]
+
+    def load_index_nav(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+        *,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> pd.Series:
+        df = self._fetch_stock_from_source(normalize_a_share_symbol(index_code), *self._validate_dates(start, end))
+        if df is None or df.empty:
+            return pd.Series(dtype=float)
+        return _nav_from_close(df["close"])
+
+
+class TencentProvider(DataProvider):
+    """Load A-share OHLCV data from Tencent Finance K-line endpoints."""
+
+    name = "tencent"
+    endpoint = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+
+    def load_stock_daily(
+        self,
+        symbols: Sequence[str],
+        start: str,
+        end: str,
+        *,
+        adj: Optional[str] = None,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> Dict[str, pd.DataFrame]:
+        start_clean, end_clean = self._validate_dates(start, end)
+        result: Dict[str, pd.DataFrame] = {}
+        for raw_symbol in symbols:
+            symbol = normalize_a_share_symbol(raw_symbol)
+            df = self._fetch_stock_from_source(symbol, start_clean, end_clean, adj=adj)
+            if df is not None and not df.empty:
+                result[symbol] = df
+                if symbol != raw_symbol:
+                    result[raw_symbol] = df
+        return result
+
+    def _fetch_stock_from_source(
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        adj: Optional[str] = None,
+    ) -> Optional[pd.DataFrame]:
+        provider_symbol = _cn_web_symbol(symbol)
+        if provider_symbol is None:
+            return None
+        adjust = {"": "day", "none": "day", "noadj": "day", "qfq": "qfqday", "hfq": "hfqday"}.get(
+            (adj or "qfq").lower(),
+            "qfqday",
+        )
+        limit = max(120, min(2000, int((pd.to_datetime(end) - pd.to_datetime(start)).days * 2 + 60)))
+        params = {
+            "param": f"{provider_symbol},day,{start},{end},{limit},{adjust}",
+        }
+        url = f"{self.endpoint}?{urllib.parse.urlencode(params)}"
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Referer": "https://gu.qq.com/",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            raise DataProviderUnavailable(f"tencent web fetch failed: {exc}") from exc
+
+        data = ((payload or {}).get("data") or {}).get(provider_symbol) or {}
+        klines = data.get(adjust) or data.get("qfqday") or data.get("day") or []
+        rows = []
+        for item in klines:
+            if len(item) < 6:
+                continue
+            rows.append(
+                {
+                    "date": item[0],
+                    "open": item[1],
+                    "close": item[2],
+                    "high": item[3],
+                    "low": item[4],
+                    "volume": item[5],
+                }
+            )
+        if not rows:
+            return None
+        frame = _standardize_stock_frame(pd.DataFrame(rows))
+        return frame.loc[start:end]
+
+    def load_index_nav(
+        self,
+        index_code: str,
+        start: str,
+        end: str,
+        *,
+        cache_dir: str = CACHE_DEFAULT,
+    ) -> pd.Series:
+        df = self._fetch_stock_from_source(normalize_a_share_symbol(index_code), *self._validate_dates(start, end))
+        if df is None or df.empty:
+            return pd.Series(dtype=float)
+        return _nav_from_close(df["close"])
+
 
 class AkshareProvider(DataProvider):
     """Load stock/index data from AKShare with SQLite3 caching."""
@@ -1026,7 +1368,7 @@ def get_provider(name: str, cache_dir: str = CACHE_DEFAULT) -> DataProvider:
     Factory function to create data provider instances.
     
     Args:
-        name: Provider name ('akshare', 'yfinance', 'tushare')
+        name: Provider name ('akshare', 'sina', 'tencent', 'eastmoney', 'yfinance', 'tushare')
         cache_dir: Cache directory for database storage
     
     Returns:
@@ -1034,6 +1376,12 @@ def get_provider(name: str, cache_dir: str = CACHE_DEFAULT) -> DataProvider:
     """
     if name == "akshare":
         return AkshareProvider(cache_dir)
+    elif name == "sina":
+        return SinaProvider(cache_dir)
+    elif name == "tencent":
+        return TencentProvider(cache_dir)
+    elif name == "eastmoney":
+        return EastmoneyProvider(cache_dir)
     elif name == "yfinance":
         return YFinanceProvider(cache_dir)
     elif name == "tushare":
@@ -1044,4 +1392,4 @@ def get_provider(name: str, cache_dir: str = CACHE_DEFAULT) -> DataProvider:
         raise ValueError(f"Unknown provider: {name}. Available: {PROVIDER_NAMES}")
 
 # Export available provider names for CLI
-PROVIDER_NAMES = ["akshare", "yfinance", "tushare", "qlib"]
+PROVIDER_NAMES = ["akshare", "sina", "tencent", "eastmoney", "yfinance", "tushare", "qlib"]

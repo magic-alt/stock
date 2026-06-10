@@ -6,7 +6,17 @@
 python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
 
-This command generates a deterministic paper-trading report, a Markdown summary, and ECharts-ready JSON from bundled sample data. It does not require broker SDKs, provider tokens, or network data access.
+This command generates a paper-trading report, a Markdown summary, and ECharts-ready JSON. It does not require broker SDKs.
+
+## Open the beginner Dashboard
+
+Start the FastAPI v2 server:
+
+```bash
+python webui.py
+```
+
+Open `http://127.0.0.1:8001`. The Dashboard analysis panel defaults to `source=auto`, which fetches real OHLCV data from web/provider sources validating AKShare, Sina Finance, and Tencent Finance in parallel before Eastmoney fallback. AI summaries are optional and only run when enabled plus `OPENAI_API_KEY` is configured.
 
 ## Run a backtest
 

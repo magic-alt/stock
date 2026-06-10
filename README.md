@@ -39,7 +39,7 @@ pip install -r requirements.txt
 python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
 
-The deterministic demo uses the built-in paper gateway and bundled sample data. It writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs, data-provider tokens, or network data fetches.
+The demo uses the built-in paper gateway and writes JSON, Markdown, and ECharts-ready artifacts without broker SDKs. Stock analysis in the web console fetches real market data through the `auto` provider path, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback.
 
 With Docker Compose:
 
@@ -108,20 +108,21 @@ See [docs/STRATEGY_ADMISSION_WORKFLOW.md](docs/STRATEGY_ADMISSION_WORKFLOW.md) f
 The web console is a Vue3 + Vite + Element Plus application backed by FastAPI v2.
 
 ```bash
-# API server
-python scripts/run_platform_api.py
-
-# Frontend dev server
-cd frontend
-npm ci
-npm run dev
+python webui.py
 ```
+
+This builds or reuses `frontend/dist`, starts the FastAPI WebUI on
+`127.0.0.1:8001`, serves the frontend from that same backend, and opens the
+browser. Use `python webui.py --no-open` if you only want to start the server.
+For frontend hot reload, run `python webui.py --dev`.
+
+Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. Optional AI summaries are only attempted when enabled in the UI and `OPENAI_API_KEY` is configured.
 
 Main views:
 
 | View | Purpose |
 |---|---|
-| Dashboard | platform status and recent results |
+| Dashboard | beginner analysis panel, platform status, quick actions, and recent results |
 | Backtest | strategy run form, jobs, charts, and metrics |
 | Trading | paper/live gateway connection, orders, fills, price injection |
 | Strategies | strategy library and quick backtest actions |
@@ -209,8 +210,8 @@ Deep architecture references:
 | A-share rules | calendar alignment, T+1, limit handling, lot sizing | backtest engine and execution modeling |
 | Web console | Dashboard, Backtest, Trading, Strategies, Data, Monitor, Settings | `frontend/` |
 | API | versioned FastAPI v2 endpoints | `/api/v2/docs` |
-| Paper trading | deterministic paper gateway and demo workflow | `examples/one_click_demo.py` |
-| Sample data | bundled synthetic A-share-style OHLCV fixture | `sample_data/a_share_demo_ohlcv.csv` |
+| Paper trading | deterministic paper gateway workflow | `examples/one_click_demo.py` |
+| Market data | real OHLCV providers, validating AKShare, Sina Finance, and Tencent Finance in parallel via `auto`; Eastmoney is a later fallback | `src/data_sources/providers.py` |
 | Live gateways | XtQuant/QMT, XTP, Hundsun UFT, EastMoney adapters | [docs/GATEWAY_SDK_SETUP.md](docs/GATEWAY_SDK_SETUP.md) |
 | Operations | Docker, Compose, Kubernetes manifests, health checks | [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
 
@@ -218,7 +219,7 @@ Deep architecture references:
 
 - Real broker SDKs require user-provided accounts, credentials, broker permissions, and local SDK binaries. Stub and mock paths are for development, CI, and integration planning.
 - AKShare/TuShare workflows may need network access; TuShare requires `TUSHARE_TOKEN` for token-gated data.
-- Demo outputs and sample workflows are for engineering validation and education, not investment advice.
+- Demo outputs and paper workflows are for engineering validation and education, not investment advice.
 - The open-source focus remains A-share research, backtesting, admission, paper trading, and gateway adapters; some long-term platform work is still evolving.
 
 ## Validation
@@ -235,6 +236,12 @@ docker compose config
 ```
 
 Local CI mirror:
+
+```bash
+python scripts/local_ci.py --jobs test --skip-install
+```
+
+Windows PowerShell remains supported:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/local_ci.ps1 -Jobs test -SkipInstall

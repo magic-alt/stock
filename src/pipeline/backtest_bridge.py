@@ -37,6 +37,7 @@ Usage::
 """
 from __future__ import annotations
 
+import importlib.util
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -170,9 +171,7 @@ class FundamentalFactorFeed:
         This is a convenience helper; for multi-symbol backtests call
         :meth:`merged_frame` and build feeds manually.
         """
-        try:
-            import backtrader as bt
-        except ImportError:
+        if importlib.util.find_spec("backtrader") is None:
             raise ImportError("backtrader is required for to_backtrader_feed()")
 
         sym = symbol or (self.symbols[0] if self.symbols else None)
