@@ -18,6 +18,12 @@ try:
 except ImportError:
     _HAS_DUCKDB = False
 
+try:
+    import pyarrow  # noqa: F401
+    _HAS_PYARROW = True
+except ImportError:
+    _HAS_PYARROW = False
+
 
 # ===========================================================================
 # B-2: DuckDB Time Series Store
@@ -156,6 +162,7 @@ class TestDuckDBTimeSeriesStore:
         assert "close" in agg.columns
         store.close()
 
+    @pytest.mark.skipif(not _HAS_PYARROW, reason="pyarrow not installed")
     def test_export_parquet(self):
         from src.data_sources.duckdb_store import DuckDBTimeSeriesStore, DuckDBConfig
         store = DuckDBTimeSeriesStore(DuckDBConfig(db_path=":memory:"))
