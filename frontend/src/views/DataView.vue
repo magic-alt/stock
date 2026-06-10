@@ -57,7 +57,7 @@
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" class="mb-4" />
       <el-alert
         v-if="localDatasets.length === 0 && !datasetsLoading"
-        title="No local DuckDB datasets yet. Use Update Local to fetch and persist the current symbol."
+        title="Local DuckDB is ready. Use Update Local to fetch and persist the current symbol."
         type="info"
         show-icon
         :closable="false"
