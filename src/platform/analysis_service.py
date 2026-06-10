@@ -68,7 +68,7 @@ class StockAnalysisService:
 
         frame = frame.tail(days).copy()
         indicators = self._calculate_indicators(frame)
-        signal = self._build_signal(frame, indicators)
+        signal = self._build_signal(symbol, frame, indicators)
         chart_data = self._build_chart_payload(frame)
         backtest_preview = (
             self._build_backtest_preview(frame, strategy=request.strategy)
@@ -452,9 +452,10 @@ class StockAnalysisService:
             },
         }
 
-    def _build_signal(self, frame: pd.DataFrame, indicators: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_signal(self, symbol: str, frame: pd.DataFrame, indicators: Dict[str, Any]) -> Dict[str, Any]:
         latest = float(frame["close"].iloc[-1])
         previous = float(frame["close"].iloc[-2]) if len(frame) > 1 else latest
+        change_pct = (latest / previous - 1) if previous else 0.0
         ma = indicators["ma"]
         macd = indicators["macd"]
         rsi = float(indicators["rsi"])
@@ -467,45 +468,48 @@ class StockAnalysisService:
 
         if ma["trend"] == "up":
             score += 12
-            reasons.append("MA5 is above MA20, showing short-term trend support.")
+            reasons.append(
+                f"{symbol}: MA5 {ma['ma5']:.2f} is above MA20 {ma['ma20']:.2f}, showing short-term trend support."
+            )
         else:
             score -= 10
-            risks.append("MA5 is below MA20, so the short-term trend is weak.")
+            risks.append(f"{symbol}: MA5 {ma['ma5']:.2f} is below MA20 {ma['ma20']:.2f}, so the short-term trend is weak.")
 
         if macd["bias"] == "bullish":
             score += 10
-            reasons.append("MACD histogram is positive.")
+            reasons.append(f"{symbol}: MACD histogram is positive at {macd['hist']:.4f}.")
         else:
             score -= 8
-            risks.append("MACD histogram is negative.")
+            risks.append(f"{symbol}: MACD histogram is negative at {macd['hist']:.4f}.")
 
         if 45 <= rsi <= 68:
             score += 8
-            reasons.append("RSI is in a constructive neutral zone.")
+            reasons.append(f"{symbol}: RSI is {rsi:.1f}, a constructive neutral zone.")
         elif rsi > 75:
             score -= 12
-            risks.append("RSI is overbought and pullback risk is elevated.")
+            risks.append(f"{symbol}: RSI is {rsi:.1f}, overbought with elevated pullback risk.")
         elif rsi < 35:
             score -= 6
-            risks.append("RSI is weak and momentum has not recovered.")
+            risks.append(f"{symbol}: RSI is {rsi:.1f}, weak momentum that has not recovered.")
 
         if latest >= previous:
             score += 5
-            reasons.append("Latest close is above the previous close.")
+            reasons.append(f"{symbol}: latest close {latest:.2f} is {change_pct * 100:.2f}% above the previous close.")
         else:
             score -= 4
+            risks.append(f"{symbol}: latest close {latest:.2f} is {abs(change_pct) * 100:.2f}% below the previous close.")
 
         if float(boll["position"]) > 0.9:
-            risks.append("Price is near the upper Bollinger band; chase risk is higher.")
+            risks.append(f"{symbol}: price is near the upper Bollinger band; chase risk is higher.")
             score -= 5
         elif float(boll["position"]) < 0.2:
-            risks.append("Price is near the lower Bollinger band; trend confirmation is needed.")
+            risks.append(f"{symbol}: price is near the lower Bollinger band; trend confirmation is needed.")
 
         if volume_ratio >= 1.2:
-            reasons.append("Volume is above its 20-day average.")
+            reasons.append(f"{symbol}: volume is {volume_ratio:.2f}x its 20-day average.")
             score += 4
         elif volume_ratio < 0.7:
-            risks.append("Volume is below its 20-day average, reducing signal quality.")
+            risks.append(f"{symbol}: volume is only {volume_ratio:.2f}x its 20-day average, reducing signal quality.")
             score -= 3
 
         score = int(max(0, min(100, score)))
@@ -517,9 +521,9 @@ class StockAnalysisService:
             rating = "sell"
 
         if not reasons:
-            reasons.append("No strong bullish confirmation was detected.")
+            reasons.append(f"{symbol}: no strong bullish confirmation was detected from the latest OHLCV data.")
         if not risks:
-            risks.append("No major rule-based risk flag was detected.")
+            risks.append(f"{symbol}: no major rule-based risk flag was detected from the latest OHLCV data.")
 
         return {
             "score": score,

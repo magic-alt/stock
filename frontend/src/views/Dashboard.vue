@@ -61,8 +61,8 @@
               <div>
                 <div class="stat-label">{{ analysisResult.symbol }} · {{ analysisResult.as_of }}</div>
                 <div class="analysis-price">
-                  {{ formatNum(analysisResult.price.latest) }}
-                  <span :class="analysisResult.price.change_pct >= 0 ? 'text-green' : 'text-red'">
+                  {{ formatPrice(analysisResult.price.latest) }}
+                  <span :class="priceChangeClass(analysisResult.price.change_pct)">
                     {{ formatPct(analysisResult.price.change_pct) }}
                   </span>
                 </div>
@@ -177,7 +177,8 @@
                 <div class="history-meta">{{ record.as_of }} · {{ record.source }}</div>
               </div>
               <div class="history-metrics">
-                <span :class="record.change_pct >= 0 ? 'text-green' : 'text-red'">
+                <span>{{ formatPrice(record.latest) }}</span>
+                <span :class="priceChangeClass(record.change_pct)">
                   {{ formatPct(record.change_pct) }}
                 </span>
                 <el-tag :type="record.rating === 'buy' ? 'success' : record.rating === 'sell' ? 'danger' : 'warning'" size="small">
@@ -396,6 +397,16 @@ function formatPct(v: number | undefined): string {
 function formatNum(v: number | undefined): string {
   if (v === undefined || v !== v) return 'N/A'
   return v.toFixed(4)
+}
+
+function formatPrice(v: number | undefined): string {
+  if (v === undefined || v !== v) return 'N/A'
+  return v.toFixed(2)
+}
+
+function priceChangeClass(v: number | undefined): string {
+  if (v === undefined || v !== v) return ''
+  return v >= 0 ? 'text-red' : 'text-green'
 }
 </script>
 
