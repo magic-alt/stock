@@ -11,7 +11,7 @@ import time
 import math
 import uuid
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -92,6 +92,16 @@ if HAS_FASTAPI:
         strategy: str = Field("macd", description="Lightweight preview strategy: macd or sma")
         include_backtest: bool = Field(True, description="Include a lightweight backtest preview")
         use_ai: bool = Field(False, description="Optionally request an OpenAI-compatible summary")
+
+    class LocalDataUpdateRequest(BaseModel):
+        symbol: str = Field("600519.SH", min_length=1, description="Stock symbol to update")
+        source: str = Field("auto", description="Remote source used to refresh local DuckDB data")
+        days: int = Field(250, ge=10, le=5000, description="Recent daily bars to fetch when start/end are omitted")
+        start: Optional[str] = Field(None, description="Optional start date YYYY-MM-DD")
+        end: Optional[str] = Field(None, description="Optional end date YYYY-MM-DD")
+        freq: str = Field("daily", description="Local frequency label")
+        adj: Optional[str] = Field(None, description="Adjustment mode passed to the data provider")
+        replace: bool = Field(True, description="Replace existing local rows for symbol+freq")
 
     class StrategyValidateRequest(BaseModel):
         code: str = Field(..., min_length=1, description="Python strategy code")
@@ -334,6 +344,114 @@ if HAS_FASTAPI:
                 return Response(content=body, media_type="text/plain; version=0.0.4")
             return ApiEnvelope(data=request.app.state.api_metrics.snapshot(request.app.state.job_queue))
 
+        def _local_market_data_store():
+            from src.core.config import get_config
+            from src.data_sources.duckdb_store import DuckDBConfig, DuckDBTimeSeriesStore
+
+            db_path = os.environ.get("MARKET_DATA_DUCKDB_PATH", "").strip()
+            if not db_path:
+                db_path = get_config().config.database.duckdb_path
+            os.makedirs(os.path.dirname(os.path.abspath(db_path)) or ".", exist_ok=True)
+            return DuckDBTimeSeriesStore(DuckDBConfig(db_path=db_path))
+
+        def _chart_payload_from_frame(
+            *,
+            symbol: str,
+            source: str,
+            df,
+            data_quality: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
+            dates = [str(d.date()) if hasattr(d, "date") else str(d) for d in df.index]
+            ohlc = [
+                [float(row["open"]), float(row["close"]), float(row["low"]), float(row["high"])]
+                for _, row in df.iterrows()
+            ]
+            volumes = [float(row.get("volume", 0)) for _, row in df.iterrows()]
+            quality = data_quality or {
+                "source": source,
+                "rows": len(df),
+                "warnings": [],
+                "validation_status": "local" if source == "local" else "loaded",
+            }
+            return {
+                "symbol": symbol,
+                "source": quality.get("source", source),
+                "dates": dates,
+                "ohlc": ohlc,
+                "volumes": volumes,
+                "warnings": quality.get("warnings", []),
+                "data_quality": quality,
+            }
+
+        @app.get("/api/v2/local-data", tags=["Data"])
+        async def list_local_data(freq: str = "daily"):
+            try:
+                store = _local_market_data_store()
+                try:
+                    datasets = store.list_datasets(freq=freq.strip() or None)
+                    stats = store.stats()
+                finally:
+                    store.close()
+                return ApiEnvelope(data={"datasets": datasets, "stats": stats})
+            except ImportError as exc:
+                raise HTTPException(status_code=503, detail=str(exc))
+            except Exception as exc:
+                logger.error("local_data_list_failed", error=str(exc))
+                raise HTTPException(status_code=500, detail=str(exc))
+
+        @app.post("/api/v2/local-data/update", tags=["Data"])
+        async def update_local_data(req: LocalDataUpdateRequest):
+            from src.data_sources.providers import normalize_a_share_symbol
+            from src.platform.analysis_service import StockAnalysisService
+
+            symbol = normalize_a_share_symbol(req.symbol)
+            if not symbol.strip():
+                raise HTTPException(status_code=400, detail="symbol is required")
+            source = req.source.strip().lower() or "auto"
+            if source == "local":
+                raise HTTPException(status_code=400, detail="source=local cannot refresh local data")
+            freq = req.freq.strip().lower() or "daily"
+            end = req.end or date.today().isoformat()
+            start = req.start or (datetime.strptime(end, "%Y-%m-%d").date() - timedelta(days=req.days * 2)).isoformat()
+            try:
+                service = StockAnalysisService()
+                df, data_quality = service.load_history_range(
+                    symbol=symbol,
+                    start=start,
+                    end=end,
+                    source=source,
+                )
+                if not req.start and not req.end:
+                    df = df.tail(req.days)
+
+                if df is None or df.empty:
+                    raise HTTPException(status_code=404, detail=f"no OHLCV data found for {symbol}")
+
+                store = _local_market_data_store()
+                try:
+                    rows = store.ingest(symbol, df, freq=freq, replace=req.replace)
+                    datasets = [item for item in store.list_datasets(freq=freq) if item["symbol"] == symbol]
+                    stats = store.stats()
+                finally:
+                    store.close()
+                return ApiEnvelope(
+                    data={
+                        "symbol": symbol,
+                        "source": data_quality.get("source", source),
+                        "rows": rows,
+                        "dataset": datasets[0] if datasets else None,
+                        "stats": stats,
+                        "data_quality": {**data_quality, "rows": rows},
+                    }
+                )
+            except HTTPException:
+                raise
+            except ImportError as exc:
+                raise HTTPException(status_code=503, detail=str(exc))
+            except Exception as exc:
+                logger.error("local_data_update_failed", error=str(exc))
+                raise HTTPException(status_code=500, detail=str(exc))
+
         @app.get("/api/v2/chart-data", tags=["Data"])
         async def chart_data(symbol: str, days: int = 120, source: str = "auto"):
             from src.data_sources.providers import normalize_a_share_symbol
@@ -342,45 +460,50 @@ if HAS_FASTAPI:
             normalized_symbol = normalize_a_share_symbol(symbol)
             if not normalized_symbol.strip():
                 raise HTTPException(status_code=400, detail="symbol is required")
-            days = max(10, min(days, 500))
+            days = max(10, min(days, 5000))
             try:
                 provider_source = source.strip().lower() or "auto"
-                service = StockAnalysisService()
-                df, data_quality = service._load_history(
-                    symbol=normalized_symbol,
-                    days=days,
-                    source=provider_source,
-                )
+                if provider_source == "local":
+                    store = _local_market_data_store()
+                    try:
+                        df = store.query(normalized_symbol, freq="daily").tail(days)
+                        local_rows = store.count(normalized_symbol, freq="daily")
+                    finally:
+                        store.close()
+                    data_quality = {
+                        "source": "local",
+                        "rows": int(local_rows),
+                        "warnings": [],
+                        "validation_status": "local_duckdb",
+                    }
+                else:
+                    service = StockAnalysisService()
+                    df, data_quality = service._load_history(
+                        symbol=normalized_symbol,
+                        days=days,
+                        source=provider_source,
+                    )
 
                 if df is None or df.empty:
                     raise HTTPException(
                         status_code=404,
                         detail=(
-                            f"no real OHLCV data found for {normalized_symbol}; attempted: "
-                            f"{', '.join(data_quality.get('attempted_sources', []))}"
+                            f"no OHLCV data found for {normalized_symbol}; attempted: "
+                            f"{', '.join(data_quality.get('attempted_sources', [provider_source]))}"
                         ),
                     )
 
                 df = df.tail(days)
-                dates = [str(d.date()) if hasattr(d, "date") else str(d) for d in df.index]
-                ohlc = [
-                    [float(row["open"]), float(row["close"]), float(row["low"]), float(row["high"])]
-                    for _, row in df.iterrows()
-                ]
-                volumes = [float(row.get("volume", 0)) for _, row in df.iterrows()]
-                return ApiEnvelope(
-                    data={
-                        "symbol": normalized_symbol,
-                        "source": data_quality.get("source", provider_source),
-                        "dates": dates,
-                        "ohlc": ohlc,
-                        "volumes": volumes,
-                        "warnings": data_quality.get("warnings", []),
-                        "data_quality": data_quality,
-                    }
-                )
+                return ApiEnvelope(data=_chart_payload_from_frame(
+                    symbol=normalized_symbol,
+                    source=provider_source,
+                    df=df,
+                    data_quality=data_quality,
+                ))
             except HTTPException:
                 raise
+            except ImportError as exc:
+                raise HTTPException(status_code=503, detail=str(exc))
             except Exception as e:
                 logger.error("chart_data_failed", error=str(e))
                 raise HTTPException(status_code=500, detail=str(e))

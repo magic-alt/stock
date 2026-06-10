@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-06-09
 
 ### Added
+- Web/Data: add a local DuckDB-backed Data page flow with dataset selection, provider refresh, K-line charting, and a configurable `database.duckdb_path` for persisted OHLCV records.
 - Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.
 - Tooling: add daily-stock-analysis-style `python webui.py` startup plus `scripts/run_web_console.py`, serving the built frontend from FastAPI by default with `--dev` available for Vite hot reload.
 - Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with real-provider OHLCV loading, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
