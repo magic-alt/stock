@@ -92,6 +92,7 @@ logging:
 # 数据库配置
 database:
   path: ./cache/market_data.db
+  duckdb_path: ./cache/market_data.duckdb
   backup_enabled: true
   backup_interval_hours: 24  # 每24小时备份一次
   backup_retention_days: 30  # 保留30天备份

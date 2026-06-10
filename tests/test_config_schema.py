@@ -315,6 +315,7 @@ class TestConfigManager:
 
         assert config.data.provider == "akshare"
         assert config.database.path == "./cache/market_data.db"
+        assert config.database.duckdb_path == "./cache/market_data.duckdb"
         assert config.monitoring.metrics_port == 9090
         assert config.performance.max_workers == 4
         assert config.ai.model == "gpt-4o-mini"

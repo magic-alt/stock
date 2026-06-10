@@ -276,6 +276,7 @@ class PortfolioConfig(BaseModel):
 class DatabaseConfig(BaseModel):
     """Database/cache persistence configuration."""
     path: str = "./cache/market_data.db"
+    duckdb_path: str = "./cache/market_data.duckdb"
     backup_enabled: bool = True
     backup_interval_hours: int = Field(24, gt=0)
     backup_retention_days: int = Field(30, gt=0)

@@ -27,7 +27,7 @@ summaries are optional and require `OPENAI_API_KEY`.
 - Backtest: strategy run form and result charts
 - Trading: paper/live gateway console
 - Strategies: strategy library and quick actions
-- Data: OHLCV browser
+- Data: local DuckDB OHLCV datasets, update action, K-line chart, and table browser
 - Monitor: system, gateway, queue, and alert snapshots
 
 ## Related references

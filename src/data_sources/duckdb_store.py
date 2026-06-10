@@ -246,6 +246,40 @@ class DuckDBTimeSeriesStore:
             ).fetchall()
         return [r[0] for r in result]
 
+    def list_datasets(self, freq: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List local OHLCV datasets with date ranges and row counts."""
+        sql = """
+        SELECT
+            symbol,
+            freq,
+            COUNT(*) AS rows,
+            MIN(ts) AS start,
+            MAX(ts) AS end,
+            MAX(ts) AS updated_at
+        FROM ohlcv
+        """
+        params: list = []
+        if freq:
+            sql += " WHERE freq = ?"
+            params.append(freq)
+        sql += " GROUP BY symbol, freq ORDER BY symbol, freq"
+        result = self.conn.execute(sql, params).fetchdf()
+        if result.empty:
+            return []
+        datasets: List[Dict[str, Any]] = []
+        for _, row in result.iterrows():
+            datasets.append(
+                {
+                    "symbol": str(row["symbol"]),
+                    "freq": str(row["freq"]),
+                    "rows": int(row["rows"]),
+                    "start": self._format_ts(row["start"]),
+                    "end": self._format_ts(row["end"]),
+                    "updated_at": self._format_ts(row["updated_at"]),
+                }
+            )
+        return datasets
+
     def count(self, symbol: Optional[str] = None, freq: Optional[str] = None) -> int:
         """Count rows in the store."""
         sql = "SELECT COUNT(*) FROM ohlcv"
@@ -374,3 +408,9 @@ class DuckDBTimeSeriesStore:
             "frequencies": freqs,
             "db_path": self.config.db_path,
         }
+
+    @staticmethod
+    def _format_ts(value: Any) -> str:
+        if hasattr(value, "date"):
+            return value.date().isoformat()
+        return str(value)

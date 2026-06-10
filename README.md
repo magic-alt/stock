@@ -126,7 +126,7 @@ Main views:
 | Backtest | strategy run form, jobs, charts, and metrics |
 | Trading | paper/live gateway connection, orders, fills, price injection |
 | Strategies | strategy library and quick backtest actions |
-| Data | OHLCV browser |
+| Data | local DuckDB OHLCV datasets, update action, K-line chart, and table browser |
 | Monitor | system, queue, gateway, and alert snapshots |
 | Settings | local platform settings |
 

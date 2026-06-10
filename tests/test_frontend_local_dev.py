@@ -32,12 +32,26 @@ def test_frontend_uses_real_market_data_sources_by_default():
 
     assert 'value="sample"' not in dashboard
     assert "source: 'auto'" in dashboard
-    assert "source: 'auto'" in data_view
+    assert "source: 'local'" in data_view
     assert "source: 'auto'" in backtest
+    assert 'value="auto"' in data_view
     assert 'value="akshare"' in dashboard
     assert 'value="sina"' in dashboard
     assert 'value="tencent"' in dashboard
     assert 'value="eastmoney"' in dashboard
+
+
+def test_data_view_supports_local_duckdb_kline_and_update_controls():
+    data_view = (ROOT / "frontend/src/views/DataView.vue").read_text(encoding="utf-8")
+
+    assert "Local DuckDB" in data_view
+    assert "/api/v2/local-data" in data_view
+    assert "/api/v2/local-data/update" in data_view
+    assert "source=local" not in data_view
+    assert "echarts.init" in data_view
+    assert "type: 'candlestick'" in data_view
+    assert "Update Local" in data_view
+    assert "selectedDatasetKey" in data_view
 
 
 def test_dashboard_analysis_records_survive_page_reopen_without_overwrite():

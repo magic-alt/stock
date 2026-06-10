@@ -255,6 +255,41 @@ def test_chart_data_endpoint_normalizes_short_a_share_symbol(client, monkeypatch
     assert len(data["ohlc"]) == 20
 
 
+def test_local_duckdb_update_list_and_chart_endpoints(client, monkeypatch, tmp_path):
+    pytest.importorskip("duckdb")
+    from src.core.config import ConfigManager, GlobalConfig, set_config
+
+    monkeypatch.setattr("src.data_sources.providers.get_provider", lambda source: FakeProvider(_ohlcv_frame(30)))
+    set_config(ConfigManager(config=GlobalConfig(database={"duckdb_path": str(tmp_path / "market.duckdb")})))
+    try:
+        update_resp = client.post(
+            "/api/v2/local-data/update",
+            json={"symbol": "600036SH", "source": "eastmoney", "days": 20},
+        )
+        assert update_resp.status_code == 200
+        update = update_resp.json()["data"]
+        assert update["symbol"] == "600036.SH"
+        assert update["rows"] == 20
+
+        list_resp = client.get("/api/v2/local-data")
+        assert list_resp.status_code == 200
+        datasets = list_resp.json()["data"]["datasets"]
+        assert datasets[0]["symbol"] == "600036.SH"
+        assert datasets[0]["freq"] == "daily"
+        assert datasets[0]["rows"] == 20
+
+        chart_resp = client.get("/api/v2/chart-data?symbol=600036SH&days=10&source=local")
+        assert chart_resp.status_code == 200
+        chart = chart_resp.json()["data"]
+        assert chart["symbol"] == "600036.SH"
+        assert chart["source"] == "local"
+        assert chart["data_quality"]["validation_status"] == "local_duckdb"
+        assert len(chart["dates"]) == 10
+        assert len(chart["ohlc"]) == 10
+    finally:
+        set_config(ConfigManager(config=GlobalConfig()))
+
+
 def test_backtest_endpoint_uses_real_provider_auto_source(client, monkeypatch):
     monkeypatch.setattr(
         "src.data_sources.providers.get_provider",
