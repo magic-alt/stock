@@ -9,9 +9,13 @@ Covers:
 - F-3: Scaffold generator
 """
 
-from __future__ import annotations
+# Check for optional click dependency
+try:
+    import click  # noqa: F401
+    _HAS_CLICK = True
+except ImportError:
+    _HAS_CLICK = False
 
-from pathlib import Path
 
 # ===========================================================================
 # D-1: Docker configuration validation
@@ -93,6 +97,8 @@ class TestCLIHelpers:
         from src.cli.main import _print_panel
         _print_panel("Title", "Content")
 
+
+@pytest.mark.skipif(not _HAS_CLICK, reason="click not installed")
 class TestCLICommands:
     """Test CLI Click commands."""
 
@@ -272,6 +278,8 @@ class TestScaffoldGenerator:
         assert _to_class_name("alpha") == "Alpha"
         assert _to_class_name("pe_ratio_factor") == "PeRatioFactor"
 
+
+@pytest.mark.skipif(not _HAS_CLICK, reason="click not installed")
 class TestScaffoldCLI:
     """Test scaffold CLI commands."""
 

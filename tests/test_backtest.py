@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from src.backtest.engine import BacktestEngine
+from src.backtest.engine import BacktestEngine, _compute_metrics_vectorized
 from src.backtest.analysis import pareto_front, save_heatmap
 from src.backtest.plotting import (
     generate_backtest_report, plot_backtest_with_indicators
@@ -34,7 +34,6 @@ class TestBacktestEngine:
     
     def test_engine_creation(self):
         """测试引擎创建"""
-        # BacktestEngine使用不同的参数
         engine = BacktestEngine(
             source="akshare",
             cache_dir=str(self.temp_dir)
@@ -42,46 +41,60 @@ class TestBacktestEngine:
         assert engine is not None
         assert engine.source == "akshare"
     
-    def test_engine_data_loading(self):
-        """测试数据加载"""
+    def test_engine_has_gateway(self):
+        """测试引擎拥有数据网关"""
         engine = BacktestEngine(
             source="akshare",
             cache_dir=str(self.temp_dir)
         )
-        
-        # BacktestEngine有不同的数据加载方式，简化测试
-        assert engine is not None
-        assert hasattr(engine, 'gw')
-    
-    def test_engine_run_backtest(self):
-        """测试运行回测"""
-        engine = BacktestEngine(
-            source="akshare",
-            cache_dir=str(self.temp_dir)
-        )
-        
-        # BacktestEngine简化测试，只验证对象和基本方法
-        assert engine is not None
-        assert hasattr(engine, 'gw')
+        assert engine.gw is not None
         assert hasattr(engine, 'run_strategy')
     
-    def test_engine_multiple_symbols(self):
-        """测试多股票回测"""
+    def test_engine_metrics_cache(self):
+        """测试引擎指标缓存"""
         engine = BacktestEngine(
             source="akshare",
             cache_dir=str(self.temp_dir)
         )
+        assert isinstance(engine._metrics_cache, dict)
+    
+    def test_compute_metrics_vectorized_basic(self):
+        """测试向量化指标计算"""
+        nav = pd.Series([1.0, 1.05, 1.10, 0.95, 1.0, 1.15, 1.20])
+        metrics = _compute_metrics_vectorized(nav)
         
-        # BacktestEngine简化测试，只验证对象
-        assert engine is not None
-        assert hasattr(engine, 'gw')
+        assert isinstance(metrics, dict)
+        assert "sharpe" in metrics
+        assert "sortino" in metrics
+        assert "max_drawdown" in metrics
+        assert "cagr" in metrics
+        assert "var_95" in metrics
+        assert "es_95" in metrics
+        assert "vol" in metrics
+    
+    def test_compute_metrics_vectorized_drawdown(self):
+        """测试向量化最大回撤计算"""
+        # Known drawdown: peak=1.2, trough=0.9, mdd=0.25
+        nav = pd.Series([1.0, 1.1, 1.2, 0.9, 1.0])
+        metrics = _compute_metrics_vectorized(nav)
+        assert metrics["max_drawdown"] == pytest.approx(0.25, abs=0.01)
+    
+    def test_compute_metrics_vectorized_empty(self):
+        """测试空NAV的指标计算"""
+        metrics = _compute_metrics_vectorized(pd.Series(dtype=float))
+        assert isinstance(metrics, dict)
+        assert np.isnan(metrics["sharpe"])
+    
+    def test_compute_metrics_vectorized_short(self):
+        """测试单值NAV的指标计算"""
+        metrics = _compute_metrics_vectorized(pd.Series([1.0]))
+        assert np.isnan(metrics["sharpe"])
 
 class TestAnalysis:
     """测试分析模块"""
     
     def test_pareto_front(self):
         """测试帕累托前沿"""
-        # 创建测试DataFrame
         df = pd.DataFrame({
             'sharpe': [0.1, 0.15, 0.12, 0.08, 0.2],
             'cum_return': [0.05, 0.08, 0.06, 0.04, 0.12],
@@ -92,6 +105,8 @@ class TestAnalysis:
         
         assert pareto_df is not None
         assert len(pareto_df) > 0
+        # The best sharpe+return point should be in the Pareto front
+        assert any(pareto_df["sharpe"] >= 0.15)
     
     def test_pareto_front_empty(self):
         """测试空数据的帕累托前沿"""
@@ -101,6 +116,7 @@ class TestAnalysis:
     
     def test_save_heatmap(self):
         """测试保存热力图"""
+        pytest.importorskip("matplotlib")
         temp_dir = tempfile.mkdtemp()
         
         try:
@@ -116,8 +132,8 @@ class TestAnalysis:
             
             save_heatmap(module, df, temp_dir)
             
-            # 验证文件创建
-            assert True  # 简化验证
+            # 验证输出目录存在
+            assert Path(temp_dir).exists()
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -132,14 +148,20 @@ class TestPlotting:
         """清理"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    def test_generate_backtest_report_exists(self):
-        """测试generate_backtest_report函数存在"""
-        # 简化测试，只验证函数可导入
+    def test_generate_backtest_report_callable(self):
+        """测试generate_backtest_report函数可调用"""
         assert callable(generate_backtest_report)
+        # Verify the function signature accepts the expected parameters
+        import inspect
+        sig = inspect.signature(generate_backtest_report)
+        params = list(sig.parameters.keys())
+        assert "cerebro" in params
+        assert "strategy_name" in params
+        assert "metrics" in params
+        assert "report_dir" in params
     
-    def test_plot_backtest_with_indicators_exists(self):
-        """测试plot_backtest_with_indicators函数存在"""
-        # 简化测试，只验证函数可导入
+    def test_plot_backtest_with_indicators_callable(self):
+        """测试plot_backtest_with_indicators函数可调用"""
         assert callable(plot_backtest_with_indicators)
 
 class TestStrategyModules:
@@ -152,10 +174,19 @@ class TestStrategyModules:
     
     def test_strategy_registry_contains_modules(self):
         """测试策略注册表包含StrategyModule对象"""
-        # 简化测试，只验证注册表结构
         for name, module in STRATEGY_REGISTRY.items():
             assert isinstance(name, str)
             assert module is not None
+            # Each module should have a name attribute
+            assert hasattr(module, 'name')
+            assert module.name == name
+    
+    def test_strategy_registry_has_known_strategies(self):
+        """测试策略注册表包含已知策略"""
+        # At minimum, ema and macd should be registered
+        known = {"ema", "macd", "bollinger", "rsi"}
+        found = known & set(STRATEGY_REGISTRY.keys())
+        assert len(found) >= 2, f"Expected at least 2 of {known}, found {found}"
 
 class TestBacktestIntegration:
     """回测模块集成测试"""
@@ -170,47 +201,23 @@ class TestBacktestIntegration:
         """清理"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
     
-    def test_full_backtest_pipeline(self):
-        """测试完整回测流程"""
-        try:
-            # 1. 创建引擎
-            engine = BacktestEngine(
-                strategy_class="BuyAndHold",
-                strategy_params={},
-                initial_capital=100000.0,
-                output_dir=str(self.output_dir)
-            )
-            
-            # 2. 加载数据
-            dates = pd.date_range('2024-01-01', periods=50, freq='D')
-            close_prices = 100 * (1 + np.random.randn(50).cumsum() * 0.01)
-            data = pd.DataFrame({
-                'open': close_prices * 0.99,
-                'high': close_prices * 1.02,
-                'low': close_prices * 0.98,
-                'close': close_prices,
-                'volume': np.random.uniform(1000000, 2000000, 50)
-            }, index=dates)
-            
-            engine.load_data({"600519.SH": data})
-            
-            # 3. 运行回测
-            results = engine.run()
-            
-            # 4. 分析结果（简化 - 不使用不存在的函数）
-            if results and 'equity_curve' in results:
-                equity = results['equity_curve']
-                # 手动计算基本指标
-                returns = equity.pct_change().dropna()
-                assert returns is not None
-                assert len(returns) > 0
-            
-            # 5. 简单验证结果存在
-            if results:
-                assert isinstance(results, dict)
+    def test_engine_strategy_registry_access(self):
+        """测试引擎可以访问策略注册表"""
+        engine = BacktestEngine(
+            source="akshare",
+            cache_dir=str(self.temp_dir)
+        )
+        assert engine is not None
         
-        except Exception as e:
-            pytest.skip(f"Full pipeline test failed: {e}")
+        # Verify strategy registry is accessible
+        from src.backtest.strategy_modules import STRATEGY_REGISTRY
+        assert len(STRATEGY_REGISTRY) > 0
+        
+        # Verify at least one strategy has required attributes
+        for name, module in list(STRATEGY_REGISTRY.items())[:1]:
+            assert hasattr(module, 'coerce')
+            assert hasattr(module, 'param_names')
+            assert hasattr(module, 'grid_defaults')
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
