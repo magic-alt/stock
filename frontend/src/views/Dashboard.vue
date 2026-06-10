@@ -15,13 +15,28 @@
           <template #header>
             <div class="card-header">
               <span>Beginner Analysis</span>
-              <el-tag size="small" effect="plain">{{ analysisResult?.data_quality.source || 'auto' }}</el-tag>
             </div>
           </template>
 
           <el-form :model="analysisForm" inline size="small" class="analysis-toolbar">
-            <el-form-item label="Symbol">
-              <el-input v-model="analysisForm.symbol" placeholder="600519.SH" clearable />
+            <el-form-item label="Search">
+              <el-autocomplete
+                v-model="analysisForm.symbol"
+                value-key="value"
+                placeholder="600519.SH / 贵州茅台"
+                clearable
+                class="stock-search"
+                :fetch-suggestions="queryStockSuggestions"
+                @select="selectStockSuggestion"
+                @keyup.enter="runAnalysis"
+              >
+                <template #default="{ item }">
+                  <div class="stock-option">
+                    <span>{{ item.symbol }}</span>
+                    <small>{{ item.name }}</small>
+                  </div>
+                </template>
+              </el-autocomplete>
             </el-form-item>
             <el-form-item label="Source">
               <el-select v-model="analysisForm.source" class="source-select">
@@ -38,7 +53,7 @@
               <el-input-number v-model="analysisForm.days" :min="10" :max="500" :step="10" />
             </el-form-item>
             <el-form-item>
-              <el-checkbox v-model="analysisForm.use_ai">AI</el-checkbox>
+              <el-checkbox v-model="analysisForm.use_ai">AI Summary</el-checkbox>
             </el-form-item>
             <el-form-item>
               <el-button type="primary" :loading="analysisLoading" @click="runAnalysis">
@@ -96,6 +111,7 @@
             </el-row>
 
             <el-descriptions :column="4" border size="small" class="mb-4">
+              <el-descriptions-item label="Source">{{ analysisResult.data_quality.source }}</el-descriptions-item>
               <el-descriptions-item label="Rows">{{ analysisResult.data_quality.rows }}</el-descriptions-item>
               <el-descriptions-item label="20D Low">{{ formatNum(analysisResult.price.range_20d.low) }}</el-descriptions-item>
               <el-descriptions-item label="20D High">{{ formatNum(analysisResult.price.range_20d.high) }}</el-descriptions-item>
@@ -103,6 +119,19 @@
                 {{ analysisResult.backtest_preview.enabled ? formatPct(analysisResult.backtest_preview.cum_return) : 'N/A' }}
               </el-descriptions-item>
             </el-descriptions>
+
+            <div v-if="showAiSummary" class="mini-panel ai-summary-panel">
+              <div class="panel-title">
+                <span>AI Summary</span>
+                <el-tag :type="aiSummaryTagType" size="small">{{ analysisResult.ai_summary.status }}</el-tag>
+              </div>
+              <p v-if="analysisResult.ai_summary.text" class="ai-summary-text">
+                {{ analysisResult.ai_summary.text }}
+              </p>
+              <p v-else class="ai-summary-text muted">
+                {{ aiSummaryFallback }}
+              </p>
+            </div>
 
             <el-alert
               v-for="warning in visibleAnalysisWarnings"
@@ -234,6 +263,8 @@ import { useTradingStore } from '@/stores/trading'
 import { useBacktestStore } from '@/stores/backtest'
 import client, { unwrapApiData } from '@/api/client'
 import type { AnalysisResult } from '@/api/types'
+import { resolveStockInput, searchStocks } from '@/utils/stockSearch'
+import type { StockSearchResult } from '@/utils/stockSearch'
 
 const ANALYSIS_HISTORY_KEY = 'stock.dashboard.analysisHistory'
 const MAX_ANALYSIS_HISTORY = 12
@@ -248,6 +279,10 @@ interface AnalysisHistoryRecord {
   score: number
   saved_at: string
   result: AnalysisResult
+}
+
+interface StockSuggestion extends StockSearchResult {
+  value: string
 }
 
 const tradingStore = useTradingStore()
@@ -275,7 +310,9 @@ onMounted(async () => {
     const data = unwrapApiData<{ count: number }>(resp.data)
     strategyCount.value = data.count || 0
   } catch { /* ignore */ }
-  await runAnalysis()
+  if (analysisHistory.value.length === 0) {
+    await runAnalysis()
+  }
 })
 
 const statsCards = computed(() => [
@@ -316,16 +353,39 @@ const visibleAnalysisWarnings = computed(() => {
   )
 })
 
+const showAiSummary = computed(() => Boolean(analysisResult.value?.ai_summary.enabled || analysisForm.value.use_ai))
+
+const aiSummaryTagType = computed(() => {
+  const status = analysisResult.value?.ai_summary.status
+  if (status === 'ok') return 'success'
+  if (status === 'error' || status === 'missing_api_key') return 'danger'
+  return 'info'
+})
+
+const aiSummaryFallback = computed(() => {
+  const summary = analysisResult.value?.ai_summary
+  if (!summary) return 'Enable AI Summary and run analysis.'
+  if (summary.status === 'missing_api_key') {
+    return 'OPENAI_API_KEY is not configured for the WebUI process.'
+  }
+  if (summary.status === 'error') {
+    return summary.error || 'AI summary request failed.'
+  }
+  return 'AI Summary was not requested for this analysis.'
+})
+
 async function runAnalysis() {
-  if (!analysisForm.value.symbol.trim()) {
+  const resolvedSymbol = resolveStockInput(analysisForm.value.symbol)
+  if (!resolvedSymbol) {
     analysisError.value = 'Symbol is required'
     return
   }
+  analysisForm.value.symbol = resolvedSymbol
   analysisLoading.value = true
   analysisError.value = null
   try {
     const resp = await client.post('/api/v2/analysis/run', {
-      symbol: analysisForm.value.symbol.trim(),
+      symbol: resolvedSymbol,
       source: analysisForm.value.source,
       days: analysisForm.value.days,
       strategy: 'macd',
@@ -340,6 +400,14 @@ async function runAnalysis() {
   } finally {
     analysisLoading.value = false
   }
+}
+
+function queryStockSuggestions(query: string, callback: (items: StockSuggestion[]) => void) {
+  callback(searchStocks(query).map((item) => ({ ...item, value: item.label })))
+}
+
+function selectStockSuggestion(item: StockSuggestion) {
+  analysisForm.value.symbol = item.symbol
 }
 
 async function copyReport() {
@@ -454,6 +522,21 @@ function priceChangeClass(v: number | undefined): string {
   width: 130px;
 }
 
+.stock-search {
+  width: 220px;
+}
+
+.stock-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stock-option small {
+  color: var(--text-secondary);
+}
+
 .analysis-result {
   display: flex;
   flex-direction: column;
@@ -483,12 +566,31 @@ function priceChangeClass(v: number | undefined): string {
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .mini-panel ul {
   padding-left: 18px;
   color: var(--text-secondary);
   line-height: 1.55;
+}
+
+.ai-summary-panel {
+  min-height: 96px;
+}
+
+.ai-summary-text {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.muted {
+  opacity: 0.78;
 }
 
 .report-actions {

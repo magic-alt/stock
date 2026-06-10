@@ -29,6 +29,7 @@ __all__ = [
     "DatabaseConfig",
     "MonitoringConfig",
     "PerformanceConfig",
+    "AIConfig",
     "GlobalConfig",
     "ConfigManager",
     "get_config",
@@ -312,6 +313,16 @@ class PerformanceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AIConfig(BaseModel):
+    """OpenAI-compatible model configuration for optional analysis summaries."""
+    api_key: str = Field("", description="API key for the configured AI provider")
+    base_url: str = Field("https://api.openai.com/v1", description="OpenAI-compatible API base URL")
+    model: str = Field("gpt-4o-mini", description="Model used for stock analysis summaries")
+    timeout_seconds: float = Field(8.0, gt=0, description="AI request timeout")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class GlobalConfig(BaseModel):
     """Global configuration container."""
     data: DataConfig = Field(default_factory=DataConfig)
@@ -328,6 +339,7 @@ class GlobalConfig(BaseModel):
     platform: PlatformConfig = Field(default_factory=PlatformConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
+    ai: AIConfig = Field(default_factory=AIConfig)
 
     model_config = ConfigDict(validate_assignment=True, extra="forbid")
 

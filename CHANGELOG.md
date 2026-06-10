@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-06-09
+## [Unreleased] - 2026-06-10
 
 ### Added
 - Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.
@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Open Source: add beginner-friendly `/api/v2/analysis/*` stock analysis endpoints with real-provider OHLCV loading, rule-based technical scoring, Markdown reports, lightweight backtest previews, and optional OpenAI-compatible summaries.
 - Data: add Sina and Tencent web OHLCV providers; make `auto` analysis/data flows validate AKShare, Sina Finance, and Tencent Finance in parallel before Eastmoney fallback for A-share inputs.
 - Web: add a Dashboard beginner analysis panel so first-time users can run real-data stock analysis from a stock code.
+- Web: add Dashboard stock search by A-share code or common stock name and show optional AI summary output from the configured OpenAI-compatible model/API key.
 - Core correctness audit: consolidate order status, event, and risk configuration single sources of truth; add package-wide future annotations to keep type evaluation consistent.
 - Integration audit: add kernel bootstrap component registration helpers, a pipeline-to-backtest bridge, and a rebalance executor that translates portfolio target drift into order-manager instructions.
 - V6 Phase 8 (open platform — legacy shim layer): introduce `src/_legacy/` as the single mechanism for handling deprecated import paths. Adds `emit_deprecation()` (one-shot `DeprecationWarning` + structured `quant_platform.legacy` log record), `install_module_alias()` (registers a legacy dotted name in `sys.modules` as an alias of its canonical V6 module), an empty `LEGACY_ALIASES` catalogue that PR reviewers can grep, and `reset_deprecation_cache()` for tests. Entries are added per PR as legacy paths are formally retired.
@@ -22,6 +23,7 @@ All notable changes to this project will be documented in this file.
 - Docs: the README "Platform at a Glance" previews now come from **real sources only** — the two Web Console screenshots are captured from the live Vue frontend running under `docker compose`, and the backtest chart is the actual matplotlib output of `python unified_backtest_framework.py run --strategy macd --symbols 600519.SH --plot` (taken from `report/<run-id>/backtest_result.png`). No synthesized/mock images.
 - Docs: rewrote the "Platform at a Glance" intro and image captions to name the real capture commands; redrew `docs/assets/architecture-overview.svg` to match the V6 layered architecture (Plugin SDK → SPI → Engines/Adapters → Runtime contexts → Kernel).
 - Docs: rename the README "5-Second Preview" section to "Platform at a Glance" so the heading matches what the panel actually shows.
+- Web: restore Dashboard analysis records from browser storage without auto-overwriting them on page reopen; the default analysis now runs only when no saved records exist.
 
 ### Fixed
 - Web: add a persistent Dashboard analysis-records panel for the latest result per symbol, show stock prices with two decimals using A-share red-up/green-down coloring, hide low-level OHLCV provider verification notices, and make analysis reasons/risks include the selected symbol's latest indicator values.

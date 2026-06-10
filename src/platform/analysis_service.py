@@ -604,12 +604,13 @@ class StockAnalysisService:
     ) -> Dict[str, Any]:
         if not enabled:
             return {"enabled": False, "status": "disabled", "text": ""}
-        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        ai_settings = self._ai_settings()
+        api_key = ai_settings["api_key"]
         if not api_key:
             return {"enabled": False, "status": "missing_api_key", "text": ""}
 
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        base_url = ai_settings["base_url"].rstrip("/")
+        model = ai_settings["model"]
         prompt = (
             "Summarize this rule-based stock analysis in 3 concise bullet points. "
             "Do not provide personalized financial advice.\n"
@@ -633,7 +634,7 @@ class StockAnalysisService:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=ai_settings["timeout_seconds"]) as response:
                 body = json.loads(response.read().decode("utf-8"))
             text = body.get("choices", [{}])[0].get("message", {}).get("content", "")
             return {"enabled": True, "status": "ok", "model": model, "text": text}
@@ -701,9 +702,39 @@ class StockAnalysisService:
             "strategies": ["macd", "sma"],
             "ai": {
                 "optional": True,
-                "enabled": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+                "enabled": bool(self._ai_settings()["api_key"]),
+                "config": ["ai.api_key", "ai.base_url", "ai.model", "ai.timeout_seconds"],
                 "env": ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_MODEL"],
             },
+        }
+
+    def _ai_settings(self) -> Dict[str, Any]:
+        config_values = {
+            "api_key": "",
+            "base_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini",
+            "timeout_seconds": 8.0,
+        }
+        try:
+            from src.core.config import get_config
+
+            ai_config = get_config().config.ai
+            config_values.update(
+                {
+                    "api_key": ai_config.api_key.strip(),
+                    "base_url": ai_config.base_url.strip() or config_values["base_url"],
+                    "model": ai_config.model.strip() or config_values["model"],
+                    "timeout_seconds": float(ai_config.timeout_seconds),
+                }
+            )
+        except Exception as exc:
+            logger.warning("analysis_ai_config_load_failed", error=str(exc))
+
+        return {
+            "api_key": os.environ.get("OPENAI_API_KEY", "").strip() or config_values["api_key"],
+            "base_url": os.environ.get("OPENAI_BASE_URL", "").strip() or config_values["base_url"],
+            "model": os.environ.get("OPENAI_MODEL", "").strip() or config_values["model"],
+            "timeout_seconds": config_values["timeout_seconds"],
         }
 
     @staticmethod

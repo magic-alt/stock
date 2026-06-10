@@ -113,6 +113,14 @@ performance:
   cache_enabled: true  # 启用数据缓存
   cache_expire_days: 1  # 缓存过期天数
 
+# AI 大模型配置（兼容 OpenAI Chat Completions API）
+# 推荐通过环境变量 OPENAI_API_KEY 注入密钥；此处留空可避免误提交凭证。
+ai:
+  api_key: ""  # 也可使用 OPENAI_API_KEY
+  base_url: "https://api.openai.com/v1"  # 也可使用 OPENAI_BASE_URL
+  model: "gpt-4o-mini"  # 也可使用 OPENAI_MODEL
+  timeout_seconds: 8.0
+
 # Live Trading Configuration (V4.0)
 live_trading:
   enabled: false
