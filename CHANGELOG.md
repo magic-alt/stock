@@ -5,6 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased] - 2026-06-10
 
 ### Added
+- Web/Settings: expand the Settings view from API-token-only storage into categorized editors for the full `GlobalConfig`, backed by read/save config API endpoints that persist to the local `.env` created from `.env.example`.
 - Data/API: initialize the configured local DuckDB market-data database on FastAPI startup so the Data page always has a persistent store ready before the first dataset refresh.
 - Web/Data: add a local DuckDB-backed Data page flow with dataset selection, provider refresh, K-line charting, and a configurable `database.duckdb_path` for persisted OHLCV records.
 - Tooling: add cross-platform `scripts/local_ci.py` so macOS/Linux developers can run the same local CI job names without installing PowerShell.

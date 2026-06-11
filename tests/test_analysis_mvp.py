@@ -319,6 +319,53 @@ def test_local_duckdb_database_is_created_on_app_startup(monkeypatch, tmp_path):
         set_config(ConfigManager(config=GlobalConfig()))
 
 
+def test_settings_config_endpoints_read_validate_and_persist(monkeypatch, tmp_path):
+    pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+    from src.core.config import ConfigManager, GlobalConfig, set_config
+    from src.platform.api_v2 import create_app
+
+    config_path = tmp_path / ".env"
+    monkeypatch.setenv("STOCK_ENV_PATH", str(config_path))
+    monkeypatch.setenv("PLATFORM_JOB_STORE", str(tmp_path / "jobs.json"))
+    monkeypatch.setenv("MARKET_DATA_DUCKDB_PATH", str(tmp_path / "market.duckdb"))
+    set_config(ConfigManager(config=GlobalConfig()))
+    try:
+        app = create_app(enable_cors=False)
+        with TestClient(app) as test_client:
+            read_resp = test_client.get("/api/v2/settings/config")
+            assert read_resp.status_code == 200
+            payload = read_resp.json()["data"]
+            assert payload["config_path"] == str(config_path)
+            assert payload["config_source"] == "env"
+            assert "backtest" in payload["config"]
+            assert "risk" in payload["config"]
+            assert "live_trading" in payload["config"]
+            assert "properties" in payload["schema"]
+
+            next_config = payload["config"]
+            next_config["backtest"]["initial_cash"] = 321000.0
+            next_config["data"]["provider"] = "sina"
+            next_config["ai"]["model"] = "gpt-4o-mini"
+            update_resp = test_client.put("/api/v2/settings/config", json={"config": next_config})
+            assert update_resp.status_code == 200
+            updated = update_resp.json()["data"]
+            assert updated["config"]["backtest"]["initial_cash"] == 321000.0
+            assert updated["config"]["data"]["provider"] == "sina"
+            assert config_path.exists()
+            saved_env = config_path.read_text(encoding="utf-8")
+            assert 'STOCK__BACKTEST__INITIAL_CASH=321000.0' in saved_env
+            assert 'STOCK__DATA__PROVIDER="sina"' in saved_env
+
+            invalid_config = dict(next_config)
+            invalid_config["logging"] = {**invalid_config["logging"], "level": "NOPE"}
+            invalid_resp = test_client.put("/api/v2/settings/config", json={"config": invalid_config})
+            assert invalid_resp.status_code == 400
+    finally:
+        monkeypatch.delenv("STOCK_ENV_PATH", raising=False)
+        set_config(ConfigManager(config=GlobalConfig()))
+
+
 def test_backtest_endpoint_uses_real_provider_auto_source(client, monkeypatch):
     monkeypatch.setattr(
         "src.data_sources.providers.get_provider",

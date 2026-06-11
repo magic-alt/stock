@@ -25,6 +25,9 @@ from src.core.config import (
     BacktestConfig,
     AIConfig,
     ConfigManager,
+    ensure_env_file,
+    load_env_config_data,
+    save_config_to_env_file,
 )
 
 # ---------------------------------------------------------------------------
@@ -263,6 +266,65 @@ class TestConfigManager:
         manager = ConfigManager()
         config = manager.load()
         assert config.logging.level == "DEBUG"
+
+    def test_stock_env_file_loads_global_config(self, monkeypatch, tmp_path):
+        """STOCK__SECTION__FIELD entries in .env should map to GlobalConfig."""
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "\n".join(
+                [
+                    'STOCK__DATA__PROVIDER="sina"',
+                    "STOCK__BACKTEST__INITIAL_CASH=765432.0",
+                    'STOCK__AI__BASE_URL="https://llm.example.test/v1"',
+                    'STOCK__REALTIME_DATA__FALLBACK_PROVIDERS=["sina","tencent"]',
+                ]
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("STOCK_ENV_PATH", str(env_file))
+
+        manager = ConfigManager()
+        config = manager.load()
+
+        assert config.data.provider == "sina"
+        assert config.backtest.initial_cash == 765432.0
+        assert config.ai.base_url == "https://llm.example.test/v1"
+        assert config.realtime_data.fallback_providers == ["sina", "tencent"]
+
+    def test_save_config_to_env_file_preserves_non_stock_values(self, tmp_path):
+        """Saving Settings config should not discard unrelated local env values."""
+        env_file = tmp_path / ".env"
+        env_file.write_text("CUSTOM_SECRET=keep-me\nSTOCK__DATA__PROVIDER=\"akshare\"\n", encoding="utf-8")
+        config = GlobalConfig()
+        config.data.provider = "tencent"
+        config.ai.model = "stock-model"
+
+        save_config_to_env_file(config, str(env_file))
+        saved = env_file.read_text(encoding="utf-8")
+
+        assert "CUSTOM_SECRET=keep-me" in saved
+        assert 'STOCK__DATA__PROVIDER="tencent"' in saved
+        assert 'STOCK__AI__MODEL="stock-model"' in saved
+
+    def test_ensure_env_file_copies_example(self, tmp_path):
+        """First WebUI startup should create .env from .env.example when present."""
+        example = tmp_path / ".env.example"
+        target = tmp_path / ".env"
+        example.write_text('STOCK__DATA__PROVIDER="eastmoney"\n', encoding="utf-8")
+
+        created = ensure_env_file(str(target), example_path=str(example))
+
+        assert created == target
+        assert target.read_text(encoding="utf-8") == example.read_text(encoding="utf-8")
+
+    def test_repository_env_example_loads(self):
+        """.env.example must stay aligned with GlobalConfig schema."""
+        data = load_env_config_data(env_path=".env.example")
+        config = GlobalConfig(**data)
+
+        assert config.data.provider == "akshare"
+        assert config.database.duckdb_path == "./cache/market_data.duckdb"
+        assert config.ai.model == "gpt-4o-mini"
 
     def test_config_property_returns_defaults_when_not_loaded(self):
         """Accessing .config before load() must still give a valid GlobalConfig."""

@@ -6,6 +6,7 @@
 /mlruns
 /data_lake
 logs/
+.env
 .coverage
 .pytest_cache/
 pytest-cache-files-*/

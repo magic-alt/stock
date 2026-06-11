@@ -6,7 +6,9 @@ Provides centralized settings for backtest, data, risk, and execution.
 """
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import yaml
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -32,9 +34,20 @@ __all__ = [
     "AIConfig",
     "GlobalConfig",
     "ConfigManager",
+    "DEFAULT_ENV_EXAMPLE_PATH",
+    "DEFAULT_ENV_PATH",
+    "STOCK_ENV_PREFIX",
+    "ensure_env_file",
     "get_config",
+    "load_env_config_data",
+    "save_config_to_env_file",
     "set_config",
 ]
+
+
+DEFAULT_ENV_PATH = ".env"
+DEFAULT_ENV_EXAMPLE_PATH = ".env.example"
+STOCK_ENV_PREFIX = "STOCK__"
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +393,151 @@ class GlobalConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# .env helpers
+# ---------------------------------------------------------------------------
+
+def _deep_merge(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base)
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _parse_env_file(path: str) -> Dict[str, str]:
+    path_obj = Path(path)
+    if not path_obj.exists():
+        return {}
+
+    values: Dict[str, str] = {}
+    with open(path_obj, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if key:
+                values[key] = value
+    return values
+
+
+def _parse_env_value(value: str) -> Any:
+    raw = value.strip()
+    if raw == "":
+        return ""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def _format_env_value(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _set_nested_config_value(config_data: Dict[str, Any], keys: List[str], value: Any) -> None:
+    current = config_data
+    for key in keys[:-1]:
+        current = current.setdefault(key, {})
+    current[keys[-1]] = value
+
+
+def _stock_env_key(section: str, field: str) -> str:
+    return f"{STOCK_ENV_PREFIX}{section.upper()}__{field.upper()}"
+
+
+def _config_to_env_values(config: GlobalConfig) -> Dict[str, str]:
+    values: Dict[str, str] = {}
+    dumped = config.model_dump()
+    for section, section_values in dumped.items():
+        if not isinstance(section_values, dict):
+            continue
+        for field, value in section_values.items():
+            values[_stock_env_key(section, field)] = _format_env_value(value)
+    return values
+
+
+def load_env_config_data(
+    *,
+    prefix: str = STOCK_ENV_PREFIX,
+    env_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Load GlobalConfig-compatible overrides from .env and process env."""
+    path = env_path or os.environ.get("STOCK_ENV_PATH", DEFAULT_ENV_PATH)
+    raw_values = _parse_env_file(path)
+    for key, value in os.environ.items():
+        if key.startswith(prefix):
+            raw_values[key] = value
+
+    config_data: Dict[str, Any] = {}
+    for key, raw_value in raw_values.items():
+        if not key.startswith(prefix):
+            continue
+        suffix = key[len(prefix):]
+        parts = [part.lower() for part in suffix.split("__") if part]
+        if len(parts) < 2:
+            continue
+        _set_nested_config_value(config_data, parts, _parse_env_value(raw_value))
+
+    return config_data
+
+
+def ensure_env_file(
+    path: str = DEFAULT_ENV_PATH,
+    *,
+    example_path: str = DEFAULT_ENV_EXAMPLE_PATH,
+) -> Path:
+    """Ensure the local .env file exists, copying .env.example when available."""
+    path_obj = Path(path)
+    if path_obj.exists():
+        return path_obj
+
+    path_obj.parent.mkdir(parents=True, exist_ok=True)
+    example_obj = Path(example_path)
+    if example_obj.exists():
+        shutil.copyfile(example_obj, path_obj)
+    else:
+        save_config_to_env_file(GlobalConfig(), str(path_obj))
+    return path_obj
+
+
+def save_config_to_env_file(
+    config: GlobalConfig,
+    path: str = DEFAULT_ENV_PATH,
+    *,
+    prefix: str = STOCK_ENV_PREFIX,
+) -> None:
+    """Persist GlobalConfig values to a local dotenv file."""
+    path_obj = Path(path)
+    path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = _parse_env_file(str(path_obj))
+    stock_keys = {key for key in existing if key.startswith(prefix)}
+    preserved = {key: value for key, value in existing.items() if key not in stock_keys}
+    stock_values = _config_to_env_values(config)
+
+    with open(path_obj, "w", encoding="utf-8") as f:
+        f.write("# Local stock platform configuration.\n")
+        f.write("# Edit via the Web Settings page or copy from .env.example before first use.\n")
+        if preserved:
+            for key in sorted(preserved):
+                f.write(f"{key}={preserved[key]}\n")
+            f.write("\n")
+        for key in sorted(stock_values):
+            f.write(f"{key}={stock_values[key]}\n")
+
+    logger.info(f"Saved environment configuration to {path}")
+
+
+# ---------------------------------------------------------------------------
 # Configuration Manager
 # ---------------------------------------------------------------------------
 
@@ -518,7 +676,16 @@ class ConfigManager:
         Returns:
             ConfigManager instance
         """
-        config_data: Dict[str, Any] = {}
+        env_path = os.environ.get("STOCK_ENV_PATH", DEFAULT_ENV_PATH)
+        dotenv_values = _parse_env_file(env_path)
+
+        def _env_value(name: str) -> Optional[str]:
+            process_value = os.getenv(name)
+            if process_value is not None:
+                return process_value
+            return dotenv_values.get(name)
+
+        config_data: Dict[str, Any] = load_env_config_data(env_path=env_path)
 
         # Map environment variables to config structure
         env_mapping = {
@@ -533,7 +700,7 @@ class ConfigManager:
         }
 
         for env_var, (section, key) in env_mapping.items():
-            value = os.getenv(env_var)
+            value = _env_value(env_var)
             if value is not None:
                 if section not in config_data:
                     config_data[section] = {}
@@ -542,9 +709,17 @@ class ConfigManager:
                 if key in ["initial_cash", "commission", "max_position_pct"]:
                     value = float(value)  # type: ignore[assignment]
 
-                # Later entries in the dict win; avoid overwriting once set
-                if key not in config_data[section]:
-                    config_data[section][key] = value
+                config_data[section][key] = value
+
+        ai_env_mapping = {
+            "OPENAI_API_KEY": ("ai", "api_key"),
+            "OPENAI_BASE_URL": ("ai", "base_url"),
+            "OPENAI_MODEL": ("ai", "model"),
+        }
+        for env_var, (section, key) in ai_env_mapping.items():
+            value = _env_value(env_var)
+            if value is not None and value.strip():
+                config_data.setdefault(section, {})[key] = value
 
         if config_data:
             logger.info(f"Loaded {len(config_data)} config sections from environment")
@@ -637,14 +812,23 @@ def get_config() -> ConfigManager:
             os.path.expanduser("~/.backtest/config.yaml"),
         ]
 
+        base_config = GlobalConfig()
+        base_path: Optional[str] = None
         for path in default_paths:
             if os.path.exists(path):
-                _global_config = ConfigManager.load_from_file(path)
+                loaded = ConfigManager.load_from_file(path)
+                base_config = loaded.config
+                base_path = path
                 break
 
-        # If no file found, use defaults
-        if _global_config is None:
-            _global_config = ConfigManager()
+        env_data = load_env_config_data()
+        if env_data:
+            merged = _deep_merge(base_config.model_dump(), env_data)
+            base_config = GlobalConfig(**merged)
+            logger.info("Applied .env/process environment configuration")
+
+        _global_config = ConfigManager(config_path=base_path, config=base_config)
+        if base_path is None and not env_data:
             logger.info("Using default configuration")
 
     return _global_config

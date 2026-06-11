@@ -172,6 +172,9 @@ if HAS_FASTAPI:
         max_account_weight: float = Field(1.0, gt=0, le=1)
         max_strategy_weight: float = Field(0.5, gt=0, le=1)
 
+    class SettingsConfigUpdateRequest(BaseModel):
+        config: Dict[str, Any] = Field(..., description="Complete GlobalConfig-compatible configuration payload")
+
     def _jsonable(value: Any) -> Any:
         if is_dataclass(value):
             return {k: _jsonable(v) for k, v in asdict(value).items()}
@@ -215,6 +218,12 @@ if HAS_FASTAPI:
             return frontend_dist.resolve()
         return None
 
+    def _resolve_settings_env_path() -> str:
+        env_path = os.environ.get("STOCK_ENV_PATH", "").strip()
+        if env_path:
+            return env_path
+        return ".env"
+
     def _resolve_market_data_duckdb_path() -> str:
         from src.core.config import get_config
 
@@ -256,6 +265,13 @@ if HAS_FASTAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("fastapi_starting")
+        try:
+            from src.core.config import ensure_env_file
+
+            app.state.settings_env_path = str(ensure_env_file(app.state.settings_env_path))
+        except Exception as exc:
+            app.state.settings_env_error = str(exc)
+            logger.warning("settings_env_file_init_failed", error=str(exc))
         _initialize_local_market_data_store(app)
         yield
         try:
@@ -294,6 +310,8 @@ if HAS_FASTAPI:
         app.state.local_market_data_db_path = _resolve_market_data_duckdb_path()
         app.state.local_market_data_initialized = False
         app.state.local_market_data_error = ""
+        app.state.settings_env_path = _resolve_settings_env_path()
+        app.state.settings_env_error = ""
         app.state.runtime_contexts = {
             "backtest": BacktestRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
             "sandbox": SandboxRuntime(metrics=app.state.metric_collector, tracer=app.state.tracer),
@@ -385,6 +403,47 @@ if HAS_FASTAPI:
                 body += request.app.state.metric_collector.to_prometheus()
                 return Response(content=body, media_type="text/plain; version=0.0.4")
             return ApiEnvelope(data=request.app.state.api_metrics.snapshot(request.app.state.job_queue))
+
+        @app.get("/api/v2/settings/config", tags=["Settings"])
+        async def get_settings_config():
+            from src.core.config import GlobalConfig, get_config
+
+            manager = get_config()
+            return ApiEnvelope(
+                data={
+                    "config": manager.config.model_dump(),
+                    "schema": GlobalConfig.model_json_schema(),
+                    "config_path": app.state.settings_env_path,
+                    "config_source": "env",
+                    "env_error": app.state.settings_env_error,
+                    "warnings": manager.config.validate_all(),
+                }
+            )
+
+        @app.put("/api/v2/settings/config", tags=["Settings"])
+        async def update_settings_config(payload: SettingsConfigUpdateRequest):
+            from src.core.config import ConfigManager, GlobalConfig, save_config_to_env_file, set_config
+
+            config_path = app.state.settings_env_path
+            try:
+                config = GlobalConfig.model_validate(payload.config)
+                save_config_to_env_file(config, config_path)
+                manager = ConfigManager(config=config)
+                set_config(manager)
+                return ApiEnvelope(
+                    data={
+                        "config": config.model_dump(),
+                        "config_path": config_path,
+                        "config_source": "env",
+                        "env_error": app.state.settings_env_error,
+                        "warnings": config.validate_all(),
+                    }
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            except Exception as exc:
+                logger.error("settings_config_update_failed", error=str(exc))
+                raise HTTPException(status_code=400, detail=str(exc))
 
         def _local_market_data_store():
             return _open_local_market_data_store(app.state.local_market_data_db_path)

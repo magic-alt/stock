@@ -79,3 +79,47 @@ def test_dashboard_supports_stock_name_search_and_ai_summary():
     assert "贵州茅台" in stock_search
     assert "600519.SH" in stock_search
     assert "normalizeStockSymbolInput" in stock_search
+
+
+def test_settings_view_exposes_full_configuration_sections():
+    settings = (ROOT / "frontend/src/views/Settings.vue").read_text(encoding="utf-8")
+
+    assert "/api/v2/settings/config" in settings
+    assert "Save to .env" in settings
+    assert "Configuration saved to .env" in settings
+    assert "Local .env" in settings
+    assert "API Access" in settings
+    for label in [
+        "Data Sources",
+        "Backtest",
+        "Risk",
+        "Execution",
+        "Live Trading",
+        "Realtime Data",
+        "Portfolio",
+        "Storage",
+        "Platform",
+        "Monitoring",
+        "Performance",
+        "AI Model",
+        "Logging",
+        "Strategy",
+    ]:
+        assert label in settings
+    for key in [
+        "data.providers",
+        "backtest.initial_cash",
+        "risk.max_order_value",
+        "execution.live_gateway",
+        "live_trading.vnpy_setting",
+        "realtime_data.fallback_providers",
+        "portfolio.capital_allocation",
+        "database.duckdb_path",
+        "platform.job_store",
+        "monitoring.alert_channels",
+        "performance.cache_expire_days",
+        "ai.base_url",
+        "logging.rotate_size",
+        "strategy.params",
+    ]:
+        assert key in settings

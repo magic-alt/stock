@@ -35,6 +35,7 @@ The two web-console previews below are **real screenshots of the running Vue fro
 ```bash
 git clone https://github.com/magic-alt/stock.git
 cd stock
+cp .env.example .env
 pip install -r requirements.txt
 python examples/one_click_demo.py --out-dir report/open_source_demo
 ```
@@ -116,7 +117,7 @@ This builds or reuses `frontend/dist`, starts the FastAPI WebUI on
 browser. Use `python webui.py --no-open` if you only want to start the server.
 For frontend hot reload, run `python webui.py --dev`.
 
-Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. The search box accepts normalized symbols, short A-share codes, or common stock names such as `贵州茅台`; analysis records are kept in browser storage and restored when the WebUI is reopened from the same browser origin. Optional AI summaries are only attempted when enabled in the UI and an OpenAI-compatible key is configured through `config.yaml` (`ai.api_key`, `ai.base_url`, `ai.model`) or environment variables (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`).
+Open the Dashboard first. It includes a beginner analysis panel that defaults to real market data (`auto`, using parallel AKShare, Sina Finance, and Tencent Finance validation before Eastmoney fallback) and also supports explicit providers such as `akshare`, `sina`, `tencent`, `eastmoney`, `yfinance`, and `tushare`. The search box accepts normalized symbols, short A-share codes, or common stock names such as `贵州茅台`; analysis records are kept in browser storage and restored when the WebUI is reopened from the same browser origin. Optional AI summaries are only attempted when enabled in the UI and an OpenAI-compatible key is configured through `.env` (`STOCK__AI__API_KEY`, `STOCK__AI__BASE_URL`, `STOCK__AI__MODEL`) or environment variables (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`). The Settings page edits the local `.env` file and creates it from `.env.example` on first startup when needed.
 
 Main views:
 
