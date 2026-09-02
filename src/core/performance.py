@@ -217,7 +217,7 @@ def cached(
                 key_parts = [func.__name__]
                 key_parts.extend(str(arg) for arg in args)
                 key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
-                key = hashlib.md5(":".join(key_parts).encode()).hexdigest()
+                key = hashlib.md5(":".join(key_parts).encode(), usedforsecurity=False).hexdigest()
             
             # Check cache
             result = local_cache.get(key)
