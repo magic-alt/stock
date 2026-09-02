@@ -6,7 +6,6 @@ Provides centralized settings for backtest, data, risk, and execution.
 """
 from __future__ import annotations
 
-import os
 import yaml
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
