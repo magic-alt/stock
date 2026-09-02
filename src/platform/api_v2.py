@@ -1037,6 +1037,9 @@ if HAS_FASTAPI:
                     return FileResponse(requested)
                 return FileResponse(frontend_index)
 
+        from src.platform.api_auth import configure_api_auth
+
+        configure_api_auth(app)
         return app
 
     # Singleton app instance

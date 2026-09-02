@@ -20,6 +20,12 @@ class Permission:
     # V4.0-D: Account-level permissions
     ACCOUNT_MANAGE = "account.manage"
     FUND_TRANSFER = "fund.transfer"
+    # Gate 0: FastAPI v2 application permissions
+    DATA_WRITE = "data.write"
+    RESEARCH_EXECUTE = "research.execute"
+    JOB_MANAGE = "job.manage"
+    PORTFOLIO_ALLOCATE = "portfolio.allocate"
+    MONITOR_QUERY = "monitor.query"
 
 
 class Role:
@@ -44,6 +50,11 @@ def default_role_permissions() -> Dict[str, Set[str]]:
             Permission.GATEWAY_TRADE,
             Permission.ACCOUNT_MANAGE,
             Permission.FUND_TRANSFER,
+            Permission.DATA_WRITE,
+            Permission.RESEARCH_EXECUTE,
+            Permission.JOB_MANAGE,
+            Permission.PORTFOLIO_ALLOCATE,
+            Permission.MONITOR_QUERY,
         },
         Role.TRADER: {
             Permission.ORDER_CREATE,
@@ -52,18 +63,26 @@ def default_role_permissions() -> Dict[str, Set[str]]:
             Permission.ORDER_QUERY,
             Permission.ACCOUNT_QUERY,
             Permission.POSITION_QUERY,
+            Permission.GATEWAY_CONNECT,
             Permission.GATEWAY_TRADE,
+            Permission.RESEARCH_EXECUTE,
+            Permission.JOB_MANAGE,
+            Permission.PORTFOLIO_ALLOCATE,
+            Permission.MONITOR_QUERY,
         },
         Role.STRATEGY: {
             Permission.ORDER_CREATE,
             Permission.ORDER_SUBMIT,
             Permission.ORDER_CANCEL,
             Permission.ORDER_QUERY,
+            Permission.RESEARCH_EXECUTE,
+            Permission.JOB_MANAGE,
         },
         Role.VIEWER: {
             Permission.ORDER_QUERY,
             Permission.ACCOUNT_QUERY,
             Permission.POSITION_QUERY,
+            Permission.MONITOR_QUERY,
         },
         Role.SYSTEM: {
             Permission.ADMIN,
@@ -77,6 +96,11 @@ def default_role_permissions() -> Dict[str, Set[str]]:
             Permission.GATEWAY_TRADE,
             Permission.ACCOUNT_MANAGE,
             Permission.FUND_TRANSFER,
+            Permission.DATA_WRITE,
+            Permission.RESEARCH_EXECUTE,
+            Permission.JOB_MANAGE,
+            Permission.PORTFOLIO_ALLOCATE,
+            Permission.MONITOR_QUERY,
         },
     }
 
