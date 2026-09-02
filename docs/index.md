@@ -13,6 +13,7 @@ Use this documentation site as the public entry point for installation, first-ru
 - [Web console](guides/web-console.md): understand the Vue3 + FastAPI console surfaces.
 - [REST API](api/rest-api.md): inspect the main API v2 endpoints.
 - [FastAPI v2 authentication](API_V2_AUTHORIZATION.md): Bearer token, RBAC permissions, audit subject propagation, and 401/403 contract.
+- [Deployment readiness](DEPLOYMENT_READINESS.md): canonical port, liveness/readiness semantics, Docker/Kubernetes probes, persistence, and deployment contract tests.
 - [Current audit & roadmap](REPOSITORY_AUDIT_AND_ROADMAP_2026-09.md): the governing post-2026-09 hardening plan and release gates.
 
 ## Core references
@@ -21,5 +22,6 @@ Use this documentation site as the public entry point for installation, first-ru
 - [Strategy reference](STRATEGY_REFERENCE.md)
 - [Operations runbook](OPERATIONS_RUNBOOK.md)
 - [FastAPI v2 authentication & authorization](API_V2_AUTHORIZATION.md)
+- [Deployment correctness & readiness](DEPLOYMENT_READINESS.md)
 - [Current audit & execution roadmap](REPOSITORY_AUDIT_AND_ROADMAP_2026-09.md)
 - [Historical/project roadmap](ROADMAP.md)
