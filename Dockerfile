@@ -35,6 +35,7 @@ FROM node:20-alpine AS frontend-build
 WORKDIR /frontend
 
 COPY frontend/package*.json ./
+COPY frontend/.npmrc ./
 RUN npm ci
 
 COPY frontend/ ./
