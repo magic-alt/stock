@@ -26,8 +26,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Deploy the production stack with Docker Compose")
     parser.add_argument("--compose-file", default="docker-compose.yml", help="Compose file path")
     parser.add_argument("--skip-build", action="store_true", help="Skip image rebuild")
-    parser.add_argument("--timeout", type=int, default=300, help="Health-check timeout in seconds")
-    parser.add_argument("--api-url", default="http://127.0.0.1:8000/api/v2/health")
+    parser.add_argument("--timeout", type=int, default=300, help="Readiness-check timeout in seconds")
+    parser.add_argument("--api-url", default="http://127.0.0.1:8000/api/v2/ready")
     parser.add_argument("--frontend-url", default="http://127.0.0.1:3000")
     parser.add_argument("--down", action="store_true", help="Stop the deployed stack")
     return parser.parse_args()
@@ -44,15 +44,18 @@ def wait_http(url: str, timeout: int) -> None:
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(url, timeout=5) as resp:
-                if 200 <= resp.status < 500:
-                    print(f"[deploy] healthy: {url} ({resp.status})")
+                if 200 <= resp.status < 400:
+                    print(f"[deploy] ready: {url} ({resp.status})")
                     return
+                last_error = f"HTTP {resp.status}"
+        except urllib.error.HTTPError as exc:
+            last_error = f"HTTP {exc.code}"
         except urllib.error.URLError as exc:
             last_error = str(exc)
         except Exception as exc:  # pragma: no cover - defensive
             last_error = str(exc)
         time.sleep(2)
-    raise RuntimeError(f"Health check failed for {url}: {last_error}")
+    raise RuntimeError(f"Readiness check failed for {url}: {last_error}")
 
 
 def main() -> int:
@@ -73,7 +76,7 @@ def main() -> int:
     run(compose_cmd)
     wait_http(args.api_url, args.timeout)
     wait_http(args.frontend_url, args.timeout)
-    print("[deploy] stack is up")
+    print("[deploy] stack is ready")
     return 0
 
 
