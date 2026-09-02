@@ -74,6 +74,7 @@ nav:
     - Open Platform (V6): architecture/open-platform.md
     - Security: architecture/security.md
     - FastAPI v2 Auth Contract: API_V2_AUTHORIZATION.md
+    - Platform Settings SSOT: PLATFORM_SETTINGS.md
     - V5.0 Upgrade Plan: architecture/v5-upgrade.md
   - Operations:
     - Deployment: operations/deployment.md
