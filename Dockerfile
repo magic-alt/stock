@@ -64,12 +64,14 @@ USER 10001:10001
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PLATFORM_FRONTEND_DIST=/app/frontend/dist
-ENV PORT=8000
+ENV PLATFORM_API_HOST=0.0.0.0
+ENV PLATFORM_API_PORT=8000
 
 EXPOSE 8000
 
 # Container health means ready for traffic, not merely that the process exists.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -fsS "http://localhost:${PORT}/api/v2/ready" || exit 1
+    CMD curl -fsS "http://localhost:${PLATFORM_API_PORT}/api/v2/ready" || exit 1
 
-CMD ["sh", "-c", "python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port ${PORT}"]
+# The startup script and application factory both consume the same PlatformSettings object.
+CMD ["python", "scripts/run_platform_api.py"]

@@ -27,7 +27,9 @@ spec:
             - name: http
               containerPort: 8000
           env:
-            - name: PORT
+            - name: PLATFORM_API_HOST
+              value: "0.0.0.0"
+            - name: PLATFORM_API_PORT
               value: "8000"
             - name: PLATFORM_API_AUTH_DISABLED
               value: "0"
@@ -38,6 +40,10 @@ spec:
                   key: api-token
             - name: PLATFORM_JOB_STORE
               value: /data/platform/jobs.sqlite
+            - name: PLATFORM_JOB_STORE_FALLBACK
+              value: "0"
+            - name: PLATFORM_JOB_MAX_WORKERS
+              value: "2"
             - name: MARKET_DATA_DUCKDB_PATH
               value: /data/market_data.duckdb
             - name: PLATFORM_AUDIT_LOG

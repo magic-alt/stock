@@ -25,4 +25,5 @@ pytest-cov>=4.0.0
 # tushare>=1.2.0      # 备用数据源（需要token）
 # yfinance>=0.2.0     # 全球市场数据（可选）
 pydantic>=2.0.0     # 配置验证
+pydantic-settings>=2.0.0  # Gate 1 typed runtime settings
 # structlog>=23.0.0   # 结构化日志（可选）
