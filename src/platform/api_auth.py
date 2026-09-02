@@ -223,6 +223,13 @@ def _install_openapi_security(app: FastAPI) -> None:
 def configure_api_auth(app: FastAPI) -> FastAPI:
     """Install Bearer authentication, RBAC authorization and audit propagation."""
 
+    # api_v2 invokes this finalizer only after all routes are registered.  Gate 0
+    # uses that stable hook to replace the legacy always-true readiness route
+    # without mixing a router decomposition into the deployment-hardening PR.
+    from src.platform.deployment_health import configure_deployment_health
+
+    configure_deployment_health(app)
+
     settings = load_api_auth_settings()
     app.state.api_auth_settings = settings
     app.state.api_authorizer = Authorizer()

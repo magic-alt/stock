@@ -7,7 +7,7 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     autoDeploy: true
-    healthCheckPath: /api/v2/health
+    healthCheckPath: /api/v2/ready
     envVars:
       - key: PYTHONPATH
         value: /app

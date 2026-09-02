@@ -64,13 +64,13 @@ class TestDockerConfig:
         assert "services:" in content
         assert "api:" in content
         assert "frontend:" in content
-        assert "redis:" in content
+        assert "redis:" not in content
 
     def test_docker_compose_healthcheck(self):
         dc = Path(__file__).parent.parent / "docker-compose.yml"
         content = dc.read_text(encoding="utf-8")
         assert "healthcheck:" in content
-        assert "/api/v2/health" in content
+        assert "/api/v2/ready" in content
 
     def test_dockerignore_exists(self):
         di = Path(__file__).parent.parent / ".dockerignore"

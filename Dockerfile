@@ -54,17 +54,21 @@ COPY --from=frontend-build /frontend/dist ./frontend/dist
 # Create runtime directories
 RUN mkdir -p cache report data_lake logs
 
-# Non-root user for security
-RUN useradd -m -r quantuser && chown -R quantuser:quantuser /app
-USER quantuser
-
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v2/health || exit 1
+# Stable numeric UID/GID so Kubernetes runAsNonRoot can verify the image user.
+RUN groupadd --gid 10001 quantuser && \
+    useradd --uid 10001 --gid 10001 --create-home --no-log-init --shell /usr/sbin/nologin quantuser && \
+    chown -R 10001:10001 /app
+USER 10001:10001
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PLATFORM_FRONTEND_DIST=/app/frontend/dist
+ENV PORT=8000
 
-CMD ["sh", "-c", "python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port ${PORT:-8000}"]
+EXPOSE 8000
+
+# Container health means ready for traffic, not merely that the process exists.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT}/api/v2/ready" || exit 1
+
+CMD ["sh", "-c", "python -m uvicorn src.platform.api_v2:app --host 0.0.0.0 --port ${PORT}"]

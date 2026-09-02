@@ -4,7 +4,7 @@ services:
       context: .
       target: production
     ports:
-      - "8000:8000"
+      - "${PLATFORM_HOST_PORT:-8000}:8000"
     volumes:
       - ./cache:/app/cache
       - ./report:/app/report
@@ -12,12 +12,15 @@ services:
       - ./logs:/app/logs
     environment:
       - PYTHONPATH=/app
+      - PORT=8000
       - PLATFORM_API_TOKEN=${PLATFORM_API_TOKEN:-}
+      - PLATFORM_API_AUTH_DISABLED=${PLATFORM_API_AUTH_DISABLED:-0}
       - TUSHARE_TOKEN=${TUSHARE_TOKEN:-}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v2/ready"]
       interval: 30s
       timeout: 5s
+      start_period: 10s
       retries: 3
     restart: unless-stopped
 
@@ -31,15 +34,3 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    restart: unless-stopped
-
-volumes:
-  redis_data:
