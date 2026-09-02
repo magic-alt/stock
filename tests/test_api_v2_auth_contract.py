@@ -130,7 +130,7 @@ def test_admin_token_reaches_protected_mutation(monkeypatch, tmp_path):
     assert response.status_code == 200
     account = response.json()["data"]["account"]
     assert account["account_group"] == "gate0"
-    assert account["owner_id"] == "owner"
+    assert account["owner_subject_id"] == "owner"
 
 
 def test_subject_is_propagated_to_hash_chain_audit(monkeypatch, tmp_path):
