@@ -14,7 +14,7 @@ Production behavior is **fail closed**:
 - protected route + malformed/invalid Bearer token -> `401`;
 - valid token + insufficient RBAC permission -> `403`;
 - authentication enabled + `PLATFORM_API_TOKEN` missing -> `503` on protected routes;
-- anonymous routes such as health and OpenAPI remain available.
+- anonymous operational routes (`/api/v2/live`, `/api/v2/ready`, `/api/v2/health`) and OpenAPI remain reachable without credentials so orchestrators can evaluate process/dependency state.
 
 Authentication can only be disabled explicitly with `PLATFORM_API_AUTH_DISABLED=1`. This switch is intended for trusted local development and tests, not externally reachable deployments.
 
@@ -89,7 +89,7 @@ The default bootstrap token uses the `admin` role. Operators can assign a narrow
 | Portfolio allocation | capital-allocation preview | `portfolio.allocate` |
 | Operations | metrics/monitor endpoints | `monitor.query` |
 
-Health/readiness/info, OpenAPI documentation, strategy catalogue, public market-data reads, analysis capability discovery, and static frontend assets remain anonymous by design.
+Liveness/readiness/health, platform info, OpenAPI documentation, strategy catalogue, public market-data reads, analysis capability discovery, and static frontend assets remain anonymous by design. Readiness itself is fail-closed: it returns HTTP 503 when production authentication configuration or another mandatory dependency is not ready.
 
 ## Audit subject propagation
 
@@ -137,4 +137,4 @@ The authentication PR is considered complete when CI proves all of the following
 6. OpenAPI advertises `BearerAuth` only for protected routes;
 7. the explicit local-development override remains available for legacy/local workflows.
 
-The next ROADMAP item after this contract is merged is **Gate 0 / PR 2 — Deployment correctness + real readiness**.
+The deployment continuation of Gate 0 is defined in [Deployment Correctness & Readiness](DEPLOYMENT_READINESS.md). After that contract is merged, the ordered ROADMAP item is **Gate 0 / PR 3 — CI and branch-governance hardening**.
