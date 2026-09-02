@@ -1,160 +1,161 @@
-# 量化交易系统配置文件示例
-# 复制此文件为 config.yaml 并根据实际情况修改
+# Unified Quant Platform configuration example
+# Copy to config.yaml and override only what differs from safe defaults.
+# Runtime precedence: CLI > environment > config.yaml > safe defaults.
+# Secrets should normally be injected through environment variables.
 
-# 数据源配置
+api:
+  host: 0.0.0.0
+  port: 8000
+  allowed_origins:
+    - http://localhost:3000
+    - http://127.0.0.1:3000
+  frontend_dist: ""  # empty = repository frontend/dist when present
+  auth_disabled: false
+  token: ""  # prefer PLATFORM_API_TOKEN
+  token_subject: bootstrap-admin
+  token_role: admin
+  token_account_group: ""
+  token_strategy_id: ""
+  token_account_id: ""
+  audit_log: ./logs/audit.log
+
+# Data source configuration
 data:
-  provider: akshare  # 数据源: akshare, yfinance, tushare
+  provider: akshare
   cache_dir: ./cache
-  adj: qfq  # 复权类型: qfq (前复权), hfq (后复权), noadj (不复权)
+  adj: qfq
   start_date: "2023-01-01"
   end_date: "2024-12-31"
-  
-  # 数据源详细配置
   providers:
     akshare:
       enabled: true
-      rate_limit: 0.5  # 每秒最多2次请求
+      rate_limit: 0.5
     yfinance:
       enabled: true
       rate_limit: 1.0
     tushare:
-      enabled: false  # 需要token
-      token: ""  # 从环境变量 TUSHARE_TOKEN 读取
-
-  # Level2 行情配置（真实 SDK 需券商授权；stub 用于开发/CI）
+      enabled: false
+      token: ""  # prefer TUSHARE_TOKEN
   level2:
-    provider: stub  # stub, xtp, hundsun, qmt
+    provider: stub
     enabled: false
     sdk_path: ""
     symbols: []
     depth: 10
 
-# 回测配置
 backtest:
-  initial_cash: 200000.0  # 初始资金（元）
-  commission: 0.0003  # 佣金率（万三）
-  slippage: 0.001  # 滑点（千分之一）
-  slippage_type: percentage  # fixed, percentage, volume
-  min_trade_unit: 100  # 最小交易单位（A股100股）
-  allow_short: false  # 是否允许做空（A股不支持）
+  initial_cash: 200000.0
+  commission: 0.0003
+  slippage: 0.001
+  slippage_type: percentage
+  min_trade_unit: 100
+  allow_short: false
 
-# 风险控制配置
 risk:
-  enabled: true  # 启用风控
-  strict_mode: true  # 严格模式：任何规则失败都拒绝订单
-  max_position_pct: 0.30  # 单只股票最大仓位（30%）
-  max_positions: 10  # 最大持仓数量
-  daily_loss_limit_pct: 0.05  # 日亏损限制（5%）
-  max_drawdown_pct: 0.20  # 最大回撤限制（20%）
-  max_order_value: 100000.0  # 单笔最大订单金额
-  min_position_value: 1000.0  # 单笔最小订单金额
-  price_deviation_limit: 0.05  # 最大价格偏差（5%）
-  min_order_interval_sec: 0  # 平台默认不节流；实盘可设为 1 或更高
+  enabled: true
+  strict_mode: true
+  max_position_pct: 0.30
+  max_positions: 10
+  daily_loss_limit_pct: 0.05
+  max_drawdown_pct: 0.20
+  max_order_value: 100000.0
+  min_position_value: 1000.0
+  price_deviation_limit: 0.05
+  min_order_interval_sec: 0
 
-# 平台任务队列配置
+# Platform orchestration. These values are consumed by the same PlatformSettings
+# object as the API and deployment environment variables.
 platform:
-  job_store: ./cache/platform/jobs.json  # json path, sqlite:///jobs.db, redis://, postgresql://
-  job_store_fallback: true  # 生产可设为 false，Redis/Postgres 不可用时直接失败
+  job_store: ./cache/platform/jobs.json
+  job_store_fallback: true
   job_max_workers: 2
 
-# 执行配置
 execution:
-  gateway: paper  # 网关类型: paper (模拟), backtest (回测), live (实盘)
-  mode: vectorized  # 执行模式: vectorized (向量化), event (事件驱动)
-  enable_matching: true  # 启用订单撮合模拟
-  enable_slippage: true  # 启用滑点模拟
-  
-  # 实盘网关配置（仅当 gateway=live 时生效）
+  gateway: paper
+  mode: vectorized
+  enable_matching: true
+  enable_slippage: true
   live_gateway:
-    broker: futu  # 经纪商: futu, ib, ctp
-    account_id: ""  # 账户ID
-    testnet: true  # 使用测试环境
+    broker: futu
+    account_id: ""
+    testnet: true
 
-# 策略配置
 strategy:
   name: default_strategy
   symbols:
-    - 600519.SH  # 贵州茅台
-    - 000858.SZ  # 五粮液
+    - 600519.SH
+    - 000858.SZ
   params:
     period: 20
     threshold: 0.02
 
-# 日志配置
 logging:
-  level: INFO  # 日志级别: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  file: ./logs/quant.log  # 日志文件路径（None表示不写入文件）
+  level: INFO
+  file: ./logs/quant.log
   format: "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
-  json_format: false  # 生产环境建议设为 true（JSON格式便于ELK集成）
-  rotate_size: 10485760  # 日志轮转大小（10MB）
-  rotate_count: 5  # 保留日志文件数量
+  json_format: false
+  rotate_size: 10485760
+  rotate_count: 5
 
-# 数据库配置
 database:
   path: ./cache/market_data.db
   duckdb_path: ./cache/market_data.duckdb
   backup_enabled: true
-  backup_interval_hours: 24  # 每24小时备份一次
-  backup_retention_days: 30  # 保留30天备份
+  backup_interval_hours: 24
+  backup_retention_days: 30
 
-# 监控配置
 monitoring:
   enabled: true
-  health_check_interval: 60  # 健康检查间隔（秒）
-  metrics_port: 9090  # Prometheus metrics端口（0表示禁用）
-  alert_email: ""  # 告警邮箱（可选）
-  otlp_endpoint: ""  # e.g. http://otel-collector:4318/v1/traces
+  health_check_interval: 60
+  metrics_port: 9090
+  alert_email: ""
+  otlp_endpoint: ""
   alert_channels:
     webhook_url: ""
-    webhook_platform: generic  # generic, wecom, dingtalk
+    webhook_platform: generic
 
-# 性能配置
 performance:
-  max_workers: 4  # 最大并行工作进程数
-  cache_enabled: true  # 启用数据缓存
-  cache_expire_days: 1  # 缓存过期天数
+  max_workers: 4
+  cache_enabled: true
+  cache_expire_days: 1
 
-# AI 大模型配置（兼容 OpenAI Chat Completions API）
-# 推荐通过环境变量 OPENAI_API_KEY 注入密钥；此处留空可避免误提交凭证。
+# OpenAI-compatible optional analysis configuration.
 ai:
-  api_key: ""  # 也可使用 OPENAI_API_KEY
-  base_url: "https://api.openai.com/v1"  # 也可使用 OPENAI_BASE_URL
-  model: "gpt-4o-mini"  # 也可使用 OPENAI_MODEL
+  api_key: ""  # prefer OPENAI_API_KEY
+  base_url: "https://api.openai.com/v1"
+  model: "gpt-4o-mini"
   timeout_seconds: 8.0
 
-# Live Trading Configuration (V4.0)
 live_trading:
   enabled: false
   broker: "qmt"
   account_id: ""
   gateway_type: "qmt"
-  gateway_provider: "self"  # self, vnpy, third_party
-  qmt_provider: "self"      # self/xtquant uses the built-in XtQuant adapter; vnpy_qmt uses a vn.py gateway
-  vnpy_gateway: ""          # e.g. CTP, QMT, XTP
-  vnpy_setting: {}          # passed directly to main_engine.connect(setting, gateway_name)
-  broker_options: {}        # e.g. {"vnpy_gateway_class": "custom.qmt.QmtGateway"}
+  gateway_provider: "self"
+  qmt_provider: "self"
+  vnpy_gateway: ""
+  vnpy_setting: {}
+  broker_options: {}
   sdk_path: ""
   sdk_log_path: ""
   auto_reconnect: true
   max_orders_per_second: 10.0
 
-# Real-time Data Configuration (V4.0)
 realtime_data:
-  provider: "simulation"  # simulation, akshare, sina, eastmoney, tencent
+  provider: "simulation"
   symbols: []
   fallback_providers: []
   interval_seconds: 3.0
   request_timeout_seconds: 5.0
   bar_intervals: [1, 5]
-  level2_provider: "stub"  # stub, xtp, hundsun, qmt
+  level2_provider: "stub"
 
-# Portfolio Configuration (V4.0)
 portfolio:
   strategies: []
   rebalance_interval_days: 21
   max_weight_per_strategy: 0.4
   min_weight_per_strategy: 0.05
-  optimization_objective: "sharpe"  # sharpe, min_vol, equal_risk
+  optimization_objective: "sharpe"
   capital_allocation:
     min_cash_buffer_pct: 0.05
     max_account_weight: 1.0
