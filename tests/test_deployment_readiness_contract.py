@@ -134,7 +134,7 @@ def test_compose_uses_internal_port_8000_and_readiness():
     assert healthcheck["start_period"] == "10s"
 
 
-def test_kubernetes_deployment_has_port_probes_resources_and_security():
+def test_kubernetes_deployment_has_port_probes_resources_security_and_persistence():
     deployment = _load_yaml("deploy/k8s/platform-api-deployment.yaml")
     pod_spec = deployment["spec"]["template"]["spec"]
     container = _container_from_deployment(deployment)
@@ -162,12 +162,27 @@ def test_kubernetes_deployment_has_port_probes_resources_and_security():
     assert container["securityContext"]["allowPrivilegeEscalation"] is False
     assert container["securityContext"]["capabilities"]["drop"] == ["ALL"]
 
+    assert pod_spec["volumes"] == [
+        {
+            "name": "data-volume",
+            "persistentVolumeClaim": {"claimName": "platform-api-data"},
+        }
+    ]
+    assert container["volumeMounts"] == [{"name": "data-volume", "mountPath": "/data"}]
+
 
 def test_kubernetes_service_targets_named_8000_port():
     service = _load_yaml("deploy/k8s/platform-api-service.yaml")
     port = service["spec"]["ports"][0]
     assert port["port"] == 8000
     assert port["targetPort"] == "http"
+
+
+def test_kubernetes_pvc_matches_single_writer_contract():
+    pvc = _load_yaml("deploy/k8s/platform-api-pvc.yaml")
+    assert pvc["metadata"]["name"] == "platform-api-data"
+    assert pvc["spec"]["accessModes"] == ["ReadWriteOnce"]
+    assert pvc["spec"]["resources"]["requests"]["storage"] == "20Gi"
 
 
 def test_kubernetes_secret_example_matches_deployment_contract():
