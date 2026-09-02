@@ -121,10 +121,12 @@ def test_dockerfile_uses_8000_and_readiness_healthcheck():
     assert 'http://localhost:${PORT}/api/v2/ready' in content
     assert "--port ${PORT}" in content
     assert "USER 10001:10001" in content
+    assert "8080" not in content
 
 
 def test_compose_uses_internal_port_8000_and_readiness():
     compose = _load_yaml("docker-compose.yml")
+    assert set(compose["services"]) == {"api", "frontend"}
     api = compose["services"]["api"]
     assert api["ports"] == ["${PLATFORM_HOST_PORT:-8000}:8000"]
     assert "PORT=8000" in api["environment"]
@@ -132,6 +134,7 @@ def test_compose_uses_internal_port_8000_and_readiness():
     healthcheck = api["healthcheck"]
     assert "/api/v2/ready" in " ".join(healthcheck["test"])
     assert healthcheck["start_period"] == "10s"
+    assert "8080" not in (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
 
 def test_kubernetes_deployment_has_port_probes_resources_security_and_persistence():
@@ -169,6 +172,7 @@ def test_kubernetes_deployment_has_port_probes_resources_security_and_persistenc
         }
     ]
     assert container["volumeMounts"] == [{"name": "data-volume", "mountPath": "/data"}]
+    assert "8080" not in (ROOT / "deploy/k8s/platform-api-deployment.yaml").read_text(encoding="utf-8")
 
 
 def test_kubernetes_service_targets_named_8000_port():
@@ -176,6 +180,7 @@ def test_kubernetes_service_targets_named_8000_port():
     port = service["spec"]["ports"][0]
     assert port["port"] == 8000
     assert port["targetPort"] == "http"
+    assert "8080" not in (ROOT / "deploy/k8s/platform-api-service.yaml").read_text(encoding="utf-8")
 
 
 def test_kubernetes_pvc_matches_single_writer_contract():
