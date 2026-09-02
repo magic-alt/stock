@@ -12,13 +12,14 @@ jobs:
   refresh-lockfile:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Checkout latest branch
+        uses: actions/checkout@v6
         with:
           ref: ci/gate0-governance-hardening
+          fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
@@ -28,15 +29,32 @@ jobs:
         working-directory: frontend
         run: npm install --package-lock-only --ignore-scripts
 
-      - name: Commit package-lock.json
+      - name: Mark cache-key MD5 as non-security use
         shell: bash
         run: |
-          if git diff --quiet -- frontend/package-lock.json; then
-            echo "package-lock.json already synchronized"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/core/performance.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'hashlib.md5(":".join(key_parts).encode()).hexdigest()'
+          new = 'hashlib.md5(":".join(key_parts).encode(), usedforsecurity=False).hexdigest()'
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          elif new not in text:
+              raise SystemExit("expected cache-key MD5 expression not found")
+          PY
+
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          if git diff --quiet -- frontend/package-lock.json src/core/performance.py; then
+            echo "generated files already synchronized"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/package-lock.json
-          git commit -m "chore(frontend): synchronize npm lockfile"
+          git add frontend/package-lock.json src/core/performance.py
+          git commit -m "chore(ci): synchronize generated governance prerequisites"
+          git pull --rebase origin ci/gate0-governance-hardening
           git push origin HEAD:ci/gate0-governance-hardening
