@@ -58,6 +58,25 @@ The production image uses the readiness endpoint for its container `HEALTHCHECK`
 
 Docker Compose also uses `/api/v2/ready`, so the frontend's `depends_on: condition: service_healthy` does not release the UI against an API that is merely alive.
 
+### Default service boundary
+
+The default Compose profile intentionally contains only:
+
+- `api`
+- `frontend`
+
+The previous Redis service was removed because it was neither configured as `PLATFORM_JOB_STORE` nor backed by a Python Redis client in the production dependency set. Keeping it would have exposed port 6379 while the API continued using local JobStore state, creating a misleading distributed topology.
+
+Redis/PostgreSQL remain supported JobStore targets in application code, but they should return to deployment manifests only when all of the following are explicit together:
+
+1. the corresponding production client dependency is installed;
+2. `PLATFORM_JOB_STORE` selects that backend;
+3. fallback policy is intentional;
+4. readiness proves the remote backend is actually active;
+5. network exposure is internal-only unless there is a separate operational requirement.
+
+Until then, the default deployment is deliberately single-instance/local-durable rather than pretending to be distributed.
+
 Production-style Compose startup requires a token:
 
 ```bash
@@ -169,6 +188,7 @@ The actual response includes additional non-secret metadata such as backend type
 - Redis/PostgreSQL fallback is not production-ready;
 - OpenAPI exposes anonymous `/live` and `/ready` operations;
 - Dockerfile, Compose, Render, K8s Deployment/Service/PVC/Secret example all agree on the deployment contract;
+- the default Compose profile contains only API + frontend and does not reintroduce unwired Redis;
 - Kubernetes probes, resources, security context, and persistent-volume wiring remain present;
 - the release helper waits for real readiness.
 
@@ -181,4 +201,5 @@ PR 2 is complete when:
 3. readiness fails on mandatory dependency/configuration failure;
 4. Docker/Compose/Render gate on readiness;
 5. Kubernetes has liveness/readiness probes, resource bounds, non-root security context, secret-backed API token, and persistent runtime storage;
-6. deployment contract tests and the repository CI/CD pipeline pass.
+6. Redis is either actually wired as the selected JobStore or absent from the default deployment profile;
+7. deployment contract tests and the repository CI/CD pipeline pass.
