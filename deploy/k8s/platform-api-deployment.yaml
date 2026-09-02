@@ -77,4 +77,5 @@ spec:
               mountPath: /data
       volumes:
         - name: data-volume
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: platform-api-data
