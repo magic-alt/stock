@@ -92,6 +92,9 @@ if HAS_CLICK:
         """Unified Quant Platform — CLI v2"""
         pass
 
+    from src.cli.config_commands import config_group
+    cli.add_command(config_group)
+
     # -----------------------------------------------------------------------
     # backtest group
     # -----------------------------------------------------------------------

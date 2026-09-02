@@ -8,7 +8,6 @@ without changing route permissions or downstream audit semantics.
 from __future__ import annotations
 
 import hmac
-import os
 import re
 import threading
 from dataclasses import dataclass
@@ -20,6 +19,7 @@ from fastapi.responses import JSONResponse
 from src.core.audit import AuditLogger, audit_event
 from src.core.auth import Authorizer, Permission, Role, Subject
 from src.core.logger import get_logger
+from src.core.settings import PlatformSettings, load_platform_settings
 
 logger = get_logger("platform.api_auth")
 
@@ -54,18 +54,19 @@ def _is_truthy(value: str) -> bool:
     return value.strip().lower() in _TRUE_VALUES
 
 
-def load_api_auth_settings() -> ApiAuthSettings:
-    """Resolve API authentication settings from environment variables."""
-
+def load_api_auth_settings(settings: Optional[PlatformSettings] = None) -> ApiAuthSettings:
+    """Resolve bootstrap auth from the canonical PlatformSettings object."""
+    runtime = settings or load_platform_settings()
+    api = runtime.api
     return ApiAuthSettings(
-        disabled=_is_truthy(os.environ.get("PLATFORM_API_AUTH_DISABLED", "0")),
-        token=os.environ.get("PLATFORM_API_TOKEN", "").strip(),
-        subject_id=os.environ.get("PLATFORM_API_TOKEN_SUBJECT", "bootstrap-admin").strip() or "bootstrap-admin",
-        role=os.environ.get("PLATFORM_API_TOKEN_ROLE", Role.ADMIN).strip().lower() or Role.ADMIN,
-        account_group=os.environ.get("PLATFORM_API_TOKEN_ACCOUNT_GROUP", "").strip(),
-        strategy_id=os.environ.get("PLATFORM_API_TOKEN_STRATEGY_ID", "").strip(),
-        account_id=os.environ.get("PLATFORM_API_TOKEN_ACCOUNT_ID", "").strip(),
-        audit_log_path=os.environ.get("PLATFORM_AUDIT_LOG", "./logs/audit.log").strip() or "./logs/audit.log",
+        disabled=api.auth_disabled,
+        token=api.token.get_secret_value().strip(),
+        subject_id=api.token_subject,
+        role=api.token_role.strip().lower(),
+        account_group=api.token_account_group,
+        strategy_id=api.token_strategy_id,
+        account_id=api.token_account_id,
+        audit_log_path=api.audit_log,
     )
 
 
@@ -230,7 +231,7 @@ def configure_api_auth(app: FastAPI) -> FastAPI:
 
     configure_deployment_health(app)
 
-    settings = load_api_auth_settings()
+    settings = load_api_auth_settings(getattr(app.state, "settings", None))
     app.state.api_auth_settings = settings
     app.state.api_authorizer = Authorizer()
     app.state.api_auth_audit_logger = AuditLogger(settings.audit_log_path, chain_hash=True)

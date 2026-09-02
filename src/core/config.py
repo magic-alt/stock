@@ -332,7 +332,7 @@ class GlobalConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     strategy: StrategyConfig = Field(default_factory=StrategyConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
-    # New V4.0 fields
+    # Runtime/domain sections retained for backward-compatible model access.
     live_trading: LiveTradingConfig = Field(default_factory=LiveTradingConfig)
     realtime_data: RealtimeDataConfig = Field(default_factory=RealtimeDataConfig)
     portfolio: PortfolioConfig = Field(default_factory=PortfolioConfig)
@@ -437,15 +437,10 @@ class ConfigManager:
         Returns:
             GlobalConfig instance
         """
-        if self._config_path is not None:
-            loaded = self.__class__.load_from_file(self._config_path)
-            # Use the .config property so that a missing file still yields defaults
-            self._config = loaded.config
-            return self._config
+        from src.core.settings import load_platform_settings
 
-        # No path: build from env vars (falls back to defaults automatically)
-        loaded = self.__class__.load_from_env()
-        self._config = loaded._config
+        settings = load_platform_settings(config_path=self._config_path)
+        self._config = settings.config
         return self._config
 
     def save(self, config: GlobalConfig) -> None:
@@ -509,52 +504,17 @@ class ConfigManager:
 
     @classmethod
     def load_from_env(cls, prefix: str = "BACKTEST_") -> "ConfigManager":
+        """Load environment overrides through the canonical settings resolver.
+
+        ``prefix`` is retained for API compatibility. The historical
+        ``BACKTEST_*`` aliases are resolved inside ``PlatformSettings`` so
+        environment precedence is defined in one place.
         """
-        Load configuration from environment variables.
+        if prefix != "BACKTEST_":
+            logger.warning("custom config env prefix is deprecated: %s", prefix)
+        from src.core.settings import load_platform_settings
 
-        Args:
-            prefix: Environment variable prefix
-
-        Returns:
-            ConfigManager instance
-        """
-        config_data: Dict[str, Any] = {}
-
-        # Map environment variables to config structure
-        env_mapping = {
-            f"{prefix}DATA_PROVIDER": ("data", "provider"),
-            f"{prefix}DATA_CACHE_DIR": ("data", "cache_dir"),
-            f"{prefix}INITIAL_CASH": ("backtest", "initial_cash"),
-            f"{prefix}BACKTEST_CASH": ("backtest", "initial_cash"),
-            f"{prefix}BACKTEST_COMMISSION": ("backtest", "commission"),
-            f"{prefix}RISK_MAX_POSITION": ("risk", "max_position_pct"),
-            f"{prefix}EXECUTION_GATEWAY": ("execution", "gateway"),
-            f"{prefix}LOG_LEVEL": ("logging", "level"),
-        }
-
-        for env_var, (section, key) in env_mapping.items():
-            value = os.getenv(env_var)
-            if value is not None:
-                if section not in config_data:
-                    config_data[section] = {}
-
-                # Type conversion
-                if key in ["initial_cash", "commission", "max_position_pct"]:
-                    value = float(value)  # type: ignore[assignment]
-
-                # Later entries in the dict win; avoid overwriting once set
-                if key not in config_data[section]:
-                    config_data[section][key] = value
-
-        if config_data:
-            logger.info(f"Loaded {len(config_data)} config sections from environment")
-
-        try:
-            config = GlobalConfig(**config_data)
-            return cls(config=config)
-        except Exception as e:
-            logger.error(f"Error loading config from environment: {e}")
-            raise
+        return cls(config=load_platform_settings().config)
 
     def save_to_file(self, path: str) -> None:
         """
@@ -621,32 +581,14 @@ _global_config: Optional[ConfigManager] = None
 
 
 def get_config() -> ConfigManager:
-    """
-    Get global configuration instance.
-
-    Returns:
-        ConfigManager instance
-    """
+    """Return the global domain config resolved through PlatformSettings."""
     global _global_config
 
     if _global_config is None:
-        # Try to load from default paths
-        default_paths = [
-            "config.yaml",
-            "config/config.yaml",
-            os.path.expanduser("~/.backtest/config.yaml"),
-        ]
+        from src.core.settings import load_platform_settings
 
-        for path in default_paths:
-            if os.path.exists(path):
-                _global_config = ConfigManager.load_from_file(path)
-                break
-
-        # If no file found, use defaults
-        if _global_config is None:
-            _global_config = ConfigManager()
-            logger.info("Using default configuration")
-
+        _global_config = ConfigManager(config=load_platform_settings().config)
+        logger.info("Resolved configuration through PlatformSettings")
     return _global_config
 
 
