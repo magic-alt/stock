@@ -22,6 +22,7 @@ from src.core.capital_allocator import CapitalAllocator
 from src.core.contracts import CONTRACT_VERSION
 from src.core.logger import get_logger
 from src.core.monitoring import TraceContext, get_metric_collector, get_tracer
+from src.core.settings import PlatformSettings, load_platform_settings
 from src.platform.runtime import BacktestRuntime, LiveRuntime, SandboxRuntime
 from src.platform.api_server import APIMetrics, GatewayService, MonitorService
 from src.platform.job_queue import JobQueue, JobStore
@@ -199,29 +200,22 @@ if HAS_FASTAPI:
 
     _start_time = time.time()
 
-    def _resolve_allowed_origins(allowed_origins: Optional[List[str]]) -> List[str]:
-        if allowed_origins is not None:
-            return allowed_origins
-        env_value = os.environ.get("PLATFORM_ALLOWED_ORIGINS", "").strip()
-        if env_value:
-            return [item.strip() for item in env_value.split(",") if item.strip()]
-        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    def _resolve_allowed_origins(
+        allowed_origins: Optional[List[str]], settings: PlatformSettings
+    ) -> List[str]:
+        return list(allowed_origins) if allowed_origins is not None else list(settings.api.allowed_origins)
 
-    def _resolve_frontend_dist() -> Optional[Path]:
-        raw_path = os.environ.get("PLATFORM_FRONTEND_DIST", "").strip()
+    def _resolve_frontend_dist(settings: PlatformSettings) -> Optional[Path]:
+        raw_path = settings.api.frontend_dist.strip()
         frontend_dist = Path(raw_path) if raw_path else PROJECT_ROOT / "frontend" / "dist"
         index_file = frontend_dist / "index.html"
         if frontend_dist.is_dir() and index_file.is_file():
             return frontend_dist.resolve()
         return None
 
-    def _resolve_market_data_duckdb_path() -> str:
-        from src.core.config import get_config
-
-        db_path = os.environ.get("MARKET_DATA_DUCKDB_PATH", "").strip()
-        if not db_path:
-            db_path = get_config().config.database.duckdb_path
-        return db_path
+    def _resolve_market_data_duckdb_path(settings: Optional[PlatformSettings] = None) -> str:
+        resolved = settings or load_platform_settings()
+        return resolved.database.duckdb_path
 
     def _open_local_market_data_store(db_path: Optional[str] = None):
         from src.data_sources.duckdb_store import DuckDBConfig, DuckDBTimeSeriesStore
@@ -268,8 +262,10 @@ if HAS_FASTAPI:
         *,
         enable_cors: bool = True,
         allowed_origins: Optional[List[str]] = None,
+        settings: Optional[PlatformSettings] = None,
     ) -> FastAPI:
-        """Create and configure the FastAPI application."""
+        """Create and configure the FastAPI application from one resolved settings object."""
+        resolved_settings = settings or load_platform_settings()
         app = FastAPI(
             title="Unified Quant Platform",
             description="V5.0 quantitative trading & backtesting platform API",
@@ -280,9 +276,13 @@ if HAS_FASTAPI:
             lifespan=lifespan,
         )
 
+        app.state.settings = resolved_settings
         app.state.job_queue = JobQueue(
-            store=JobStore(path=os.environ.get("PLATFORM_JOB_STORE", "./cache/platform/jobs.json")),
-            max_workers=int(os.environ.get("PLATFORM_JOB_MAX_WORKERS", "2")),
+            store=JobStore(
+                path=resolved_settings.platform.job_store,
+                allow_fallback=resolved_settings.platform.job_store_fallback,
+            ),
+            max_workers=resolved_settings.platform.job_max_workers,
         )
         app.state.gateway_service = GatewayService()
         app.state.monitor_service = MonitorService()
@@ -291,7 +291,7 @@ if HAS_FASTAPI:
         app.state.tracer = get_tracer()
         app.state.account_manager = AccountManager()
         app.state.capital_allocator = CapitalAllocator()
-        app.state.local_market_data_db_path = _resolve_market_data_duckdb_path()
+        app.state.local_market_data_db_path = _resolve_market_data_duckdb_path(resolved_settings)
         app.state.local_market_data_initialized = False
         app.state.local_market_data_error = ""
         app.state.runtime_contexts = {
@@ -303,7 +303,7 @@ if HAS_FASTAPI:
         if enable_cors:
             app.add_middleware(
                 CORSMiddleware,
-                allow_origins=_resolve_allowed_origins(allowed_origins),
+                allow_origins=_resolve_allowed_origins(allowed_origins, resolved_settings),
                 allow_credentials=True,
                 allow_methods=["*"],
                 allow_headers=["*"],
@@ -1014,7 +1014,7 @@ if HAS_FASTAPI:
             )
             return ApiEnvelope(data={"demo": demo})
 
-        frontend_dist = _resolve_frontend_dist()
+        frontend_dist = _resolve_frontend_dist(app.state.settings)
         if frontend_dist is not None:
             frontend_index = frontend_dist / "index.html"
 

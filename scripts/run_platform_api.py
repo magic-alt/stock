@@ -1,8 +1,8 @@
-"""Run the platform API server.
+"""Run the platform API server through the typed settings SSOT.
 
-By default this starts the FastAPI v2 application documented in README and
-served by Docker. Use ``--legacy-v1`` only when the older ThreadingHTTPServer
-compatibility surface is needed.
+Runtime precedence is ``CLI > environment > config.yaml > safe defaults``.
+Use ``--legacy-v1`` only when the older ThreadingHTTPServer compatibility
+surface is needed.
 """
 from __future__ import annotations
 
@@ -15,25 +15,27 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from src.core.settings import load_platform_settings
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Platform API server")
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--config", default=None, help="Optional config.yaml path (fallback: PLATFORM_CONFIG)")
+    parser.add_argument("--host", default=None, help="API bind host")
+    parser.add_argument("--port", type=int, default=None, help="API bind port")
     parser.add_argument(
         "--jobs",
-        default="./cache/platform/jobs.json",
-        help="Job store path (.json for JSON store, .db/sqlite:///path for SQLite store)",
-    )
-    parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument(
-        "--api-token",
         default=None,
-        help="Optional Bearer token for /api/v1 endpoints (fallback: PLATFORM_API_TOKEN env)",
+        help="Job store path/DSN (.json, SQLite, redis:// or postgresql://)",
     )
+    parser.add_argument("--workers", type=int, default=None, help="Job queue worker count")
+    parser.add_argument("--api-token", default=None, help="Bootstrap Bearer token")
+    parser.add_argument("--audit-log", default=None, help="Audit log path")
     parser.add_argument(
-        "--audit-log",
+        "--auth-disabled",
+        action=argparse.BooleanOptionalAction,
         default=None,
-        help="Optional audit log path (fallback: PLATFORM_AUDIT_LOG env)",
+        help="Explicitly enable/disable API authentication (local development only when disabled)",
     )
     parser.add_argument(
         "--legacy-v1",
@@ -43,34 +45,61 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _cli_overrides(args: argparse.Namespace) -> dict:
+    api = {}
+    platform = {}
+    if args.host is not None:
+        api["host"] = args.host
+    if args.port is not None:
+        api["port"] = args.port
+    if args.api_token is not None:
+        api["token"] = args.api_token
+    if args.audit_log is not None:
+        api["audit_log"] = args.audit_log
+    if args.auth_disabled is not None:
+        api["auth_disabled"] = args.auth_disabled
+    if args.jobs is not None:
+        platform["job_store"] = args.jobs
+    if args.workers is not None:
+        platform["job_max_workers"] = args.workers
+
+    overrides = {}
+    if api:
+        overrides["api"] = api
+    if platform:
+        overrides["platform"] = platform
+    return overrides
+
+
 def main() -> None:
     args = parse_args()
+    settings = load_platform_settings(
+        config_path=args.config,
+        cli_overrides=_cli_overrides(args),
+    )
+
     if args.legacy_v1:
         from src.platform.api_server import run_api_server
 
         run_api_server(
-            host=args.host,
-            port=args.port,
-            job_store_path=args.jobs,
-            max_workers=args.workers,
-            api_token=args.api_token,
-            audit_log_path=args.audit_log,
+            host=settings.api.host,
+            port=settings.api.port,
+            job_store_path=settings.platform.job_store,
+            max_workers=settings.platform.job_max_workers,
+            api_token=settings.api.token.get_secret_value() or None,
+            audit_log_path=settings.api.audit_log,
         )
         return
-
-    os.environ["PLATFORM_JOB_STORE"] = args.jobs
-    os.environ["PLATFORM_JOB_MAX_WORKERS"] = str(args.workers)
-    if args.api_token:
-        os.environ["PLATFORM_API_TOKEN"] = args.api_token
-    if args.audit_log:
-        os.environ["PLATFORM_AUDIT_LOG"] = args.audit_log
 
     try:
         import uvicorn
     except ImportError as exc:
         raise SystemExit("FastAPI v2 server requires uvicorn: pip install 'uvicorn[standard]'") from exc
 
-    uvicorn.run("src.platform.api_v2:app", host=args.host, port=args.port)
+    from src.platform.api_v2 import create_app
+
+    app = create_app(settings=settings)
+    uvicorn.run(app, host=settings.api.host, port=settings.api.port)
 
 
 if __name__ == "__main__":

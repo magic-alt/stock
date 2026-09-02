@@ -289,34 +289,37 @@ def test_local_duckdb_update_list_and_chart_endpoints(client, monkeypatch, tmp_p
     assert len(chart["ohlc"]) == 10
 
 
-def test_local_duckdb_database_is_created_on_app_startup(monkeypatch, tmp_path):
+def test_local_duckdb_database_is_created_on_app_startup(tmp_path):
     pytest.importorskip("duckdb")
     pytest.importorskip("fastapi")
     from fastapi.testclient import TestClient
-    from src.core.config import ConfigManager, GlobalConfig, set_config
+    from src.core.settings import load_platform_settings
     from src.platform.api_v2 import create_app
 
     db_path = tmp_path / "startup" / "market.duckdb"
-    monkeypatch.setenv("PLATFORM_JOB_STORE", str(tmp_path / "jobs.json"))
-    set_config(ConfigManager(config=GlobalConfig(database={"duckdb_path": str(db_path)})))
-    try:
-        app = create_app(enable_cors=False)
-        assert app.state.local_market_data_db_path == str(db_path)
-        assert not db_path.exists()
+    settings = load_platform_settings(
+        environ={"PLATFORM_API_AUTH_DISABLED": "1"},
+        cli_overrides={
+            "platform": {"job_store": str(tmp_path / "jobs.json")},
+            "database": {"duckdb_path": str(db_path)},
+        },
+    )
+    app = create_app(enable_cors=False, settings=settings)
+    assert app.state.settings is settings
+    assert app.state.local_market_data_db_path == str(db_path)
+    assert not db_path.exists()
 
-        with TestClient(app) as test_client:
-            assert db_path.exists()
-            assert app.state.local_market_data_initialized is True
+    with TestClient(app) as test_client:
+        assert db_path.exists()
+        assert app.state.local_market_data_initialized is True
 
-            resp = test_client.get("/api/v2/local-data")
-            assert resp.status_code == 200
-            data = resp.json()["data"]
-            assert data["initialized"] is True
-            assert data["db_path"] == str(db_path)
-            assert data["stats"]["db_path"] == str(db_path)
-            assert data["datasets"] == []
-    finally:
-        set_config(ConfigManager(config=GlobalConfig()))
+        resp = test_client.get("/api/v2/local-data")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["initialized"] is True
+        assert data["db_path"] == str(db_path)
+        assert data["stats"]["db_path"] == str(db_path)
+        assert data["datasets"] == []
 
 
 def test_backtest_endpoint_uses_real_provider_auto_source(client, monkeypatch):

@@ -116,10 +116,11 @@ def test_openapi_documents_anonymous_live_and_ready(monkeypatch, tmp_path):
 
 def test_dockerfile_uses_8000_and_readiness_healthcheck():
     content = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    assert "ENV PORT=8000" in content
+    assert "ENV PLATFORM_API_HOST=0.0.0.0" in content
+    assert "ENV PLATFORM_API_PORT=8000" in content
     assert "EXPOSE 8000" in content
-    assert 'http://localhost:${PORT}/api/v2/ready' in content
-    assert "--port ${PORT}" in content
+    assert 'http://localhost:${PLATFORM_API_PORT}/api/v2/ready' in content
+    assert 'CMD ["python", "scripts/run_platform_api.py"]' in content
     assert "USER 10001:10001" in content
     assert "8080" not in content
 
@@ -129,10 +130,15 @@ def test_compose_uses_internal_port_8000_and_readiness():
     assert set(compose["services"]) == {"api", "frontend"}
     api = compose["services"]["api"]
     assert api["ports"] == ["${PLATFORM_HOST_PORT:-8000}:8000"]
-    assert "PORT=8000" in api["environment"]
+    assert "PLATFORM_API_HOST=0.0.0.0" in api["environment"]
+    assert "PLATFORM_API_PORT=8000" in api["environment"]
     assert "PLATFORM_API_AUTH_DISABLED=${PLATFORM_API_AUTH_DISABLED:-0}" in api["environment"]
+    assert "PLATFORM_JOB_STORE=${PLATFORM_JOB_STORE:-./cache/platform/jobs.json}" in api["environment"]
+    assert "PLATFORM_JOB_STORE_FALLBACK=${PLATFORM_JOB_STORE_FALLBACK:-1}" in api["environment"]
+    assert "MARKET_DATA_DUCKDB_PATH=${MARKET_DATA_DUCKDB_PATH:-./cache/market_data.duckdb}" in api["environment"]
     healthcheck = api["healthcheck"]
     assert "/api/v2/ready" in " ".join(healthcheck["test"])
+    assert "PLATFORM_API_PORT" in " ".join(healthcheck["test"])
     assert healthcheck["start_period"] == "10s"
     assert "8080" not in (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
 
@@ -144,14 +150,18 @@ def test_kubernetes_deployment_has_port_probes_resources_security_and_persistenc
 
     assert container["ports"] == [{"name": "http", "containerPort": 8000}]
     env = {item["name"]: item for item in container["env"]}
-    assert env["PORT"]["value"] == "8000"
+    assert env["PLATFORM_API_HOST"]["value"] == "0.0.0.0"
+    assert env["PLATFORM_API_PORT"]["value"] == "8000"
     assert env["PLATFORM_API_AUTH_DISABLED"]["value"] == "0"
     assert env["PLATFORM_API_TOKEN"]["valueFrom"]["secretKeyRef"] == {
         "name": "platform-api-secrets",
         "key": "api-token",
     }
     assert env["PLATFORM_JOB_STORE"]["value"].endswith("jobs.sqlite")
+    assert env["PLATFORM_JOB_STORE_FALLBACK"]["value"] == "0"
+    assert env["PLATFORM_JOB_MAX_WORKERS"]["value"] == "2"
     assert env["MARKET_DATA_DUCKDB_PATH"]["value"].endswith("market_data.duckdb")
+    assert env["PLATFORM_AUDIT_LOG"]["value"].endswith("audit.log")
 
     assert container["livenessProbe"]["httpGet"] == {"path": "/api/v2/live", "port": "http"}
     assert container["readinessProbe"]["httpGet"] == {"path": "/api/v2/ready", "port": "http"}
