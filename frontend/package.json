@@ -26,9 +26,10 @@
     "eslint": "10.9.1",
     "eslint-plugin-vue": "10.10.0",
     "globals": "17.11.0",
-    "typescript": "~7.0.2",
+    "typescript": "~6.0.3",
     "typescript-eslint": "8.69.0",
     "vite": "^8.2.2",
+    "vue-eslint-parser": "10.4.1",
     "vue-tsc": "^3.3.11"
   }
 }
