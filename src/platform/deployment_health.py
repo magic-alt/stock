@@ -114,12 +114,17 @@ def _market_data_check(app: FastAPI) -> DependencyCheck:
     metadata: Dict[str, Any] = {"db_path": db_path}
     initialized = bool(getattr(app.state, "local_market_data_initialized", False))
     startup_error = str(getattr(app.state, "local_market_data_error", "") or "")
+    metadata["startup_initialized"] = initialized
 
-    if not initialized:
+    # A recorded startup error is authoritative and must keep the instance out
+    # of service.  When startup has not run yet (for example, a TestClient that
+    # is not used as a context manager), the active probe below remains the
+    # source of truth instead of treating an untouched boolean flag as failure.
+    if startup_error:
         return DependencyCheck(
             name="local_market_data",
             ready=False,
-            detail=startup_error or "local DuckDB initialization did not complete",
+            detail=startup_error,
             metadata=metadata,
         )
 
