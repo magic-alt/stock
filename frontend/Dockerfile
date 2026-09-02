@@ -3,6 +3,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY package*.json ./
+COPY .npmrc ./
 RUN npm ci
 
 COPY . .
