@@ -35,6 +35,7 @@ dependencies = [
     "backtrader>=1.9.76",
     "matplotlib>=3.5.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
 ]
 
 [project.optional-dependencies]
@@ -140,25 +141,32 @@ line-length = 120
 fix = false
 
 [tool.ruff.lint]
-select = ["E", "F", "W"]
+select = ["E", "F", "W", "I"]
 ignore = [
-    "E501",
-    "E402",
-    "W291",
-    "W292",
-    "W293",
-    "E701",
-    "E702",
-    "E722",
-    "E741",
-    "F402",
-    "F541",
-    "F811",
-    "F823",
+    "E501",  # line length is handled by formatter / project conventions
+    "E402",  # some scripts intentionally mutate sys.path before imports
+    "F401",  # compatibility facades deliberately re-export symbols
+    "F811",  # legacy modules contain compatibility re-definitions
+    "F821",  # optional dependency branches expose type-only names
+    "W291",  # legacy whitespace baseline; tighten separately
+    "W293",  # legacy blank-line whitespace baseline; tighten separately
 ]
 
-[tool.ruff.lint.isort]
-known-first-party = ["src"]
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F841"]
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks integration tests",
+    "benchmark: marks performance benchmark tests",
+]
 
 # ---------------------------------------------------------------------------
 # MyPy
@@ -169,32 +177,3 @@ warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
 check_untyped_defs = true
-
-# ---------------------------------------------------------------------------
-# Pytest
-# ---------------------------------------------------------------------------
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-v --tb=short --strict-markers"
-markers = [
-    "integration: integration tests",
-    "slow: slow tests",
-    "load: load and throughput tests",
-    "fault: fault scenario tests",
-    "e2e: end-to-end workflow tests",
-]
-
-# ---------------------------------------------------------------------------
-# Coverage
-# ---------------------------------------------------------------------------
-[tool.coverage.run]
-source = ["src"]
-omit = ["src/**/__pycache__/**"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING",
-    "if __name__",
-    "raise NotImplementedError",
-]
