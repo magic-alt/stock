@@ -15,11 +15,18 @@ from src.platform.api_v2 import create_app
 TOKEN = "gate0-test-token"
 
 
-def _configure_secure_app(monkeypatch, tmp_path, *, role: str = Role.ADMIN, token: str = TOKEN):
+def _configure_secure_app(
+    monkeypatch,
+    tmp_path,
+    *,
+    role: str = Role.ADMIN,
+    token: str = TOKEN,
+    subject: str | None = None,
+):
     audit_path = tmp_path / f"audit-{role}.log"
     monkeypatch.setenv("PLATFORM_API_AUTH_DISABLED", "0")
     monkeypatch.setenv("PLATFORM_API_TOKEN", token)
-    monkeypatch.setenv("PLATFORM_API_TOKEN_SUBJECT", f"test-{role}")
+    monkeypatch.setenv("PLATFORM_API_TOKEN_SUBJECT", subject or f"test-{role}")
     monkeypatch.setenv("PLATFORM_API_TOKEN_ROLE", role)
     monkeypatch.setenv("PLATFORM_AUDIT_LOG", str(audit_path))
     monkeypatch.setenv("PLATFORM_JOB_STORE", str(tmp_path / f"jobs-{role}.json"))
@@ -127,10 +134,12 @@ def test_admin_token_reaches_protected_mutation(monkeypatch, tmp_path):
 
 
 def test_subject_is_propagated_to_hash_chain_audit(monkeypatch, tmp_path):
-    app, audit_path = _configure_secure_app(monkeypatch, tmp_path, role=Role.ADMIN)
-    monkeypatch.setenv("PLATFORM_API_TOKEN_SUBJECT", "operator-42")
-    # Settings are captured at create_app time, so rebuild after changing subject.
-    app = create_app(enable_cors=False)
+    app, audit_path = _configure_secure_app(
+        monkeypatch,
+        tmp_path,
+        role=Role.ADMIN,
+        subject="operator-42",
+    )
 
     with TestClient(app) as client:
         response = client.post(
