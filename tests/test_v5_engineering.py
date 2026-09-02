@@ -65,32 +65,24 @@ class TestExceptionHierarchy:
         assert "100" in str(e3) and "50" in str(e3)
 
     def test_strategy_errors(self):
-        from src.core.exceptions import (
-            StrategyNotFoundError,
-        )
+        from src.core.exceptions import StrategyNotFoundError
         e = StrategyNotFoundError("macd", available=["rsi", "boll"])
         assert "macd" in str(e)
         assert e.error_code == "STRATEGY_NOT_FOUND"
 
     def test_order_errors(self):
-        from src.core.exceptions import (
-            InsufficientFundsError,
-        )
+        from src.core.exceptions import InsufficientFundsError
         e = InsufficientFundsError(10000, 5000, symbol="600519.SH")
         assert e.error_code == "INSUFFICIENT_FUNDS"
 
     def test_gateway_errors(self):
-        from src.core.exceptions import (
-            GatewayTimeoutError,
-        )
+        from src.core.exceptions import GatewayTimeoutError
         e = GatewayTimeoutError("xtp", "login", 30.0)
         assert e.error_code == "GATEWAY_TIMEOUT"
         assert "30" in str(e)
 
     def test_risk_errors(self):
-        from src.core.exceptions import (
-            DrawdownLimitExceeded,
-        )
+        from src.core.exceptions import DrawdownLimitExceeded
         e = DrawdownLimitExceeded(0.15, 0.10)
         assert e.error_code == "DRAWDOWN_LIMIT_EXCEEDED"
 
@@ -108,19 +100,17 @@ class TestExceptionHierarchy:
 
     def test_wrap_exception(self):
         from src.core.exceptions import wrap_exception, QuantBaseError, DataError
-        # Wrapping a standard exception
         orig = ValueError("bad value")
         wrapped = wrap_exception(orig, DataError)
         assert isinstance(wrapped, DataError)
         assert wrapped.__cause__ is orig
 
-        # Wrapping a QuantBaseError returns it unchanged
         q_err = QuantBaseError("already wrapped")
         assert wrap_exception(q_err) is q_err
 
     def test_error_code_map(self):
         from src.core.exceptions import ERROR_CODE_MAP, get_exception_by_code
-        assert len(ERROR_CODE_MAP) > 10  # Should have many error codes
+        assert len(ERROR_CODE_MAP) > 10
         cls = get_exception_by_code("DATA_NOT_FOUND")
         assert cls is not None
         assert get_exception_by_code("NONEXISTENT") is None
@@ -151,7 +141,7 @@ class TestPerformanceModule:
             return x * 2
 
         assert expensive(5) == 10
-        assert expensive(5) == 10  # Should use cache
+        assert expensive(5) == 10
         assert call_count == 1
 
     def test_batch_process(self):
@@ -221,8 +211,8 @@ class TestMkDocsConfig:
     def test_dark_mode_support(self, mkdocs_config):
         palette = mkdocs_config["theme"]["palette"]
         schemes = [p.get("scheme") for p in palette]
-        assert "slate" in schemes  # dark mode
-        assert "default" in schemes  # light mode
+        assert "slate" in schemes
+        assert "default" in schemes
 
 # ===========================================================================
 # GitHub Actions CI workflow tests
@@ -246,41 +236,40 @@ class TestCIWorkflow:
         assert "name" in ci_config
 
     def test_trigger_on_push_and_pr(self, ci_config):
-        # PyYAML parses YAML 'on:' key as boolean True
         triggers = ci_config.get(True, ci_config.get("on", {}))
         assert "push" in triggers
         assert "pull_request" in triggers
 
     def test_supported_python_jobs_exist(self, ci_config):
-    jobs = ci_config.get("jobs", {})
-    assert "python-tests" in jobs
-    assert "windows-tests" in jobs
+        jobs = ci_config.get("jobs", {})
+        assert "python-tests" in jobs
+        assert "windows-tests" in jobs
 
     def test_python_matrix_matches_supported_versions(self, ci_config):
-    test_job = ci_config["jobs"]["python-tests"]
-    matrix = test_job.get("strategy", {}).get("matrix", {})
-    versions = [str(v) for v in matrix.get("python-version", [])]
-    assert versions == ["3.10", "3.11", "3.12"]
+        test_job = ci_config["jobs"]["python-tests"]
+        matrix = test_job.get("strategy", {}).get("matrix", {})
+        versions = [str(v) for v in matrix.get("python-version", [])]
+        assert versions == ["3.10", "3.11", "3.12"]
 
     def test_security_gate_job(self, ci_config):
-    jobs = ci_config.get("jobs", {})
-    assert "security-gate" in jobs
-    assert "security-gate" in jobs["required-checks"]["needs"]
+        jobs = ci_config.get("jobs", {})
+        assert "security-gate" in jobs
+        assert "security-gate" in jobs["required-checks"]["needs"]
 
     def test_code_quality_job(self, ci_config):
-    jobs = ci_config.get("jobs", {})
-    assert "code-quality" in jobs
+        jobs = ci_config.get("jobs", {})
+        assert "code-quality" in jobs
 
     def test_uses_checkout_action(self, ci_config):
-    test_job = ci_config["jobs"]["python-tests"]
-    steps = test_job.get("steps", [])
-    has_checkout = any("checkout" in str(s.get("uses", "")) for s in steps)
-    assert has_checkout
+        test_job = ci_config["jobs"]["python-tests"]
+        steps = test_job.get("steps", [])
+        has_checkout = any("checkout" in str(s.get("uses", "")) for s in steps)
+        assert has_checkout
 
     def test_linux_and_windows_are_both_required(self, ci_config):
-    jobs = ci_config.get("jobs", {})
-    assert jobs["python-tests"]["runs-on"] == "ubuntu-latest"
-    assert jobs["windows-tests"]["runs-on"] == "windows-latest"
-    required = jobs["required-checks"]["needs"]
-    assert "python-tests" in required
-    assert "windows-tests" in required
+        jobs = ci_config.get("jobs", {})
+        assert jobs["python-tests"]["runs-on"] == "ubuntu-latest"
+        assert jobs["windows-tests"]["runs-on"] == "windows-latest"
+        required = jobs["required-checks"]["needs"]
+        assert "python-tests" in required
+        assert "windows-tests" in required
