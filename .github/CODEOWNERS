@@ -1,0 +1,4 @@
+# Default repository ownership. Keep this lightweight for the current
+# single-maintainer phase; the main ruleset does not require a separate
+# code-owner approval because a PR author cannot approve their own PR.
+* @magic-alt

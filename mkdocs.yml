@@ -78,6 +78,7 @@ nav:
   - Operations:
     - Deployment: operations/deployment.md
     - Deployment Readiness Contract: DEPLOYMENT_READINESS.md
+    - CI & Branch Governance: CI_GOVERNANCE.md
     - Monitoring: operations/monitoring.md
     - Troubleshooting: operations/troubleshooting.md
   - Reference Library:

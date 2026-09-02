@@ -263,8 +263,7 @@ import { useTradingStore } from '@/stores/trading'
 import { useBacktestStore } from '@/stores/backtest'
 import client, { unwrapApiData } from '@/api/client'
 import type { AnalysisResult } from '@/api/types'
-import { resolveStockInput, searchStocks } from '@/utils/stockSearch'
-import type { StockSearchResult } from '@/utils/stockSearch'
+import { resolveStockInput, searchStocks, type StockSearchResult } from '@/utils/stockSearch'
 
 const ANALYSIS_HISTORY_KEY = 'stock.dashboard.analysisHistory'
 const MAX_ANALYSIS_HISTORY = 12

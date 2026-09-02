@@ -1,5 +1,4 @@
-import axios from 'axios'
-import type { AxiosInstance, AxiosResponse } from 'axios'
+import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
 
 export interface ApiResponse<T = Record<string, unknown>> {
   ok: boolean
