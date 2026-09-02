@@ -21,8 +21,8 @@ The branch rule intentionally depends on one stable aggregate check named **`Req
 | `Python Tests (3.12)` | Supported interpreter test gate |
 | `Windows Tests (3.12)` | Windows compatibility gate |
 | `Code Quality` | Ruff plus the current MyPy baseline |
-| `Security Gate` | High-severity Bandit findings and known dependency vulnerabilities are blocking |
-| `Frontend Gate` | `npm ci`, ESLint, Vue/TypeScript type check, and production build |
+| `Security Gate` | High-severity Bandit findings and known Python dependency vulnerabilities are blocking |
+| `Frontend Gate` | `npm ci`, HIGH-severity npm audit, ESLint, Vue/TypeScript type check, and production build |
 | `Packaging Smoke (3.10/3.11/3.12)` | Build wheel, Twine metadata validation, clean wheel install, CLI smoke |
 | `Documentation Gate` | Strict MkDocs build |
 | `Docker Validation` | Production image and Compose configuration |
@@ -37,8 +37,9 @@ The following checks deliberately do not gate merge yet:
 
 - **Coverage (informational)** — coverage is collected and uploaded, but no repository-wide percentage threshold has been certified yet.
 - **Security Baseline (informational)** — Bandit medium-and-higher findings are recorded as an artifact. The required security gate rejects HIGH findings. Existing MEDIUM findings should be remediated or explicitly risk-accepted before progressively raising the blocking threshold.
+- **Frontend moderate advisory baseline** — the lockfile currently retains two MODERATE advisories in the ECharts 5 / vue-echarts 7 dependency chain. npm's available remediation moves to ECharts 6.1.0 and is classified as a breaking change, so Gate 0 blocks HIGH/CRITICAL frontend advisories while the ECharts migration is handled as an explicit compatibility upgrade rather than an automated `--force` rewrite.
 
-Informational status must be visible in the job name and must never be included in the `Required Checks` aggregate.
+Informational status must be visible in the job name or documented as a bounded baseline and must never weaken the `Required Checks` aggregate.
 
 ## 4. Security enforcement policy
 
@@ -48,8 +49,10 @@ The pre-hardening workflow hid Bandit and dependency-audit exit codes. Gate 0 ch
 2. `python -m pip check` validates the installed dependency graph where applicable.
 3. Bandit HIGH findings are fail-closed.
 4. Bandit MEDIUM findings remain a tracked baseline rather than being silently discarded.
+5. `npm audit --audit-level=high` runs automatically before frontend lint and is fail-closed for HIGH/CRITICAL advisories.
+6. The remaining ECharts/vue-echarts MODERATE advisory is documented rather than bypassed with `npm audit fix --force`.
 
-The cache-key MD5 use in `src/core/performance.py` is non-cryptographic and must be marked with `usedforsecurity=False` so that the security gate can distinguish that use from security-sensitive MD5.
+The cache-key MD5 use in `src/core/performance.py` is non-cryptographic and is marked with `usedforsecurity=False` so that the security gate can distinguish that use from security-sensitive MD5.
 
 ## 5. Python support policy
 
@@ -62,7 +65,7 @@ classifiers = 3.10 / 3.11 / 3.12
 
 CI therefore executes the Linux test suite and wheel smoke on 3.10, 3.11, and 3.12. Python 3.12 is the primary Windows/runtime validation version.
 
-A future interpreter must not be added to project metadata until CI proves it. Conversely, a supported interpreter must not be removed from CI without changing project metadata and documenting the compatibility decision in the same PR.
+Python 3.10 tests that parse TOML use the declared `tomli` compatibility dependency because `tomllib` only exists in the standard library from Python 3.11 onward. A future interpreter must not be added to project metadata until CI proves it. Conversely, a supported interpreter must not be removed from CI without changing project metadata and documenting the compatibility decision in the same PR.
 
 ## 6. Frontend reproducibility
 
@@ -71,11 +74,14 @@ Frontend validation is a real gate:
 ```text
 npm ci
   -> npm run lint
+       -> prelint: npm run security:audit
+                    -> npm audit --audit-level=high
+       -> eslint . --max-warnings=0
   -> vue-tsc -b --noEmit
   -> npm run build
 ```
 
-ESLint and its Vue/TypeScript dependencies are pinned in `frontend/package.json` and resolved in `frontend/package-lock.json`. CI must use `npm ci`; it must not fetch an undeclared `npx ...@latest` linter.
+ESLint and its Vue/TypeScript dependencies are pinned in `frontend/package.json` and resolved in `frontend/package-lock.json`. CI must use `npm ci`; it must not fetch an undeclared `npx ...@latest` linter. The `prelint` lifecycle is intentional: every CI or developer invocation of the required lint gate first validates that the installed frontend graph has no HIGH/CRITICAL npm advisory.
 
 ## 7. Packaging smoke contract
 
