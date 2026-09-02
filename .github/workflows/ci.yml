@@ -2,297 +2,464 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
+    tags: ['v*']
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  test:
-    name: Run Tests
-    runs-on: ${{ matrix.os }}
+  python-tests:
+    name: Python Tests (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ['3.12']
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install ".[api,perf,dev]" || pip install -r requirements.txt
-        pip install pytest pytest-cov pytest-xdist httpx
-        pip install pyarrow scipy jinja2 duckdb
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install ".[api,perf,dev,monitoring,security,live]"
+          python -m pip install pyarrow scipy jinja2
+          python -m pip check
 
-    - name: Run strategy smoke gate
-      run: |
-        python -m pytest tests/test_strategy_backtest_contracts.py -v --tb=short -x
+      - name: Run strategy smoke gate
+        run: python -m pytest tests/test_strategy_backtest_contracts.py -v --tb=short -x
 
-    - name: Run tests
-      run: |
-        python -m pytest tests/ -v --tb=short --override-ini="addopts=-v --tb=short" --ignore=tests/test_strategy_backtest_contracts.py -x
+      - name: Run full test suite
+        run: python -m pytest tests/ -v --tb=short --override-ini="addopts=-v --tb=short" --ignore=tests/test_strategy_backtest_contracts.py -x
 
-    - name: Run tests with coverage
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        python -m pytest tests/ --cov=src --cov-report=xml --override-ini="addopts="
-      continue-on-error: true
+  windows-tests:
+    name: Windows Tests (3.12)
+    runs-on: windows-latest
 
-    - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest'
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-${{ matrix.os }}-py${{ matrix.python-version }}
-      continue-on-error: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install ".[api,perf,dev,monitoring,security,live]"
+          python -m pip install pyarrow scipy jinja2
+          python -m pip check
+
+      - name: Run strategy smoke gate
+        run: python -m pytest tests/test_strategy_backtest_contracts.py -v --tb=short -x
+
+      - name: Run full test suite
+        run: python -m pytest tests/ -v --tb=short --override-ini="addopts=-v --tb=short" --ignore=tests/test_strategy_backtest_contracts.py -x
 
   code-quality:
-    name: Code Quality Check
+    name: Code Quality
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
 
-    - name: Install linting tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install ruff mypy
+      - name: Install quality dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff mypy types-PyYAML types-requests
+          python -m pip install -r requirements.txt
 
-    - name: Run Ruff (linter)
-      run: |
-        ruff check src/
+      - name: Run Ruff
+        run: ruff check src/
 
-    - name: Run MyPy (type checker)
-      run: |
-        pip install -r requirements.txt
-        pip install types-PyYAML types-requests
-        mypy src/core/exceptions.py src/core/input_sanitizer.py src/core/plugin.py --ignore-missing-imports --follow-imports=skip
+      - name: Run MyPy baseline
+        run: mypy src/core/exceptions.py src/core/input_sanitizer.py src/core/plugin.py --ignore-missing-imports --follow-imports=skip
 
-  security-scan:
-    name: Security Scan
+  security-gate:
+    name: Security Gate
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
 
-    - name: Install security tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install bandit safety pip-audit
+      - name: Install security tools and audited dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install bandit pip-audit
+          python -m pip install -r requirements.txt
+          python -m pip check
 
-    - name: Run Bandit (security linter)
-      run: bandit -r src/ -f json -o bandit-report.json -ll
-      continue-on-error: true
+      - name: Reject high-severity Bandit findings
+        run: bandit -r src/ -f json -o bandit-high-report.json -lll
 
-    - name: Run pip-audit (dependency vulnerabilities)
-      run: |
-        pip install -r requirements.txt
-        pip-audit --format json --output pip-audit-report.json || true
-      continue-on-error: true
+      - name: Reject known dependency vulnerabilities
+        run: pip-audit -r requirements.txt --format json --output pip-audit-report.json
 
-    - name: Upload security reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: security-reports
-        path: |
-          bandit-report.json
-          pip-audit-report.json
+      - name: Upload required security reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: required-security-reports
+          path: |
+            bandit-high-report.json
+            pip-audit-report.json
+          if-no-files-found: warn
 
-  build-docs:
-    name: Build Documentation
+  security-baseline:
+    name: Security Baseline (informational)
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
-    - name: Install MkDocs
-      run: |
-        pip install mkdocs mkdocs-material pymdown-extensions
+      - name: Install Bandit
+        run: python -m pip install bandit
 
-    - name: Validate mkdocs.yml
-      run: |
-        python -c "import yaml; yaml.safe_load(open('mkdocs.yml'))" && echo "mkdocs.yml is valid YAML"
+      - name: Record medium-and-higher Bandit baseline
+        run: bandit -r src/ -f json -o bandit-baseline-report.json -ll || true
 
-    - name: Build MkDocs site
-      run: |
-        python -m mkdocs build --strict
+      - name: Upload informational security baseline
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: informational-security-baseline
+          path: bandit-baseline-report.json
+          if-no-files-found: warn
 
   frontend-check:
-    name: Frontend Build Check
+    name: Frontend Gate
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-    - name: Install frontend dependencies
-      working-directory: frontend
-      run: npm ci
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
 
-    - name: Type check frontend
-      working-directory: frontend
-      run: npx vue-tsc -b --noEmit
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
 
-    - name: Build frontend
-      working-directory: frontend
-      run: npm run build
+      - name: Type check frontend
+        working-directory: frontend
+        run: npx vue-tsc -b --noEmit
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  packaging-smoke:
+    name: Packaging Smoke (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build --wheel
+          python -m twine check dist/*
+
+      - name: Install wheel from clean artifact
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          python -m pip check
+
+      - name: Smoke installed distribution outside source tree
+        shell: bash
+        run: |
+          cd "${RUNNER_TEMP}"
+          python -c "import importlib.metadata as m; assert m.version('quant-stock') == '5.0.0'"
+          quant-platform --version
+
+  build-docs:
+    name: Documentation Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install MkDocs
+        run: python -m pip install mkdocs mkdocs-material pymdown-extensions
+
+      - name: Validate mkdocs.yml
+        run: python -c "import yaml; yaml.safe_load(open('mkdocs.yml'))" && echo "mkdocs.yml is valid YAML"
+
+      - name: Build MkDocs site
+        run: python -m mkdocs build --strict
 
   docker-validate:
-    name: Docker Build Validation
+    name: Docker Validation
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [python-tests]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Validate Dockerfile
-      run: |
-        docker build --target production -t quant-platform:test .
+      - name: Build production image
+        run: docker build --target production -t quant-platform:test .
 
-    - name: Validate docker-compose
-      run: |
-        docker compose config
-
-  performance:
-    name: Performance Regression Gate
-    runs-on: ubuntu-latest
-    needs: [test]
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Restore performance baseline
-      uses: actions/cache@v4
-      with:
-        path: benchmark_baselines/
-        key: perf-baseline-${{ github.ref_name }}
-        restore-keys: |
-          perf-baseline-main
-          perf-baseline-
-
-    - name: Run performance benchmark
-      env:
-        PYTHONPATH: .
-      run: |
-        mkdir -p benchmark_baselines
-        python scripts/benchmark_platform.py \
-          --jobs 20 --workers 2 --sleep-ms 5 \
-          --check-thresholds \
-          --save-baseline --baseline-dir benchmark_baselines \
-          --check-regression --baseline-dir benchmark_baselines
-
-    - name: Upload benchmark results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: benchmark-results
-        path: benchmark_baselines/
+      - name: Validate Compose contract
+        run: docker compose config
 
   integration-test:
-    name: Integration Test
+    name: Integration Baseline
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [python-tests]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-        cache: 'pip'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install httpx click rich
+      - name: Install integration dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install ".[api,perf,dev,monitoring,security,live]"
+          python -m pip install pyarrow scipy jinja2
+          python -m pip check
 
-    - name: Run integration tests
-      run: |
-        python -m pytest tests/ -m "integration" -v --override-ini="addopts=-v --tb=short" || echo "No integration tests found"
-      continue-on-error: true
+      - name: Run deterministic integration baseline
+        run: python -m pytest tests/ -m "integration" -v --override-ini="addopts=-v --tb=short"
 
-    - name: Test CLI v2
-      run: |
-        python -m src.cli.main --version
-        python -m src.cli.main strategy list || true
-        python -m src.cli.main monitor status
+      - name: Smoke CLI
+        run: |
+          python -m src.cli.main --version
+          python -m src.cli.main monitor status
+
+  performance:
+    name: Performance Gate
+    runs-on: ubuntu-latest
+    needs: [python-tests]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip check
+
+      - name: Restore performance baseline
+        uses: actions/cache@v5
+        with:
+          path: benchmark_baselines/
+          key: perf-baseline-${{ github.ref_name }}
+          restore-keys: |
+            perf-baseline-main
+            perf-baseline-
+
+      - name: Run performance benchmark
+        env:
+          PYTHONPATH: .
+        run: |
+          mkdir -p benchmark_baselines
+          python scripts/benchmark_platform.py \
+            --jobs 20 --workers 2 --sleep-ms 5 \
+            --check-thresholds \
+            --save-baseline --baseline-dir benchmark_baselines \
+            --check-regression --baseline-dir benchmark_baselines
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: benchmark-results
+          path: benchmark_baselines/
+
+  coverage:
+    name: Coverage (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install coverage dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install ".[api,perf,dev,monitoring,security,live]"
+          python -m pip install pyarrow scipy jinja2
+
+      - name: Run coverage suite
+        run: python -m pytest tests/ --cov=src --cov-report=xml --override-ini="addopts="
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v7
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-ubuntu-py3.12
+          fail_ci_if_error: false
+
+  required-checks:
+    name: Required Checks
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - python-tests
+      - windows-tests
+      - code-quality
+      - security-gate
+      - frontend-check
+      - packaging-smoke
+      - build-docs
+      - docker-validate
+      - integration-test
+      - performance
+
+    steps:
+      - name: Enforce required job results
+        shell: bash
+        env:
+          PYTHON_TESTS: ${{ needs.python-tests.result }}
+          WINDOWS_TESTS: ${{ needs.windows-tests.result }}
+          CODE_QUALITY: ${{ needs.code-quality.result }}
+          SECURITY_GATE: ${{ needs.security-gate.result }}
+          FRONTEND_GATE: ${{ needs.frontend-check.result }}
+          PACKAGING_SMOKE: ${{ needs.packaging-smoke.result }}
+          DOCS_GATE: ${{ needs.build-docs.result }}
+          DOCKER_VALIDATION: ${{ needs.docker-validate.result }}
+          INTEGRATION_BASELINE: ${{ needs.integration-test.result }}
+          PERFORMANCE_GATE: ${{ needs.performance.result }}
+        run: |
+          failed=0
+          for entry in \
+            "python-tests=${PYTHON_TESTS}" \
+            "windows-tests=${WINDOWS_TESTS}" \
+            "code-quality=${CODE_QUALITY}" \
+            "security-gate=${SECURITY_GATE}" \
+            "frontend-check=${FRONTEND_GATE}" \
+            "packaging-smoke=${PACKAGING_SMOKE}" \
+            "build-docs=${DOCS_GATE}" \
+            "docker-validate=${DOCKER_VALIDATION}" \
+            "integration-test=${INTEGRATION_BASELINE}" \
+            "performance=${PERFORMANCE_GATE}"
+          do
+            name="${entry%%=*}"
+            result="${entry#*=}"
+            echo "${name}: ${result}"
+            if [ "${result}" != "success" ]; then
+              failed=1
+            fi
+          done
+          exit "${failed}"
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [test, code-quality, security-scan, performance]
+    needs: [required-checks]
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v6
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
-    - name: Build package
-      run: |
-        python -m pip install --upgrade pip build
-        python -m build
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: dist/*
-        body_path: CHANGELOG.md
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          body_path: CHANGELOG.md
