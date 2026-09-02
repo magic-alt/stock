@@ -12,12 +12,18 @@ services:
       - ./logs:/app/logs
     environment:
       - PYTHONPATH=/app
-      - PORT=8000
+      - PLATFORM_API_HOST=0.0.0.0
+      - PLATFORM_API_PORT=8000
       - PLATFORM_API_TOKEN=${PLATFORM_API_TOKEN:-}
       - PLATFORM_API_AUTH_DISABLED=${PLATFORM_API_AUTH_DISABLED:-0}
+      - PLATFORM_JOB_STORE=${PLATFORM_JOB_STORE:-./cache/platform/jobs.json}
+      - PLATFORM_JOB_STORE_FALLBACK=${PLATFORM_JOB_STORE_FALLBACK:-1}
+      - PLATFORM_JOB_MAX_WORKERS=${PLATFORM_JOB_MAX_WORKERS:-2}
+      - MARKET_DATA_DUCKDB_PATH=${MARKET_DATA_DUCKDB_PATH:-./cache/market_data.duckdb}
+      - PLATFORM_AUDIT_LOG=${PLATFORM_AUDIT_LOG:-./logs/audit.log}
       - TUSHARE_TOKEN=${TUSHARE_TOKEN:-}
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v2/ready"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:$${PLATFORM_API_PORT}/api/v2/ready"]
       interval: 30s
       timeout: 5s
       start_period: 10s
