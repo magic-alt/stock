@@ -75,7 +75,7 @@ def test_security_gate_is_blocking_and_baseline_is_explicitly_informational():
     assert "security-baseline" not in workflow["jobs"]["required-checks"]["needs"]
 
 
-def test_frontend_lint_toolchain_is_locked_and_required():
+def test_frontend_lint_and_high_severity_audit_are_locked_and_required():
     workflow = _load_yaml(CI_PATH)
     frontend = workflow["jobs"]["frontend-check"]
     frontend_commands = "\n".join(str(step.get("run", "")) for step in frontend["steps"])
@@ -86,7 +86,10 @@ def test_frontend_lint_toolchain_is_locked_and_required():
 
     package_json = json.loads(PACKAGE_JSON_PATH.read_text(encoding="utf-8"))
     package_lock = json.loads(PACKAGE_LOCK_PATH.read_text(encoding="utf-8"))
-    assert package_json["scripts"]["lint"] == "eslint . --max-warnings=0"
+    scripts = package_json["scripts"]
+    assert scripts["security:audit"] == "npm audit --audit-level=high"
+    assert scripts["prelint"] == "npm run security:audit"
+    assert scripts["lint"] == "eslint . --max-warnings=0"
     for dependency in ("eslint", "eslint-plugin-vue", "globals", "typescript-eslint"):
         assert dependency in package_json["devDependencies"]
         assert package_lock["packages"][""]["devDependencies"][dependency] == package_json["devDependencies"][dependency]
