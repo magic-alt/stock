@@ -251,32 +251,36 @@ class TestCIWorkflow:
         assert "push" in triggers
         assert "pull_request" in triggers
 
-    def test_test_job_exists(self, ci_config):
-        jobs = ci_config.get("jobs", {})
-        assert "test" in jobs
+    def test_supported_python_jobs_exist(self, ci_config):
+    jobs = ci_config.get("jobs", {})
+    assert "python-tests" in jobs
+    assert "windows-tests" in jobs
 
-    def test_test_uses_python312(self, ci_config):
-        test_job = ci_config["jobs"]["test"]
-        matrix = test_job.get("strategy", {}).get("matrix", {})
-        versions = matrix.get("python-version", [])
-        assert "3.12" in [str(v) for v in versions]
+    def test_python_matrix_matches_supported_versions(self, ci_config):
+    test_job = ci_config["jobs"]["python-tests"]
+    matrix = test_job.get("strategy", {}).get("matrix", {})
+    versions = [str(v) for v in matrix.get("python-version", [])]
+    assert versions == ["3.10", "3.11", "3.12"]
 
-    def test_security_scan_job(self, ci_config):
-        jobs = ci_config.get("jobs", {})
-        assert "security-scan" in jobs
+    def test_security_gate_job(self, ci_config):
+    jobs = ci_config.get("jobs", {})
+    assert "security-gate" in jobs
+    assert "security-gate" in jobs["required-checks"]["needs"]
 
     def test_code_quality_job(self, ci_config):
-        jobs = ci_config.get("jobs", {})
-        assert "code-quality" in jobs
+    jobs = ci_config.get("jobs", {})
+    assert "code-quality" in jobs
 
     def test_uses_checkout_action(self, ci_config):
-        test_job = ci_config["jobs"]["test"]
-        steps = test_job.get("steps", [])
-        has_checkout = any("checkout" in str(s.get("uses", "")) for s in steps)
-        assert has_checkout
+    test_job = ci_config["jobs"]["python-tests"]
+    steps = test_job.get("steps", [])
+    has_checkout = any("checkout" in str(s.get("uses", "")) for s in steps)
+    assert has_checkout
 
-    def test_multi_os_matrix(self, ci_config):
-        test_job = ci_config["jobs"]["test"]
-        matrix = test_job.get("strategy", {}).get("matrix", {})
-        os_list = matrix.get("os", [])
-        assert len(os_list) >= 2  # At least ubuntu + windows
+    def test_linux_and_windows_are_both_required(self, ci_config):
+    jobs = ci_config.get("jobs", {})
+    assert jobs["python-tests"]["runs-on"] == "ubuntu-latest"
+    assert jobs["windows-tests"]["runs-on"] == "windows-latest"
+    required = jobs["required-checks"]["needs"]
+    assert "python-tests" in required
+    assert "windows-tests" in required

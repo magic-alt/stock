@@ -108,8 +108,10 @@ def test_cookiecutter_plugin_template_declares_entry_point():
 
 
 def test_pyproject_exposes_quant_platform_console_script():
-    pytest.importorskip("tomllib")
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
 
     pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
 
