@@ -6,7 +6,7 @@ on:
       - ci/gate0-governance-hardening
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   refresh-lockfile:
@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ci/gate0-governance-hardening
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -26,8 +28,15 @@ jobs:
         working-directory: frontend
         run: npm install --package-lock-only --ignore-scripts
 
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-package-lock
-          path: frontend/package-lock.json
+      - name: Commit package-lock.json
+        shell: bash
+        run: |
+          if git diff --quiet -- frontend/package-lock.json; then
+            echo "package-lock.json already synchronized"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/package-lock.json
+          git commit -m "chore(frontend): synchronize npm lockfile"
+          git push origin HEAD:ci/gate0-governance-hardening
