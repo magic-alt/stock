@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   apply:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -18,253 +19,26 @@ jobs:
           ref: config/gate1-typed-settings-ssot
           fetch-depth: 0
 
-      - name: Integrate the settings resolver
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
+      - name: Apply integration patch
+        run: python scripts/_gate1_apply.py
 
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text(encoding="utf-8")
-              if old not in text:
-                  if new in text:
-                      return
-                  raise SystemExit(f"expected block not found in {path}: {old[:120]!r}")
-              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Syntax check
+        run: >-
+          python -m py_compile
+          src/core/config.py
+          src/core/settings.py
+          src/platform/api_v2.py
+          src/platform/api_auth.py
+          src/cli/main.py
+          src/cli/config_commands.py
+          scripts/run_platform_api.py
 
-          # Legacy ConfigManager delegates source precedence to PlatformSettings.
-          path = Path("src/core/config.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''        if self._config_path is not None:
-              loaded = self.__class__.load_from_file(self._config_path)
-              # Use the .config property so that a missing file still yields defaults
-              self._config = loaded.config
-              return self._config
-
-          # No path: build from env vars (falls back to defaults automatically)
-          loaded = self.__class__.load_from_env()
-          self._config = loaded._config
-          return self._config'''
-          new = '''        from src.core.settings import load_platform_settings
-
-          settings = load_platform_settings(config_path=self._config_path)
-          self._config = settings.config
-          return self._config'''
-          if old not in text:
-              raise SystemExit("ConfigManager.load block not found")
-          text = text.replace(old, new, 1)
-
-          start = text.index('    @classmethod\n    def load_from_env(cls, prefix: str = "BACKTEST_") -> "ConfigManager":')
-          end = text.index('\n    def save_to_file(self, path: str) -> None:', start)
-          replacement = '''    @classmethod
-          def load_from_env(cls, prefix: str = "BACKTEST_") -> "ConfigManager":
-              """Load environment overrides through the canonical settings resolver.
-
-              ``prefix`` is retained for API compatibility.  The historical
-              ``BACKTEST_*`` aliases are now resolved in ``PlatformSettings`` so
-              environment precedence is defined in one place.
-              """
-              if prefix != "BACKTEST_":
-                  logger.warning("custom config env prefix is deprecated", prefix=prefix)
-              from src.core.settings import load_platform_settings
-
-              return cls(config=load_platform_settings().config)
-'''
-          replacement = "\n".join(line[4:] if line.startswith("    ") else line for line in replacement.splitlines())
-          replacement = "\n".join("    " + line if line else line for line in replacement.splitlines())
-          text = text[:start] + replacement + text[end:]
-
-          start = text.index('def get_config() -> ConfigManager:')
-          end = text.index('\n\ndef set_config(config: ConfigManager)', start)
-          replacement = '''def get_config() -> ConfigManager:
-              """Return the global domain config resolved through PlatformSettings."""
-              global _global_config
-
-              if _global_config is None:
-                  from src.core.settings import load_platform_settings
-
-                  _global_config = ConfigManager(config=load_platform_settings().config)
-                  logger.info("Resolved configuration through PlatformSettings")
-              return _global_config
-'''
-          replacement = "\n".join(line[4:] if line.startswith("    ") else line for line in replacement.splitlines())
-          text = text[:start] + replacement + text[end:]
-          text = text.replace("    # New V4.0 fields\n", "    # Runtime/domain sections retained for backward-compatible model access.\n", 1)
-          path.write_text(text, encoding="utf-8")
-
-          # FastAPI factory resolves once and owns the settings object.
-          replace_once(
-              "src/platform/api_v2.py",
-              "from src.core.monitoring import TraceContext, get_metric_collector, get_tracer\n",
-              "from src.core.monitoring import TraceContext, get_metric_collector, get_tracer\nfrom src.core.settings import PlatformSettings, load_platform_settings\n",
-          )
-          replace_once(
-              "src/platform/api_v2.py",
-              '''    def _resolve_allowed_origins(allowed_origins: Optional[List[str]]) -> List[str]:
-              if allowed_origins is not None:
-                  return allowed_origins
-              env_value = os.environ.get("PLATFORM_ALLOWED_ORIGINS", "").strip()
-              if env_value:
-                  return [item.strip() for item in env_value.split(",") if item.strip()]
-              return ["http://localhost:3000", "http://127.0.0.1:3000"]
-
-          def _resolve_frontend_dist() -> Optional[Path]:
-              raw_path = os.environ.get("PLATFORM_FRONTEND_DIST", "").strip()
-              frontend_dist = Path(raw_path) if raw_path else PROJECT_ROOT / "frontend" / "dist"
-              index_file = frontend_dist / "index.html"
-              if frontend_dist.is_dir() and index_file.is_file():
-                  return frontend_dist.resolve()
-              return None
-
-          def _resolve_market_data_duckdb_path() -> str:
-              from src.core.config import get_config
-
-              db_path = os.environ.get("MARKET_DATA_DUCKDB_PATH", "").strip()
-              if not db_path:
-                  db_path = get_config().config.database.duckdb_path
-              return db_path
-''',
-              '''    def _resolve_allowed_origins(
-              allowed_origins: Optional[List[str]], settings: PlatformSettings
-          ) -> List[str]:
-              return list(allowed_origins) if allowed_origins is not None else list(settings.api.allowed_origins)
-
-          def _resolve_frontend_dist(settings: PlatformSettings) -> Optional[Path]:
-              raw_path = settings.api.frontend_dist.strip()
-              frontend_dist = Path(raw_path) if raw_path else PROJECT_ROOT / "frontend" / "dist"
-              index_file = frontend_dist / "index.html"
-              if frontend_dist.is_dir() and index_file.is_file():
-                  return frontend_dist.resolve()
-              return None
-
-          def _resolve_market_data_duckdb_path(settings: Optional[PlatformSettings] = None) -> str:
-              resolved = settings or load_platform_settings()
-              return resolved.database.duckdb_path
-''',
-          )
-          replace_once(
-              "src/platform/api_v2.py",
-              '''    def create_app(
-              *,
-              enable_cors: bool = True,
-              allowed_origins: Optional[List[str]] = None,
-          ) -> FastAPI:
-              """Create and configure the FastAPI application."""
-              app = FastAPI(''',
-              '''    def create_app(
-              *,
-              enable_cors: bool = True,
-              allowed_origins: Optional[List[str]] = None,
-              settings: Optional[PlatformSettings] = None,
-          ) -> FastAPI:
-              """Create and configure the FastAPI application from one resolved settings object."""
-              resolved_settings = settings or load_platform_settings()
-              app = FastAPI(''',
-          )
-          replace_once(
-              "src/platform/api_v2.py",
-              '''        app.state.job_queue = JobQueue(
-              store=JobStore(path=os.environ.get("PLATFORM_JOB_STORE", "./cache/platform/jobs.json")),
-              max_workers=int(os.environ.get("PLATFORM_JOB_MAX_WORKERS", "2")),
-          )''',
-              '''        app.state.settings = resolved_settings
-          app.state.job_queue = JobQueue(
-              store=JobStore(
-                  path=resolved_settings.platform.job_store,
-                  allow_fallback=resolved_settings.platform.job_store_fallback,
-              ),
-              max_workers=resolved_settings.platform.job_max_workers,
-          )''',
-          )
-          replace_once(
-              "src/platform/api_v2.py",
-              "        app.state.local_market_data_db_path = _resolve_market_data_duckdb_path()\n",
-              "        app.state.local_market_data_db_path = _resolve_market_data_duckdb_path(resolved_settings)\n",
-          )
-          replace_once(
-              "src/platform/api_v2.py",
-              "                allow_origins=_resolve_allowed_origins(allowed_origins),\n",
-              "                allow_origins=_resolve_allowed_origins(allowed_origins, resolved_settings),\n",
-          )
-          api_path = Path("src/platform/api_v2.py")
-          api_text = api_path.read_text(encoding="utf-8")
-          api_text = api_text.replace("_resolve_frontend_dist()", "_resolve_frontend_dist(app.state.settings)")
-          api_path.write_text(api_text, encoding="utf-8")
-
-          # Auth consumes app.state.settings instead of re-reading the environment.
-          auth = Path("src/platform/api_auth.py")
-          text = auth.read_text(encoding="utf-8")
-          text = text.replace("import os\n", "", 1)
-          text = text.replace(
-              "from src.core.logger import get_logger\n",
-              "from src.core.logger import get_logger\nfrom src.core.settings import PlatformSettings, load_platform_settings\n",
-              1,
-          )
-          start = text.index("def load_api_auth_settings() -> ApiAuthSettings:")
-          end = text.index("\n\ndef _route(", start)
-          replacement = '''def load_api_auth_settings(settings: Optional[PlatformSettings] = None) -> ApiAuthSettings:
-              """Resolve bootstrap auth from the canonical PlatformSettings object."""
-              runtime = settings or load_platform_settings()
-              api = runtime.api
-              return ApiAuthSettings(
-                  disabled=api.auth_disabled,
-                  token=api.token.get_secret_value().strip(),
-                  subject_id=api.token_subject,
-                  role=api.token_role.strip().lower(),
-                  account_group=api.token_account_group,
-                  strategy_id=api.token_strategy_id,
-                  account_id=api.token_account_id,
-                  audit_log_path=api.audit_log,
-              )
-'''
-          replacement = "\n".join(line[4:] if line.startswith("    ") else line for line in replacement.splitlines())
-          text = text[:start] + replacement + text[end:]
-          text = text.replace(
-              "    settings = load_api_auth_settings()\n",
-              '    settings = load_api_auth_settings(getattr(app.state, "settings", None))\n',
-              1,
-          )
-          auth.write_text(text, encoding="utf-8")
-
-          # Register `quant-platform config doctor` without bloating the main CLI module.
-          replace_once(
-              "src/cli/main.py",
-              '''    def cli():
-              """Unified Quant Platform — CLI v2"""
-              pass
-
-          # -----------------------------------------------------------------------
-          # backtest group''',
-              '''    def cli():
-              """Unified Quant Platform — CLI v2"""
-              pass
-
-          from src.cli.config_commands import config_group
-          cli.add_command(config_group)
-
-          # -----------------------------------------------------------------------
-          # backtest group''',
-          )
-          PY
-
-      - name: Syntax check patched modules
-        run: |
-          python -m py_compile \
-            src/core/config.py \
-            src/core/settings.py \
-            src/platform/api_v2.py \
-            src/platform/api_auth.py \
-            src/cli/main.py \
-            src/cli/config_commands.py \
-            scripts/run_platform_api.py
-
-      - name: Commit integration and remove helper
+      - name: Commit integration and remove helpers
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/gate1-settings-apply.yml
+          git rm .github/workflows/gate1-settings-apply.yml scripts/_gate1_apply.py
           git add src/core/config.py src/platform/api_v2.py src/platform/api_auth.py src/cli/main.py
           git commit -m "refactor(config): route runtime consumers through PlatformSettings"
           git pull --rebase origin config/gate1-typed-settings-ssot
